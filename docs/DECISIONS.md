@@ -27,7 +27,28 @@ Todd, 2026-09-17: *"we are very unhappy with the gingerbread man."*
 - **This is a HARD GATE.** No other milestone closes until Todd has looked at a frame of the new cookie taken from the running Mac build and said so. A green verify does not close it.
 - **What "a cookie, not a robot" means** — the shipped silhouette is now the FBX's, so the work is (a) it must **load and render correctly in Unity** (still unproven — Blender is not Unity), (b) it must be **animated**, (c) it must **read at third-person distance** at the right scale, and (d) the **rain dissolve must still wash the icing first** via the decoration mesh.
 - **The gate artefact is a frame from a PLAIN LAUNCH** of the Mac build at **iPhone aspect (2556x1179, 2.168:1)**. A capture whose pose/scene was set by a dev harness shows what the harness can construct, not what the game does — invalid as a gate.
-- **Art direction is NOT yet locked beyond this.** The cookie pass establishes it; Todd's verdict sets the language for the rest.
+- **Art direction beyond this is settled by the following, which is LOCKED.**
+
+## Tone (LOCKED 2026-09-17) — this is a SCARY game
+
+Todd, verbatim, on the supplied cookie's hollow ring eyes and big red ring mouth:
+
+> *"that is by design. this will be a scary gamer"*
+
+Read as *scary game*. Consequences, and they are requirements:
+
+- **The wide-eyed, hollow, ring-eyes-and-red-ring-mouth face is DELIBERATE. Do not "fix" it.** Any pass that rounds the rings into friendly dot-eyes, shrinks the mouth into a smile, or adds cartoon charm has misread the product and is a defect. The stunned, staring face is the point.
+- **The register is horror, not cosy.** The existing shipped material already agrees with this and is now the reference standard: the README's *"looping anxious underscore, chase-string stabs, hollow wind"*, the **horror bed** that ducks on a win, a **Crumb Beast** that eats you, the cookie **dissolving in the rain with its icing washing off first**, the sky going almost night-dark, and lightning before thunder. Every art, audio and feel decision is judged against that register.
+- **The cookie is the victim, not a mascot.** Design him as something you are uneasy about watching get eaten.
+- **Cute-and-scary is allowed; cute-and-safe is not.** Warm baked dough and icing can stay — a gingerbread man is a soft thing in a bad place. Do not sand off the menace to make him likeable.
+- **This is a taste call owned by Todd.** If a bot thinks a change makes the game less scary, it escalates to Harrow with options laid out rather than deciding.
+
+## What "a cookie, not a robot" means (still true)
+
+- It must **load and render correctly in Unity** (still unproven — Blender is not Unity).
+- It must be **animated** — a static cookie sliding around is not a character.
+- It must **read at third-person distance** at the right scale.
+- The **rain dissolve must still wash the icing first** (the `gb_man_decoration` mesh).
 
 ## Environment (verified 2026-09-17)
 
