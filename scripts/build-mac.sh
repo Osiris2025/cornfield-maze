@@ -77,7 +77,9 @@ else
   echo "writes AppleDouble ._* files that the linker reads as assemblies" >&2
   echo "(BadImageFormatException -> Burst failed)." >&2
   echo >&2
-  echo "Remedy: build from an APFS working copy, or set CORN_BUILD_OUT to an APFS path." >&2
+  echo "Remedy: build from an APFS working copy (the VERIFIED fix -- see docs/DECISIONS.md)." >&2
+  echo "CORN_BUILD_OUT alone is NOT enough: the junk that breaks the linker lands in the" >&2
+  echo "PROJECT's Library/Bee/artifacts/, which stays on this volume." >&2
   echo "  rsync -a --exclude '._*' --exclude Library/ --exclude Builds/ --exclude .git/ \\" >&2
   echo "        \"$PROJ/\" /Users/toddadams/CornMazeWork/CornFieldMaze/" >&2
   exit 4
