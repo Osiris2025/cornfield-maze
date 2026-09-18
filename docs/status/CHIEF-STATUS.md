@@ -1,53 +1,47 @@
 # Corn Field Maze — Chief Status
 
-**Updated:** 2026-09-17 (scaffold — crew NOT yet dispatched; see Blockers)
-**Milestone:** M0 — the gingerbread cookie. **Nothing else is in flight.**
+**Updated:** 2026-09-17 20:45 EDT — pass 1 (docs + scripts only; **no Unity touched**)
+**Milestone:** M0 — the gingerbread cookie. **Nothing else closes until the gate.**
 
 ## Crew
 
 | Name | Handle | Role | State |
 |---|---|---|---|
-| Harrow | @corn-chief | Chief | armed, not dispatched |
-| Dough | @corn-art | the gingerbread cookie, animation, materials | idle — M0 is theirs |
-| Furrow | @corn-gameplay | maze, walker, path rules, beast, gold, HUD, touch | idle |
-| Squall | @corn-world | corn, sky, storm, mud | idle |
-| Rattle | @corn-audio | mood bed, cues, jingle, iOS audio | idle |
-| Lantern | @corn-qa | verify.sh, Mac + iPhone builds, perf, evidence | idle |
+| Harrow | @corn-chief | chief | pass 1 run; verified every artefact below by hand |
+| Dough | @corn-art | cookie, animation, materials | **T4a done** — `docs/reference/INDEX.md`, `docs/COOKIE-BRIEF.md` |
+| Furrow | @corn-gameplay | maze, walker, beast, gold, HUD, touch | idle (M2, behind M0) |
+| Squall | @corn-world | corn, sky, storm, mud | idle (M3, behind M0) |
+| Rattle | @corn-audio | mood bed, cues, jingle, iOS audio | idle (M4, behind M0) |
+| Lantern | @corn-qa | verify, Mac/iPhone builds, perf, evidence | **T2/T3 written — UNRUN** (see Blockers 1) |
 
-## Why this crew exists
+## This pass — written but NOT green
 
-Todd: *"we are very unhappy with the gingerbread man."* The player was ~40 Unity primitives — a blocky robot wearing brown.
-
-**Todd supplied the replacement on 2026-09-17**: `Assets/GingerbreadMan/gb_man.fbx` — rigged, textured, low-poly (25 bones, 1,796 verts / 3,238 tris, 1 material, **no animation clips**). Verified by parsing the FBX binary and independently by importing it in Blender. The icing is its **own mesh** (`gb_man_decoration`), so the "icing washes off first" dissolve is directly implementable. Full notes: `docs/ASSETS-INVENTED.md` and `docs/DECISIONS.md` §M0.
-
-Replacing the player is **M0 and a HARD GATE**: no other milestone closes until Todd has seen a frame of it from the running Mac build.
-
-## Last commits
-
-- `cc98d3e` — M0: take Todd's rigged gingerbread man as the player asset (asset + docs).
-- `ddd9006` — baseline: the whole project as found.
-
-## CAPTURES FOR TODD
-
-**The asset, rendered in Blender (independent of Unity)** — `artifacts/review/cookie/`:
-- `ASSET-PREVIEW-front.png` — full body: rounded cookie, baked dough, icing ring eyes, red ring mouth, red bow, three icing buttons, zigzag cuffs, belt and ankles.
-- `ASSET-PREVIEW-side.png` — the slab profile: it is a real cookie with thickness, icing standing proud.
-- `ASSET-PREVIEW-head.png` — face close-up.
-- `ASSET-PREVIEW-back.png` — reverse.
-
-⚠️ **These are NOT the gate.** They prove the asset loads and is textured; they are not the game. The gate frame must come from a plain launch of the Mac build, in Unity.
+- **T4a** `docs/reference/INDEX.md` (question → narrowest file, 20 rows) · `docs/COOKIE-BRIEF.md` (M0 brief, incl. LOCKED tone).
+- **T2** `scripts/build-mac.sh` (batchmode `BuildStandaloneMac` → `Builds/mac-build.log`, one-Unity-writer guard) · `scripts/verify.sh` (asserts on the **artefact**: log marker `Built standalone player:` + non-empty `.app` executable + no `error CS`; prints one PASS/FAIL line).
+- **T3** `scripts/capture.sh` (fresh `{position,size}` of the game window read **every run**, `-ApplePersistenceIgnoreState YES`, final frame at 2556x1179 into `artifacts/review/<category>/`) · `scripts/build-ios.sh` (`BuildIosPlayer` → `Builds/iOS`).
+- **None of these was executed.** Only `bash -n` (syntax) is clean. **There is no green verify for this pass and I am not claiming one.**
+- Two defects found by Harrow's verification and fixed before commit: `verify.sh` would have **false-FAILed every run** (its `failed:` grep matched Unity's real `[W] opendir() failed:` warning — proven against `Builds/ios-build.log`); `build-ios.sh` was mislabelled T2.
 
 ## Blockers
 
-1. **The crew cannot run — the six profiles have no API key.** The dotfile-write approval timed out, so nothing was written (verified: 0 keys in all six `.env` files).
-2. **Unity `6000.3.23f1` is already open on this project** (pid, launched from Hub). It holds the Unity slot: any batchmode build or import probe by a worker would be a second writer on `Library/`. It must be closed before the crew builds, **or** the import must be confirmed by focusing the editor.
-3. **The FBX is still unimported by Unity** (no `Assets/GingerbreadMan/gb_man.fbx.meta`) — the open editor defers its asset refresh while unfocused. Blender is not Unity: the Unity import is unproven until this happens.
-4. Standing, becomes real at T21: `appleDeveloperTeamID` is empty and iOS automatic signing is off.
+1. **Unity 6000.3.23f1 has the slot (pid 77444, this project).** No batchmode build, no import probe, no capture. `verify.sh` cannot earn its green until Todd closes the editor.
+2. **Unity import of the FBX landed mid-pass** (`Assets/GingerbreadMan/gb_man.fbx.meta`, guid `d92b875a…`, 20:39) — but the importer's own state (**25 bones, 4 submeshes, material shader**) has **not** been read back. Blender is not Unity. T4's verify is still open.
+3. **`.meta` files are untracked** (`Assets/GingerbreadMan*`) — owner Dough, commit with T5.
+4. **Licence/provenance of `gb_man.fbx` is UNKNOWN** — fine for us, **blocks App Store shipping**. Logged in `docs/ASSETS-INVENTED.md`.
+5. `appleDeveloperTeamID` empty, automatic signing off → T21/M6.
+6. `scripts/crew-supervisor.sh` is modified in the tree by another writer — left alone, not committed.
 
-## Open question for Todd
+## Last commits
 
-The gingerbread man's **licence and origin are unknown** (files dated Dec 2020, no readme, no author string). Fine for us to use; **App Store shipping needs the source confirmed.** Logged in `docs/ASSETS-INVENTED.md` so it cannot quietly ship.
+`fbbd5bb` tri-count corrected to 3,238 (Ernie) · `b87d666` **tone LOCKED: scary game** (Ernie) · `db855e8` M0 structure · `cc98d3e` the supplied asset · `ddd9006` baseline. **This pass: one commit — "pass 1: T4a + T2 + T3 …"** (message names the task numbers; sha is in `git log`).
 
-## In flight
+## CAPTURES FOR TODD
 
-- nothing. Scaffold only.
+- **Asset previews — `artifacts/review/cookie/`** (Blender, not Unity): `ASSET-PREVIEW-front.png`, `-side.png`, `-back.png`, `-head.png`. ⚠️ **Not the gate.**
+- **The gate frame does not exist and could not be made this pass.** It must come from a **plain launch of the Mac build** at iPhone aspect 2556x1179. Path once the slot frees: Lantern builds → `scripts/capture.sh cookie`.
+
+## Need from Todd
+
+1. **Close the Unity editor on this project** so the crew can build — nothing can go green until then.
+2. **Source/licence of `gb_man.fbx`** (files dated Dec 2020, no author string) before any App Store upload.
+3. Nothing else. Tone (scary, victim not mascot) is read and written into `docs/COOKIE-BRIEF.md` §8.
