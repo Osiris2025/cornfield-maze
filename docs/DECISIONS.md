@@ -13,11 +13,12 @@
 
 Todd, 2026-09-17: *"we are very unhappy with the gingerbread man."*
 
-- The player is built by `GingerbreadMesh.Build()` in `Assets/Scripts/FarmWalkerController.cs` out of **~40 Unity primitives** — `CreatePrimitive(Cube)` pelvis, torso, upper arms, forearms, thighs, shins, feet, icing strips; `Sphere` head, hands, gumdrop buttons. It is a **blocky robot wearing brown**.
+- The player **was** built by `GingerbreadMesh.Build()` in `Assets/Scripts/FarmWalkerController.cs` out of **~40 Unity primitives** — `CreatePrimitive(Cube)` pelvis, torso, upper arms, forearms, thighs, shins, feet, icing strips; `Sphere` head, hands, gumdrop buttons. A **blocky robot wearing brown**.
+- **Todd has since supplied a real replacement** (2026-09-17): a rigged, textured low-poly gingerbread man in `Assets/GingerbreadMan/gb_man.fbx` — 25 bones, ~2,221 tris, 1 material. See `docs/ASSETS-INVENTED.md`. **This is what Dough integrates; do not hand-build a cookie mesh.**
 - **This is a HARD GATE.** No other milestone closes until Todd has looked at a frame of the new cookie taken from the running Mac build and said so. A green verify does not close it.
-- **What "a cookie, not a robot" means** — locked intent, restated in `@corn-art`'s SOUL: silhouette first (rounded fat limbs, domed head, no visible joints, almost no straight edges); dough that is *baked* (uneven warm surface, darker edges, soft sheen) not flat brown plastic; icing as **raised ribbon curves**, not flat glued rectangles; gumdrop buttons as **domes**; **readable at real camera distance** (~5 m back, in motion), not only in a close-up.
+- **What "a cookie, not a robot" means** — locked intent: the shipped silhouette is now the FBX's, so the work is (a) it must **load and render correctly**, (b) it must be **animated** (the FBX carries no clips — zero `AnimationStack`), (c) it must **read at third-person distance**, and (d) the **rain dissolve must still wash the icing first**.
 - **The gate artefact is a frame from a PLAIN LAUNCH** of the Mac build at **iPhone aspect (2556x1179, 2.168:1)**. A capture whose pose/scene was set by a dev harness shows what the harness can construct, not what the game does — invalid as a gate.
-- **Art direction is NOT yet locked beyond this.** The cookie pass establishes it; Todd's verdict on the cookie sets the language for the rest. Dough proposes, Todd decides.
+- **Art direction is NOT yet locked beyond this.** The cookie pass establishes it; Todd's verdict sets the language for the rest.
 
 ## Environment (verified 2026-09-17)
 
