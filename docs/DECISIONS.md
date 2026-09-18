@@ -14,9 +14,18 @@
 Todd, 2026-09-17: *"we are very unhappy with the gingerbread man."*
 
 - The player **was** built by `GingerbreadMesh.Build()` in `Assets/Scripts/FarmWalkerController.cs` out of **~40 Unity primitives** — `CreatePrimitive(Cube)` pelvis, torso, upper arms, forearms, thighs, shins, feet, icing strips; `Sphere` head, hands, gumdrop buttons. A **blocky robot wearing brown**.
-- **Todd has since supplied a real replacement** (2026-09-17): a rigged, textured low-poly gingerbread man in `Assets/GingerbreadMan/gb_man.fbx` — 25 bones, ~2,221 tris, 1 material. See `docs/ASSETS-INVENTED.md`. **This is what Dough integrates; do not hand-build a cookie mesh.**
+- **Todd has since supplied a real replacement** (2026-09-17): a rigged, textured low-poly gingerbread man in `Assets/GingerbreadMan/gb_man.fbx`. See `docs/ASSETS-INVENTED.md`. **This is what Dough integrates; do not hand-build a cookie mesh.**
+- **Verified independently in Blender** (not yet in Unity — the editor holds the slot). Structure, read from the file by two separate tools:
+  - **25 bones**, named `spine01`, `spine02`, `shoulder.L/R`, `upper_arm.L/R`, `forearm.L/R`, `hand.L/R`, `neck`, `head`, `waist.L/R`, `hip.L/R`, `chin.L/R`, `foot.L/R` + five `_end` bones.
+  - **4 meshes totalling 1,796 verts / 3,238 triangles**, and they are **split by role**:
+    `gb_man_body` (2016 tris), **`gb_man_decoration` (742 tris — the icing)**, `gb_man_eyes` (288), `gb_man_mouth` (192).
+  - **1 material**, `gb_man_texture`, colour + normal map.
+  - **ZERO animation** — no `AnimationStack`/`AnimationLayer`/`AnimCurveNode`. **Motion is authored in code**, as this project already does.
+  - **Bounds: 5.376 units tall, 4.75 wide across the arms.** The current player capsule is `height 1.80`, so the model needs a **scale of ≈0.335** (or the capsule re-measured). Do not ship a 5-metre cookie.
+  - Rendered previews (Blender, independent of Unity): `artifacts/review/cookie/ASSET-PREVIEW-{front,side,back,head}.png`.
+- ⚠️ **The icing is its own mesh: `gb_man_decoration`.** So "the icing washes off first" is directly implementable — **the dissolve targets the decoration mesh/its material separately.** This is locked: do not merge the meshes and do not re-derive the icing separation.
 - **This is a HARD GATE.** No other milestone closes until Todd has looked at a frame of the new cookie taken from the running Mac build and said so. A green verify does not close it.
-- **What "a cookie, not a robot" means** — locked intent: the shipped silhouette is now the FBX's, so the work is (a) it must **load and render correctly**, (b) it must be **animated** (the FBX carries no clips — zero `AnimationStack`), (c) it must **read at third-person distance**, and (d) the **rain dissolve must still wash the icing first**.
+- **What "a cookie, not a robot" means** — the shipped silhouette is now the FBX's, so the work is (a) it must **load and render correctly in Unity** (still unproven — Blender is not Unity), (b) it must be **animated**, (c) it must **read at third-person distance** at the right scale, and (d) the **rain dissolve must still wash the icing first** via the decoration mesh.
 - **The gate artefact is a frame from a PLAIN LAUNCH** of the Mac build at **iPhone aspect (2556x1179, 2.168:1)**. A capture whose pose/scene was set by a dev harness shows what the harness can construct, not what the game does — invalid as a gate.
 - **Art direction is NOT yet locked beyond this.** The cookie pass establishes it; Todd's verdict sets the language for the rest.
 
