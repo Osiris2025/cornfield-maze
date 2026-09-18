@@ -33,6 +33,21 @@ namespace CornMaze.EditorTools
             BuildPlayerWindow.ShowBuildPlayerWindow();
         }
 
+        /// <summary>
+        /// Where the playable .app is written. Defaults to the project's Builds/ folder, but
+        /// CORN_BUILD_OUT overrides it — necessary here because the project sits on exFAT, which
+        /// cannot hard-link, and Unity's macOS build links resources into the bundle.
+        /// </summary>
+        static string ResolveMacBuildPath()
+        {
+            var over = System.Environment.GetEnvironmentVariable("CORN_BUILD_OUT");
+            if (!string.IsNullOrEmpty(over))
+            {
+                return Path.Combine(over, "Corn Field Maze.app");
+            }
+            return MacBuildPath;
+        }
+
         [MenuItem("Corn Maze/Build Standalone macOS App")]
         public static void BuildStandaloneMac()
         {
@@ -47,11 +62,19 @@ namespace CornMaze.EditorTools
                 return;
             }
 
-            Directory.CreateDirectory("Builds");
+            // The build output must live on a filesystem that supports HARD LINKS. Unity's
+            // macOS build links resources into the .app bundle rather than copying them, and
+            // this project lives on an exFAT volume where `ln` returns 'Operation not
+            // supported' — which surfaces in the build log as
+            //   Copying .../unity_builtin_extra failed: Operation not permitted
+            // after first creating the file at zero bytes, and then as 'Tundra build failed'.
+            // Point CORN_BUILD_OUT at an APFS path to get a playable app.
+            var outPath = ResolveMacBuildPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(outPath));
             var options = new BuildPlayerOptions
             {
                 scenes = new[] { ScenePath },
-                locationPathName = MacBuildPath,
+                locationPathName = outPath,
                 target = BuildTarget.StandaloneOSX,
                 options = BuildOptions.None
             };
@@ -59,9 +82,9 @@ namespace CornMaze.EditorTools
             var report = BuildPipeline.BuildPlayer(options);
             if (report.summary.result == BuildResult.Succeeded)
             {
-                Debug.Log("Built standalone player: " + Path.GetFullPath(MacBuildPath) +
+                Debug.Log("Built standalone player: " + Path.GetFullPath(outPath) +
                           " — double-click the .app to play outside Unity. F11 or Cmd+F toggles fullscreen.");
-                EditorUtility.RevealInFinder(MacBuildPath);
+                EditorUtility.RevealInFinder(outPath);
             }
             else
             {

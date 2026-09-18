@@ -49,6 +49,13 @@ public sealed class FarmWalkerController : MonoBehaviour
     List<Material> _cookieMats;
     List<Color> _cookieBaseCols;
     List<bool> _icingFlags;
+    // The FBX rig carries a real rest pose (its bones are NOT identity at rest), so the walk is
+    // authored as a swing composed ONTO each joint's rest rotation, about the character's own
+    // sideways axis. Writing an absolute rotation would snap the skeleton out of its pose.
+    Transform[] _joints;
+    Quaternion[] _jointRest;
+    Vector3[] _jointSwingAxis;
+    Vector3[] _jointYawAxis;
     Transform _crumb;
 
     public float DissolveAmount => _dissolve;
@@ -90,6 +97,7 @@ public sealed class FarmWalkerController : MonoBehaviour
         player._legR = rig.LegR;
         player._shinL = rig.ShinL;
         player._shinR = rig.ShinR;
+        player.CaptureJointRestPose();
         player.CreateCamera();
         return player;
     }
@@ -520,39 +528,66 @@ public sealed class FarmWalkerController : MonoBehaviour
         if (_model != null)
             _model.localPosition = new Vector3(0f, bob * 0.35f - _dissolve * 0.04f, 0f);
 
-        _hips.localPosition = new Vector3(0f, 0.94f + bob, 0f);
-        _hips.localRotation = Quaternion.Euler(
-            windLean * 0.28f + soggy * 0.35f,
-            swing * 6.5f * _walkBlend,
-            -swing * 4.0f * _walkBlend + windLean * 0.45f);
-
         float breathe = Mathf.Sin(Time.time * 1.55f) * 0.012f * (1f - _walkBlend);
-        if (_torso != null)
-        {
-            _torso.localPosition = new Vector3(0f, 0.10f + breathe, 0f);
-            _torso.localRotation = Quaternion.Euler(2.2f + windLean * 0.12f + breathe * 8f + soggy * 0.4f, 0f, 0f);
-        }
-
         float thigh = 32f * _walkBlend;
         float arm = 26f * _walkBlend;
         float knee = 38f * _walkBlend;
         float elbow = 14f * _walkBlend;
 
-        SetLocalX(_legL, swing * thigh);
-        SetLocalX(_legR, -swing * thigh);
-        SetLocalX(_shinL, liftOpp * knee);
-        SetLocalX(_shinR, lift * knee);
-
-        SetLocalX(_armL, -swing * arm + 6f);
-        SetLocalX(_armR, swing * arm + 6f);
-        SetLocalX(_foreL, 8f + lift * elbow);
-        SetLocalX(_foreR, 8f + liftOpp * elbow);
+        // Rotations only, composed onto the rest pose. No bone localPosition is ever written: the
+        // FBX's rest positions ARE the skeleton.
+        Pose(0, windLean * 0.28f + soggy * 0.35f, swing * 6.5f * _walkBlend);      // hips: pitch + sway
+        Pose(1, 2.2f + windLean * 0.12f + breathe * 8f + soggy * 0.4f, 0f);        // torso
+        Pose(2, -swing * arm + 6f, 0f);                                             // upper arm L
+        Pose(3, swing * arm + 6f, 0f);                                              // upper arm R
+        Pose(4, 8f + lift * elbow, 0f);                                             // forearm L
+        Pose(5, 8f + liftOpp * elbow, 0f);                                          // forearm R
+        Pose(6, swing * thigh, 0f);                                                // leg L (thigh)
+        Pose(7, -swing * thigh, 0f);                                               // leg R (thigh)
+        Pose(8, liftOpp * knee, 0f);                                               // knee L
+        Pose(9, lift * knee, 0f);                                                  // knee R
     }
 
-    static void SetLocalX(Transform joint, float xDeg)
+    void CaptureJointRestPose()
     {
+        _joints = new[] { _hips, _torso, _armL, _armR, _foreL, _foreR, _legL, _legR, _shinL, _shinR };
+        _jointRest = new Quaternion[_joints.Length];
+        _jointSwingAxis = new Vector3[_joints.Length];
+        _jointYawAxis = new Vector3[_joints.Length];
+
+        var modelRight = _model != null ? _model.right : Vector3.right;
+        var modelUp = _model != null ? _model.up : Vector3.up;
+        for (int i = 0; i < _joints.Length; i++)
+        {
+            var joint = _joints[i];
+            if (joint == null)
+            {
+                _jointRest[i] = Quaternion.identity;
+                _jointSwingAxis[i] = Vector3.right;
+                _jointYawAxis[i] = Vector3.up;
+                continue;
+            }
+
+            _jointRest[i] = joint.localRotation;
+            var parent = joint.parent;
+            // The swing axis, expressed in the joint's PARENT frame, because localRotation is
+            // relative to the parent. This keeps the swing on the character's sideways axis whatever
+            // baked splay the rig's bones carry.
+            _jointSwingAxis[i] = parent != null ? parent.InverseTransformDirection(modelRight).normalized : Vector3.right;
+            _jointYawAxis[i] = parent != null ? parent.InverseTransformDirection(modelUp).normalized : Vector3.up;
+        }
+        Debug.Log("FarmWalkerController: captured the cookie's rest pose for " + _joints.Length + " joints.");
+    }
+
+    void Pose(int index, float pitchDeg, float yawDeg)
+    {
+        if (_joints == null || index < 0 || index >= _joints.Length) return;
+        var joint = _joints[index];
         if (joint == null) return;
-        joint.localRotation = Quaternion.Euler(xDeg, 0f, 0f);
+        var rot = Quaternion.AngleAxis(pitchDeg, _jointSwingAxis[index]);
+        if (yawDeg != 0f)
+            rot = Quaternion.AngleAxis(yawDeg, _jointYawAxis[index]) * rot;
+        joint.localRotation = rot * _jointRest[index];
     }
 }
 
@@ -573,6 +608,17 @@ public struct FarmRig
 /// <summary>Stylized gingerbread cookie person — brown dough, white icing, gumdrop buttons.</summary>
 public static class GingerbreadMesh
 {
+    /// <summary>
+    /// The model is 5.3897 units tall at scale 1 against a 1.80 player capsule, so it is scaled
+    /// down deliberately: 1.80 / 5.3897 = 0.334. Stated here so the number is not a mystery.
+    /// </summary>
+    public const float CookieScale = 0.335f;
+
+    const string ModelResource = "GingerbreadMan/gb_man";
+    const string DoughResource = "GingerbreadMan/mat_cookie_dough";
+    const string IcingResource = "GingerbreadMan/mat_cookie_icing";
+    const string IcingMeshToken = "decoration";
+
     public static Transform Build(Transform parent, out FarmRig rig, out List<Material> mats, out List<bool> icingFlags)
     {
         rig = new FarmRig();
@@ -581,103 +627,88 @@ public static class GingerbreadMesh
 
         var model = new GameObject("GingerbreadMesh").transform;
         model.SetParent(parent, false);
+        model.localPosition = Vector3.zero;
+        model.localRotation = Quaternion.identity;
+        // Scale 1 on the wrapper: ApplyDissolve squashes this transform, so the cookie's size lives
+        // on the instantiated model below and the squash stays relative.
+        model.localScale = Vector3.one;
 
-        var dough = Track(Materials.Lit(new Color(0.55f, 0.32f, 0.16f), 0.22f), mats, icingFlags, false);
-        var doughDark = Track(Materials.Lit(new Color(0.42f, 0.24f, 0.12f), 0.18f), mats, icingFlags, false);
-        var icing = Track(Materials.Lit(new Color(0.96f, 0.96f, 0.94f), 0.35f), mats, icingFlags, true);
-        var gumRed = Track(Materials.Lit(new Color(0.78f, 0.18f, 0.22f), 0.55f, 0.08f), mats, icingFlags, false);
-        var gumGreen = Track(Materials.Lit(new Color(0.22f, 0.62f, 0.28f), 0.55f, 0.08f), mats, icingFlags, false);
-        var gumYellow = Track(Materials.Lit(new Color(0.88f, 0.72f, 0.18f), 0.55f, 0.08f), mats, icingFlags, false);
-        var smile = Track(Materials.Lit(new Color(0.92f, 0.90f, 0.88f), 0.40f), mats, icingFlags, true);
+        var prefab = Resources.Load<GameObject>(ModelResource);
+        if (prefab == null)
+        {
+            Debug.LogError("GingerbreadMesh: the supplied cookie model is missing from Resources ('" +
+                           ModelResource + "'). There is no primitive fallback — the primitive cookie is " +
+                           "the asset Todd rejected.");
+            return model;
+        }
 
-        var hips = Joint(model, "Hips", new Vector3(0f, 0.94f, 0f));
-        rig.Hips = hips;
+        var instance = Object.Instantiate(prefab, model, false);
+        instance.name = "Cookie";
+        instance.transform.localPosition = Vector3.zero;
+        instance.transform.localRotation = Quaternion.identity;
+        instance.transform.localScale = Vector3.one * CookieScale;
 
-        Part(hips, PrimitiveType.Cube, "Pelvis", new Vector3(0f, -0.02f, 0f), new Vector3(0.38f, 0.18f, 0.22f), Quaternion.identity, dough);
-        // Icing waist outline
-        Part(hips, PrimitiveType.Cube, "WaistIcing", new Vector3(0f, 0.08f, 0.12f), new Vector3(0.34f, 0.04f, 0.03f), Quaternion.identity, icing);
+        var doughSrc = Resources.Load<Material>(DoughResource);
+        var icingSrc = Resources.Load<Material>(IcingResource);
 
-        var torso = Joint(hips, "Torso", new Vector3(0f, 0.10f, 0f));
-        rig.Torso = torso;
-        Part(torso, PrimitiveType.Cube, "Body", new Vector3(0f, 0.28f, 0f), new Vector3(0.44f, 0.52f, 0.26f), Quaternion.identity, dough);
-        Part(torso, PrimitiveType.Cube, "ChestIcing", new Vector3(0f, 0.30f, 0.135f), new Vector3(0.32f, 0.04f, 0.02f), Quaternion.identity, icing);
-        Part(torso, PrimitiveType.Cube, "ChestIcing2", new Vector3(0f, 0.18f, 0.135f), new Vector3(0.28f, 0.035f, 0.02f), Quaternion.identity, icing);
+        foreach (var smr in instance.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            // The icing is its OWN mesh (gb_man_decoration) — that is exactly what lets the rain
+            // dissolve wash the icing off FIRST. One material instance per mesh so the tint and the
+            // fade stay independent, and the loaded assets are never mutated.
+            bool isIcing = smr.name.Contains(IcingMeshToken);
+            var src = isIcing ? icingSrc : doughSrc;
+            if (src == null)
+            {
+                Debug.LogError("GingerbreadMesh: material asset missing for '" + smr.name + "' (" +
+                               (isIcing ? IcingResource : DoughResource) + ") — the cookie would render untextured.");
+                continue;
+            }
 
-        Part(torso, PrimitiveType.Sphere, "Button1", new Vector3(0f, 0.42f, 0.14f), Vector3.one * 0.09f, Quaternion.identity, gumRed);
-        Part(torso, PrimitiveType.Sphere, "Button2", new Vector3(0f, 0.30f, 0.14f), Vector3.one * 0.09f, Quaternion.identity, gumGreen);
-        Part(torso, PrimitiveType.Sphere, "Button3", new Vector3(0f, 0.18f, 0.14f), Vector3.one * 0.09f, Quaternion.identity, gumYellow);
+            var mat = Object.Instantiate(src);
+            mat.name = (isIcing ? "cookie_icing_" : "cookie_dough_") + smr.name;
+            smr.sharedMaterial = mat;
+            smr.updateWhenOffscreen = true;
+            mats.Add(mat);
+            icingFlags.Add(isIcing);
+        }
 
-        Part(torso, PrimitiveType.Cylinder, "Neck", new Vector3(0f, 0.56f, 0f), new Vector3(0.11f, 0.05f, 0.11f), Quaternion.identity, dough);
-        var head = Part(torso, PrimitiveType.Sphere, "Head", new Vector3(0f, 0.76f, 0f), Vector3.one * 0.34f, Quaternion.identity, dough);
-        Part(head, PrimitiveType.Sphere, "EyeL", new Vector3(-0.28f, 0.10f, 0.78f), new Vector3(0.16f, 0.16f, 0.10f), Quaternion.identity, doughDark);
-        Part(head, PrimitiveType.Sphere, "EyeR", new Vector3(0.28f, 0.10f, 0.78f), new Vector3(0.16f, 0.16f, 0.10f), Quaternion.identity, doughDark);
-        Part(head, PrimitiveType.Sphere, "EyeDotL", new Vector3(-0.28f, 0.10f, 0.88f), new Vector3(0.07f, 0.07f, 0.05f), Quaternion.identity, icing);
-        Part(head, PrimitiveType.Sphere, "EyeDotR", new Vector3(0.28f, 0.10f, 0.88f), new Vector3(0.07f, 0.07f, 0.05f), Quaternion.identity, icing);
-        // Icing smile
-        Part(head, PrimitiveType.Cube, "Smile", new Vector3(0f, -0.22f, 0.82f), new Vector3(0.28f, 0.045f, 0.05f), Quaternion.Euler(0f, 0f, 0f), smile);
-        Part(head, PrimitiveType.Cube, "SmileCurveL", new Vector3(-0.14f, -0.16f, 0.82f), new Vector3(0.06f, 0.08f, 0.04f), Quaternion.Euler(0f, 0f, 28f), smile);
-        Part(head, PrimitiveType.Cube, "SmileCurveR", new Vector3(0.14f, -0.16f, 0.82f), new Vector3(0.06f, 0.08f, 0.04f), Quaternion.Euler(0f, 0f, -28f), smile);
-        // Head icing squiggle
-        Part(head, PrimitiveType.Cube, "HeadIcing", new Vector3(0f, 0.55f, 0.15f), new Vector3(0.55f, 0.06f, 0.08f), Quaternion.identity, icing);
+        // The FarmRig contract, mapped onto the FBX bones. Legs read waist > hip > chin > foot in the
+        // file; by geometry hip.* is the top of the leg, chin.* is the knee and foot.* the ankle.
+        rig.Hips = Bone(instance.transform, "spine01");
+        rig.Torso = Bone(instance.transform, "spine02");
+        rig.ArmL = Bone(instance.transform, "upper_arm.L");
+        rig.ArmR = Bone(instance.transform, "upper_arm.R");
+        rig.ForeL = Bone(instance.transform, "forearm.L");
+        rig.ForeR = Bone(instance.transform, "forearm.R");
+        rig.LegL = Bone(instance.transform, "hip.L");
+        rig.LegR = Bone(instance.transform, "hip.R");
+        rig.ShinL = Bone(instance.transform, "chin.L");
+        rig.ShinR = Bone(instance.transform, "chin.R");
 
-        rig.ArmL = Limb(torso, "ArmL", new Vector3(-0.28f, 0.44f, 0f), dough, icing, -1f, out rig.ForeL);
-        rig.ArmR = Limb(torso, "ArmR", new Vector3(0.28f, 0.44f, 0f), dough, icing, 1f, out rig.ForeR);
-
-        rig.LegL = Leg(hips, "LegL", new Vector3(-0.11f, -0.04f, 0f), dough, icing, out rig.ShinL);
-        rig.LegR = Leg(hips, "LegR", new Vector3(0.11f, -0.04f, 0f), dough, icing, out rig.ShinR);
-
+        ReportJointMap(rig, mats, icingFlags);
         return model;
     }
 
-    static Material Track(Material mat, List<Material> mats, List<bool> icingFlags, bool icing)
+    static Transform Bone(Transform root, string boneName)
     {
-        mats.Add(mat);
-        icingFlags.Add(icing);
-        return mat;
+        foreach (var t in root.GetComponentsInChildren<Transform>(true))
+            if (t.name == boneName) return t;
+        Debug.LogError("GingerbreadMesh: bone '" + boneName + "' is not in the cookie rig.");
+        return null;
     }
 
-    static Transform Limb(Transform parent, string name, Vector3 shoulder, Material dough, Material icing, float side, out Transform forearm)
+    static void ReportJointMap(FarmRig rig, List<Material> mats, List<bool> icingFlags)
     {
-        var upper = Joint(parent, name, shoulder);
-        Part(upper, PrimitiveType.Cube, "Upper", new Vector3(side * 0.02f, -0.14f, 0f), new Vector3(0.13f, 0.30f, 0.14f), Quaternion.identity, dough);
-        Part(upper, PrimitiveType.Cube, "UpperIcing", new Vector3(side * 0.02f, -0.08f, 0.075f), new Vector3(0.10f, 0.03f, 0.02f), Quaternion.identity, icing);
-        forearm = Joint(upper, name + "Fore", new Vector3(0f, -0.30f, 0f));
-        Part(forearm, PrimitiveType.Cube, "Forearm", new Vector3(0f, -0.12f, 0f), new Vector3(0.11f, 0.24f, 0.12f), Quaternion.identity, dough);
-        Part(forearm, PrimitiveType.Sphere, "Hand", new Vector3(0f, -0.26f, 0.01f), Vector3.one * 0.12f, Quaternion.identity, dough);
-        Part(forearm, PrimitiveType.Cube, "HandIcing", new Vector3(0f, -0.26f, 0.07f), new Vector3(0.08f, 0.025f, 0.02f), Quaternion.identity, icing);
-        return upper;
+        Debug.Log("GINGERBREAD-JOINTS: Hips=" + Name(rig.Hips) + " Torso=" + Name(rig.Torso) +
+                  " ArmL=" + Name(rig.ArmL) + " ArmR=" + Name(rig.ArmR) +
+                  " ForeL=" + Name(rig.ForeL) + " ForeR=" + Name(rig.ForeR) +
+                  " LegL=" + Name(rig.LegL) + " LegR=" + Name(rig.LegR) +
+                  " ShinL=" + Name(rig.ShinL) + " ShinR=" + Name(rig.ShinR) +
+                  " | meshes=" + mats.Count + " icingFlags=[" + string.Join(",", icingFlags.ToArray()) + "]");
     }
 
-    static Transform Leg(Transform parent, string name, Vector3 hip, Material dough, Material icing, out Transform shin)
-    {
-        var thigh = Joint(parent, name, hip);
-        Part(thigh, PrimitiveType.Cube, "Thigh", new Vector3(0f, -0.22f, 0f), new Vector3(0.17f, 0.42f, 0.18f), Quaternion.identity, dough);
-        shin = Joint(thigh, name + "Shin", new Vector3(0f, -0.44f, 0f));
-        Part(shin, PrimitiveType.Cube, "Shin", new Vector3(0f, -0.20f, 0f), new Vector3(0.16f, 0.38f, 0.17f), Quaternion.identity, dough);
-        Part(shin, PrimitiveType.Cube, "Foot", new Vector3(0f, -0.42f, 0.04f), new Vector3(0.16f, 0.10f, 0.24f), Quaternion.identity, dough);
-        Part(shin, PrimitiveType.Cube, "FootIcing", new Vector3(0f, -0.38f, 0.14f), new Vector3(0.12f, 0.03f, 0.02f), Quaternion.identity, icing);
-        return thigh;
-    }
-
-    static Transform Joint(Transform parent, string name, Vector3 localPos)
-    {
-        var t = new GameObject(name).transform;
-        t.SetParent(parent, false);
-        t.localPosition = localPos;
-        t.localRotation = Quaternion.identity;
-        return t;
-    }
-
-    static Transform Part(Transform parent, PrimitiveType type, string name, Vector3 localPos, Vector3 scale, Quaternion localRot, Material mat)
-    {
-        var go = GameObject.CreatePrimitive(type);
-        go.name = name;
-        go.transform.SetParent(parent, false);
-        go.transform.localPosition = localPos;
-        go.transform.localScale = scale;
-        go.transform.localRotation = localRot;
-        go.GetComponent<Renderer>().sharedMaterial = mat;
-        Object.Destroy(go.GetComponent<Collider>());
-        return go.transform;
-    }
+    static string Name(Transform t) => t == null ? "<missing>" : t.name;
 }
+
+

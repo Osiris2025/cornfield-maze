@@ -30,7 +30,7 @@ PluginImporter:
         AddToEmbeddedBinaries: false
         CPU: AnyCPU
         CompileFlags:
-        FrameworkDependencies: AVFoundation
+        FrameworkDependencies: 
   userData:
   assetBundleName:
   assetBundleVariant:
