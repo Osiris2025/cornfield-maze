@@ -26,6 +26,8 @@ STOPF=/tmp/corn-supervisor-stop
 MAX_ITER=40
 STALL_MIN=20          # minutes of no log growth before a live process counts as hung
 STALL_TOLD=no
+WAITING=no            # MUST be initialised: this script runs under set -u, so an unset
+                      # $WAITING aborts the loop the instant it first checks for a live crew
 FAILS=0
 ITER=0
 
