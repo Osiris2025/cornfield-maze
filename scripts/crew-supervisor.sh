@@ -17,7 +17,7 @@
 
 set -u
 REPO="/Volumes/files2/CornFieldMaze"
-CHIEF_SESSION="__CHIEF_SESSION__"     # set at arm time
+CHIEF_SESSION="20260917_203359_dcd37b"     # first pass; continuation order resumes it
 ORDER="/tmp/corn-order-continue.txt"
 NOTIFY="$REPO/scripts/notify-todd.sh"
 DONE=/tmp/corn-crew-done
@@ -58,7 +58,15 @@ while true; do
   # An agent waiting on a model response sits at 0% CPU, so CPU says nothing; a worker
   # that is working grows its log. Match the INTERPRETER PATH, not the bare profile name:
   # "hermes -p corn" also matches any shell whose command line merely MENTIONS it.
-  if pgrep -f "hermes-agent/hermes -p corn-" >/dev/null 2>&1; then
+  # IMPORTANT: pgrep also matches ZOMBIES. A worker that finished but whose parent has not
+  # reaped it still sits in the process table, so a bare pgrep makes the supervisor believe
+  # the crew is still running and it waits forever on a dead pass. Exclude state Z.
+  CREW="$(ps -eo pid=,state=,args= | awk '$2 !~ /Z/ && /hermes-agent\/hermes -p corn-/ {print $1; exit}')"
+  if [ -n "$CREW" ]; then
+    if [ "$WAITING" = "no" ]; then
+      log "crew pid $CREW is running -- waiting for it to finish"
+      WAITING=yes
+    fi
     # Exclude the supervisor's own log: its fresh mtime would mask a real stall.
     NEWEST="$(ls -t /tmp/corn-*.log 2>/dev/null | grep -v 'corn-supervisor' | head -1)"
     if [ -n "$NEWEST" ]; then
@@ -76,7 +84,8 @@ while true; do
     sleep 60
     continue
   fi
-  STALL_TOLD=no
+  [ "$WAITING" = "yes" ] && log "crew finished -- no live worker remains"
+  WAITING=no
 
   ITER=$((ITER + 1))
   if [ "$ITER" -gt "$MAX_ITER" ]; then
