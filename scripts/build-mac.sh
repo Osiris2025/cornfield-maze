@@ -51,7 +51,38 @@ if [ -n "$OTHER_UNITY" ]; then
   exit 3
 fi
 
-mkdir -p "$PROJ/Builds"
+# --- Pre-flight guard: the output volume MUST support hard links ------------
+# Unity's macOS build LINKS resources into the .app bundle rather than copying them.
+# On exFAT `ln` returns "Operation not supported", so the build first creates the
+# destination at ZERO BYTES and then dies:
+#     Copying .../unity_builtin_extra failed: Operation not permitted
+#     *** Tundra build failed
+# On top of that, macOS writes AppleDouble "._*" siblings next to every file Unity
+# creates on such a volume, and the linker then tries to load them as managed
+# assemblies:
+#     ._Assembly-CSharp.dll -> BadImageFormatException -> Burst compiler failed
+# Both are properties of the FILESYSTEM, not of the project, so no amount of cleaning
+# beforehand wins -- the junk is recreated during the build. Build on APFS instead.
+OUT_DIR="${CORN_BUILD_OUT:-$PROJ/Builds}"
+mkdir -p "$OUT_DIR"
+PROBE="$OUT_DIR/.hardlink_probe_$$"
+printf 'x' > "$PROBE.src" 2>/dev/null || true
+if ln "$PROBE.src" "$PROBE.link" 2>/dev/null; then
+  mv "$PROBE.src" "$PROBE.link" /tmp/ 2>/dev/null || true
+else
+  mv "$PROBE.src" /tmp/ 2>/dev/null || true
+  echo "FAIL build-mac: '$OUT_DIR' does not support hard links (exFAT)." >&2
+  echo "Unity's macOS build links resources into the bundle and will fail with" >&2
+  echo "'Operation not permitted' / 'Tundra build failed', and on this volume macOS also" >&2
+  echo "writes AppleDouble ._* files that the linker reads as assemblies" >&2
+  echo "(BadImageFormatException -> Burst failed)." >&2
+  echo >&2
+  echo "Remedy: build from an APFS working copy, or set CORN_BUILD_OUT to an APFS path." >&2
+  echo "  rsync -a --exclude '._*' --exclude Library/ --exclude Builds/ --exclude .git/ \\" >&2
+  echo "        \"$PROJ/\" /Users/toddadams/CornMazeWork/CornFieldMaze/" >&2
+  exit 4
+fi
+
 cd "$PROJ" || exit 2
 
 echo "build-mac: project   $PROJ"
