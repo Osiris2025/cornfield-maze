@@ -16,7 +16,7 @@
 # /tmp/corn-crew-blocked.sent before asking Todd the same thing twice.
 
 set -u
-REPO="/Volumes/files2/CornFieldMaze"
+REPO="/Volumes/files1/projects/cornmaze/CornFieldMaze"   # fixed 2026-09-23: files2 tree is gone (retired in the files1 move); a stale REPO made `cd || exit 1` kill the supervisor on startup
 CHIEF_SESSION="20260917_203359_dcd37b"     # first pass; continuation order resumes it
 ORDER="/tmp/corn-order-continue.txt"
 NOTIFY="$REPO/scripts/notify-todd.sh"
