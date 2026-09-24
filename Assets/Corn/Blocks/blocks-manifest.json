@@ -1,0 +1,158 @@
+{
+  "block_m": 2.0,
+  "stands_per_block": 9,
+  "plants_per_m2": 2.25,
+  "target_spread_m": 0.9,
+  "blocks": [
+    {
+      "name": "CornBlock_2m_01",
+      "seed": 1661,
+      "stands": 9,
+      "plants_per_m2": 2.25,
+      "tris_full": 8955,
+      "width": 2.438,
+      "depth": 2.32,
+      "height": 3.094,
+      "signature": "e9a52a3cd10c",
+      "files": {
+        "full": {
+          "file": "CornBlock_2m_01.fbx",
+          "tris": 8955
+        },
+        "_LOD1": {
+          "file": "CornBlock_2m_01_LOD1.fbx",
+          "tris": 4476
+        },
+        "_LOD2": {
+          "file": "CornBlock_2m_01_LOD2.fbx",
+          "tris": 1118
+        }
+      }
+    },
+    {
+      "name": "CornBlock_2m_02",
+      "seed": 2674,
+      "stands": 9,
+      "plants_per_m2": 2.25,
+      "tris_full": 8955,
+      "width": 2.22,
+      "depth": 2.373,
+      "height": 3.204,
+      "signature": "3c892ea7b30a",
+      "files": {
+        "full": {
+          "file": "CornBlock_2m_02.fbx",
+          "tris": 8955
+        },
+        "_LOD1": {
+          "file": "CornBlock_2m_02_LOD1.fbx",
+          "tris": 4476
+        },
+        "_LOD2": {
+          "file": "CornBlock_2m_02_LOD2.fbx",
+          "tris": 1119
+        }
+      }
+    },
+    {
+      "name": "CornBlock_2m_03",
+      "seed": 3687,
+      "stands": 9,
+      "plants_per_m2": 2.25,
+      "tris_full": 8955,
+      "width": 2.232,
+      "depth": 2.416,
+      "height": 3.173,
+      "signature": "2d67a53da136",
+      "files": {
+        "full": {
+          "file": "CornBlock_2m_03.fbx",
+          "tris": 8955
+        },
+        "_LOD1": {
+          "file": "CornBlock_2m_03_LOD1.fbx",
+          "tris": 4477
+        },
+        "_LOD2": {
+          "file": "CornBlock_2m_03_LOD2.fbx",
+          "tris": 1118
+        }
+      }
+    },
+    {
+      "name": "CornBlock_2m_04",
+      "seed": 4700,
+      "stands": 9,
+      "plants_per_m2": 2.25,
+      "tris_full": 8955,
+      "width": 2.361,
+      "depth": 2.416,
+      "height": 3.164,
+      "signature": "49a90c4869d9",
+      "files": {
+        "full": {
+          "file": "CornBlock_2m_04.fbx",
+          "tris": 8955
+        },
+        "_LOD1": {
+          "file": "CornBlock_2m_04_LOD1.fbx",
+          "tris": 4476
+        },
+        "_LOD2": {
+          "file": "CornBlock_2m_04_LOD2.fbx",
+          "tris": 1119
+        }
+      }
+    },
+    {
+      "name": "CornBlock_2m_05",
+      "seed": 5713,
+      "stands": 9,
+      "plants_per_m2": 2.25,
+      "tris_full": 8955,
+      "width": 2.33,
+      "depth": 2.392,
+      "height": 3.195,
+      "signature": "9b9533688359",
+      "files": {
+        "full": {
+          "file": "CornBlock_2m_05.fbx",
+          "tris": 8955
+        },
+        "_LOD1": {
+          "file": "CornBlock_2m_05_LOD1.fbx",
+          "tris": 4477
+        },
+        "_LOD2": {
+          "file": "CornBlock_2m_05_LOD2.fbx",
+          "tris": 1119
+        }
+      }
+    },
+    {
+      "name": "CornBlock_2m_06",
+      "seed": 6726,
+      "stands": 9,
+      "plants_per_m2": 2.25,
+      "tris_full": 8955,
+      "width": 2.334,
+      "depth": 2.266,
+      "height": 3.155,
+      "signature": "ceb32b78cd17",
+      "files": {
+        "full": {
+          "file": "CornBlock_2m_06.fbx",
+          "tris": 8955
+        },
+        "_LOD1": {
+          "file": "CornBlock_2m_06_LOD1.fbx",
+          "tris": 4476
+        },
+        "_LOD2": {
+          "file": "CornBlock_2m_06_LOD2.fbx",
+          "tris": 1119
+        }
+      }
+    }
+  ]
+}

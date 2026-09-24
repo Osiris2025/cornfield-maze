@@ -444,6 +444,8 @@ All procedural, all in-code, no licensed material. New cues:
 - **Caps (asserted, not eyeballed):** ≤ 6 concurrent enemies, ≤ 12 enemies per level, ≤ 1,200 corn
   instances per level (M3/T11 measures the real ceiling; this FSD's number is the budget to keep),
   ≤ 1 boss, ≤ 60 coin objects, ≤ 4 simultaneous AudioSources beyond the mood bed.
+- **The corn cap is now measured, not budgeted** (§24): the shipped 25 × 21 layout tiles **1 144 blocks**
+  — 10 296 plants, 10.2 M tris at full detail and 5.1 M through the LOD chain.
 - **Frame cost measured on the device** (M5/T20 doctrine) and stated in the commit — never inferred
   from the editor.
 
@@ -466,6 +468,7 @@ Every claim is an artefact (inherited rule):
 | Bosses | a capture of each phase transition and of the win |
 | HUD | a frame at iPhone aspect with the dough meter, coins and buttons legible (T18) |
 | GameCenter | sandbox device screenshot of the board + the App Store Connect page (§15) |
+| **Corn blocks** (§24) | manifest dump per block (seed, stands, bbox, tri counts, layout signature) + the peek test: 144 rays from the corridor eye position to a 1.45 m shape inside a 4 m wall, visibility % printed per density |
 
 ## 20. Milestones, owners, order
 
@@ -489,6 +492,7 @@ before Todd has looked at a frame of the new cookie from a plain launch.
 | **M17** | Maze masks + the shape set + per-node shapes and the sky (moon, star drift, cloud grammar) (§23.2, §23.5) | Squall |
 | **M18** | Portals (placement, transit, facing change, tells) + the compass and its target rotation (§23.3, §23.4) | Furrow → Squall |
 | **M19** | Shape/portal/lie-schedule verification harness (§23.8) | Lantern |
+| **M20** | Corn block swap: `MazeWorldBuilder` plants 4 blocks per wall cell instead of 6–9 scattered stalks, materials set to Cutout, LOD chain wired (§24) | Squall → Dough |
 
 ## 21. Out of scope (explicitly)
 
@@ -660,3 +664,88 @@ Added to §19's doctrine, all as committed artefacts:
 - **Lie schedule dump** — per node: what the compass points at, and the moon period, star drift and
   storm onset/window actually configured. Diffed clean across runs for the same seed.
 - **Fairness walk with zero upgrades** on every node, including the shaped ones.
+
+## 24. The corn field — the building block
+
+**Locked 2026-09-24.** Todd, verbatim: *"the 9 per block is perfect. the 4x reduction in triangles is
+great also... keep that. We will use that as our building blocks."*
+
+The field is **tiled, not scattered**. It is assembled from one repeated unit, so the maze reads as a
+continuous crop while the renderer sees six meshes.
+
+### 24.1 The block
+
+| Fact | Value |
+|---|---|
+| Unit | **2.0 × 2.0 m**, 9 plants on a 3 × 3 grid, jitter ±100 mm, inset 150 mm |
+| Density | **2.25 plants/m²** |
+| Mix | 7 × corn-old + 2 × corn-corn-corn (two materials per block) |
+| Height | 3.048 m ± 5 % (2.896 – 3.200 m) |
+| Yaw / tilt | uniform 0–360° / 1–3° on a random horizontal axis |
+| Leaf spread | 0.90 m at 10 ft (3.4 : 1 height : width) — the "tight" variant |
+| Triangles | 8 955 full · 4 476 LOD1 (50 %) · 1 118 LOD2 (12.5 %) |
+| Block bbox | 2.22 – 2.44 m; leaves deliberately overhang the 2 m square |
+
+**Six distinct blocks**, seed `1661 + 1013 × k`, so no two look alike while sharing one look.
+Per-block seeds, bboxes and layout signatures: `Assets/Corn/Blocks/blocks-manifest.json`.
+
+### 24.2 How the maze assembles
+
+A wall cell is `CellSize 4` (§7), so **4 blocks per wall cell**. The shipped 25 × 21 layout has 286 wall
+cells → **1 144 blocks, 10 296 plants**: 10.2 M tris at full detail, 5.1 M through the LOD chain. That
+sits inside §18's ≤ 1 200 corn-instance cap.
+
+Block index and 90° rotation are hashed from the cell coordinate, so placement is deterministic from the
+seed and the whole field costs **six meshes and four rotations** — nothing unique per slot, instancing on.
+Block usage comes out balanced (190–191 placements each over the six).
+
+This replaces the per-cell scatter in `MazeWorldBuilder.cs` — `int stalks = 6 + rng.Next(4)` inside a
+4 × 4 m cell, i.e. **0.4–0.6 plants/m²**. The block set is a **4–6× density increase**, and the old
+`CornPlant.cs` primitives stay in the tree as the fallback path until the swap lands (M20).
+
+### 24.3 Why 2.25 plants/m² — the glimpse is a requirement
+
+Measured, not estimated: 144 rays from the corridor eye position (1.75 m) to a 1.45 m shape standing
+inside a 4 m thick wall.
+
+| Density | Shape visible through the wall |
+|---|---|
+| **2.25 plants/m² (shipped)** | **5.6 %** |
+| 4 plants/m² | 0.7 % |
+| 9 plants/m² | 0.0 % |
+
+The requirement is Todd's: *"every once in a while, you might see the rustle and glance from some boogeyman
+peeking at you through the corn."* A dense wall removes it — at 9 plants/m² the field is a solid green
+bank. The glimpse comes from the **base of the wall**, where the lower metre is bare stems with ground
+behind it; that is where motion registers.
+
+**A dense wall cannot be opened by punching gaps in it**: neighbouring plants' leaves overhang ~0.9 m
+into the hole and fill it (measured 0.0 % visible). A guaranteed peek spot has to be a real hole with no
+plants either side. Do not "fix" the sparseness — it is the mechanic.
+
+### 24.4 Assets, materials, the one trap
+
+- **Assets:** `Assets/Corn/Blocks/` (six blocks + LODs + manifest), `Assets/Corn/Textures/`.
+- **Brief for Dough:** `docs/CORN-BRIEF.md`. **Provenance and licence risk:** `docs/ASSETS-INVENTED.md`
+  — both source models are third-party with **licence UNKNOWN**; App Store shipping needs it confirmed.
+- **The trap:** FBX carries no material blend mode. The leaf cards **must be Cutout, alpha clip 0.5**, or
+  every leaf renders as a solid slab. Materials are authored in Unity (albedo + normal + Cutout + GPU
+  instancing); the FBX carries UVs and slots only.
+- Known and accepted: the source textures are small (`T_Corn_01_D` 256 × 1024, `corn_texture.png`
+  512 × 512), so the corn is soft at arm's length. Crisper corn is a new atlas — a separate decision.
+
+### 24.5 Verification
+
+Added to §19's doctrine, all as committed artefacts:
+
+- **Block manifest** — per block: seed, stands, bbox, height, tri counts for all three LODs, and a
+  layout signature (hash of vertex positions) that proves the six blocks really differ.
+- **Peek test** — the ray count in §24.3, printed per density, with the corridor render alongside it.
+- **Tri arithmetic** — `7 × 545 + 2 × 2570 = 8 955` per block; `1 144 × 8 955` for the field.
+
+### 24.6 Ownership
+
+| Work | Owner | Slot |
+|---|---|---|
+| Corn block swap in `MazeWorldBuilder` + Cutout materials + LOD chain | Squall → Dough | **M20** |
+| The block set, LODs, manifest, brief | Dough | **M20** |

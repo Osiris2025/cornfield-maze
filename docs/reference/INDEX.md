@@ -1,6 +1,6 @@
 # Corn Field Maze — Reference Index
 
-Where to look for what. Maintained by **Dough** (@corn-art). One line per question, pointing at the **narrowest** file that actually answers it. Every path below was checked on disk on 2026-09-17; the FSD rows were added 2026-09-24 by Ernie.
+Where to look for what. Maintained by **Dough** (@corn-art). One line per question, pointing at the **narrowest** file that actually answers it. Every path below was checked on disk on 2026-09-17; the FSD rows and the corn rows were added 2026-09-24 by Ernie.
 
 | Question | File that answers it |
 |---|---|
@@ -26,3 +26,11 @@ Where to look for what. Maintained by **Dough** (@corn-art). One line per questi
 | What are the procedural textures / the audio? | `Assets/Scripts/Materials.cs` (textures) / `Assets/Scripts/MazeMoodAudio.cs` (audio) |
 | How does the rain dissolve wash the icing first? | `Assets/Scripts/FarmWalkerController.cs` — `ApplyDissolve(float amount)` (line 275) + `List<bool> _icingFlags` (line 51) |
 | What is the scale/camera contract for the player? | `Assets/Scripts/FarmWalkerController.cs` — `CameraDistance 5.2f` (12), `CameraHeight 2.1f` (13), capsule `height = 1.80f` (67) |
+| **What is the corn field made of, and why is it deliberately sparse?** | **`docs/CORN-BRIEF.md`** + `docs/reference/CORN-FIELD-MAZE-FSD.md` §24 (locked 2026-09-24) |
+| Where are the corn block FBXs Unity imports? | `Assets/Corn/Blocks/` — six blocks + `_LOD1`/`_LOD2` |
+| Which seed, bbox and tri counts does each block have? | `Assets/Corn/Blocks/blocks-manifest.json` |
+| Where are the corn textures? | `Assets/Corn/Textures/` (`T_Corn_01_D.png`, `T_Corn_01_NRM.png`, `corn_texture.png`) |
+| Why must the corn materials be Cutout, and what else must be set on import? | `Assets/Corn/README.md` → Unity import settings; brief §5 |
+| Where did the corn models come from, and what is their licence? | `docs/ASSETS-INVENTED.md` → **licence UNKNOWN, must be confirmed before App Store** |
+| How do I regenerate the corn blocks? | `scripts/corn_block_build.py` (design-time only, never in the build) |
+| How was the corn density decided, and how is it proven? | `scripts/corn_block_verify.py` (ray test + renders) + FSD §24.3 |
