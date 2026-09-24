@@ -8,6 +8,7 @@
 - **Corn Field Maze** — third-person 3D maze game. You play a **gingerbread cookie**. Long dead ends force backtracking; reach the **pot of gold** to win. Stay too long in the rain and the cookie softens and dissolves. Wrong turns risk the **Crumb Beast**, a hungry cookie-chasing chase beast (original — not Sesame Street IP).
 - **Target: iPhone, landscape-only, arm64.** The Mac standalone build is the review surface Todd plays.
 - Reference: `README.md` (player-facing description of the intended game), `IDEA.md`.
+- **The design of record is `docs/reference/CORN-FIELD-MAZE-FSD.md`** (2026-09-24): 25 nodes (5 chapters x 4 levels + 5 bosses), procedural levels, dough-integrity health, combat + 3 abilities, coins and a shop, boss-gated gold, one GameCenter leaderboard. Where the FSD and this document disagree about **product scope**, the FSD wins; on **tone, architecture, asset policy, review gates, naming and working rules**, this document still wins.
 
 ## ⚠ M0 — THE GINGERBREAD MAN IS THE REJECTED ASSET (the reason this crew exists)
 
@@ -54,17 +55,17 @@ Read as *scary game*. Consequences, and they are requirements:
 
 - Unity **6000.3.23f1** at `/Applications/Unity/Hub/Editor/6000.3.23f1` (6000.3.24f1 is also installed — **this project is pinned to 23f1**; do not open it with another editor).
 - **Xcode 27.0** at `/Applications/Xcode.app` — present. `appleDeveloperTeamID` in `ProjectSettings.asset` is **empty** and `appleEnableAutomaticSigning: 0`, so a device build needs the team pinned first (see @corn-qa's SOUL).
-- Project root: **`/Volumes/files2/CornFieldMaze`** — external volume, no spaces in the path. **It is `exfat` and 94% full (~206 GiB free at last count is WRONG — measured 2026-09-17: 3.44 TiB used of 3.64 TiB).** Not an iCloud File Provider domain.
-- ⚠️ **THE PROJECT VOLUME CANNOT HOST A MAC BUILD. Build from an APFS working copy.** This is a property of `exfat`, not of the code, and it cost a full session to find. Both failures are reproduced below so nobody re-litigates them:
+- Project root (corrected 2026-09-24): **`/Volumes/files1/projects/cornmaze/CornFieldMaze`** — **APFS**, no spaces in the path. The files2 exFAT tree is retired; the move happened 2026-09-23 (`CornFieldMaze-icloud`, `CornMazeWork`, `CornMazeBuilds` are historical copies under the same project folder, never worked in).
+- ⚠️ **RETIRED 2026-09-24 — do not act on this.** The tree is on APFS now, so neither failure below applies, and a working copy under `~/` is no longer wanted. Kept as diagnosis only. Historically, an exFAT project volume could not host a Mac build:
   - **No hard links.** `ln` on this volume returns `Operation not supported`. Unity's macOS build *links* resources into the `.app` bundle rather than copying them, so it creates the destination at **zero bytes** and then dies: `Copying .../unity_builtin_extra failed: Operation not permitted` → `*** Tundra build failed`. Verified with a same-volume hardlink probe (a cross-device probe proves nothing — it only reports `Cross-device link`).
   - **AppleDouble `._*` junk is read as code.** macOS writes a `._foo` sibling next to every file Unity creates on such a volume. Unity's managed linker then tries to load `._Assembly-CSharp.dll` as a .NET assembly: `System.BadImageFormatException: Format of the executable (.exe) or library (.dll) is invalid` → `Mono.Cecil.AssemblyResolutionException: Failed to resolve assembly: '._Assembly-CSharp'` → `Burst compiler failed`. **Cleaning before a build cannot win — the build recreates the junk as it writes.** `dot_clean` does nothing on exFAT (returns in 0.012s).
-  - **What to do:** build from `/Users/toddadams/CornMazeWork/CornFieldMaze` (**the verified fix** — an APFS working copy). ⚠️ **`CORN_BUILD_OUT` alone is NOT sufficient**, and do not let it talk you out of the working copy: the junk that breaks the linker is written into the **PROJECT's own `Library/Bee/artifacts/.../ManagedStripped/`** (which stays on exFAT), not into the output directory — redirecting only the `.app` leaves that tree on the bad volume, so `._Assembly-CSharp.dll` is still there for the linker to choke on. `build-mac.sh` now tests for hardlink support and **refuses in 0.26s** with this explanation instead of burning a Unity run. APFS uses native extended attributes, so neither failure mode exists there.
+  - **What was done (retired 2026-09-24):** build from an APFS working copy — `/Users/toddadams/CornMazeWork/CornFieldMaze`. Superseded: build in the canonical tree. ⚠️ **`CORN_BUILD_OUT` alone is NOT sufficient**, and do not let it talk you out of the working copy: the junk that breaks the linker is written into the **PROJECT's own `Library/Bee/artifacts/.../ManagedStripped/`** (which stays on exFAT), not into the output directory — redirecting only the `.app` leaves that tree on the bad volume, so `._Assembly-CSharp.dll` is still there for the linker to choke on. `build-mac.sh` now tests for hardlink support and **refuses in 0.26s** with this explanation instead of burning a Unity run. APFS uses native extended attributes, so neither failure mode exists there.
 - **One Unity writer at a time.** Two batchmode editors on one project corrupt `Library/`. Check with `pgrep -fl "Unity.*CornFieldMaze"` before you open one.
 - Renders: URP, `Mobile_RPAsset` / `PC_RPAsset` under `Assets/Settings`.
 
 ## Current state of the code (measured 2026-09-17)
 
-- **18 C# files, 5,213 lines**, no assemblies (`.asmdef`), **no tests**, **no `scripts/verify.sh`**, **no git history** (baseline commit is the project's first).
+- **19 C# files, 5,632 lines** (re-measured 2026-09-24; was 18 / 5,213 on 2026-09-17), no assemblies (`.asmdef`), **no tests**, no git history at baseline (the baseline commit is the project's first). `scripts/verify.sh` now exists but is **UNRUN** — see `docs/status/CHIEF-STATUS.md`.
 - The world is **built at runtime from code** — `MazeGenerator.Build()` → `MazeWorldBuilder.Build()` → `FarmWalkerController.Spawn()` → `PotOfGold`, `GameHud`, `MazeMoodAudio`, `StormWeather`, `PathMudWetness`, `NightSky`, `CrumbBeast`, all from `GameBootstrap.Start()`. `Assets/Scenes/CornMaze.unity` is a near-empty host scene; `Editor/CornMazeSetup.cs` (`CornMaze.Run`) creates it.
 - Textures are **procedurally generated in code** (`Materials.cs` — fbm/value noise for gravel, field grass, path grass, plaid). Audio is **procedurally synthesized in code** (`MazeMoodAudio.cs`, 1,028 lines).
 - Known defects carried in from the original build: HUD canvas is `referenceResolution 1920x1080` (a desktop size, on a phone game); `README.md` still references `/Users/arl480/Unity_Projects/CornFieldMaze` (another machine) and Unity 6000.3.23f1 instructions that no longer match this host.
@@ -93,7 +94,8 @@ Read as *scary game*. Consequences, and they are requirements:
 
 ## Scope boundaries
 
-- Do **not** add: multiplayer, achievements, ads, analytics, in-app purchases, leaderboards, a second playable character, procedural level generation, or a shop/upgrade system.
+- Do **not** add: multiplayer, achievements, ads, analytics, in-app purchases, a second playable character, cloud saves, Android/WebGL.
+- ⚠️ **CHANGED 2026-09-24 (Todd):** *leaderboards, procedural level generation* and *a shop/upgrade system* were on the do-not list and are now **IN** — see `docs/reference/CORN-FIELD-MAZE-FSD.md` §§6–12, §15. Do not cite the old list against this work.
 - Faithfulness plus polish. If a change is neither fixing something broken nor making something Todd pointed at better, it needs a reason.
 
 ## Milestones

@@ -1,9 +1,12 @@
 # Corn Field Maze — Reference Index
 
-Where to look for what. Maintained by **Dough** (@corn-art). One line per question, pointing at the **narrowest** file that actually answers it. Every path below was checked on disk on 2026-09-17.
+Where to look for what. Maintained by **Dough** (@corn-art). One line per question, pointing at the **narrowest** file that actually answers it. Every path below was checked on disk on 2026-09-17; the FSD rows were added 2026-09-24 by Ernie.
 
 | Question | File that answers it |
 |---|---|
+| **What is the game, as designed — progression, levels, coins, upgrades, enemies, bosses, leaderboard?** | **`docs/reference/CORN-FIELD-MAZE-FSD.md`** (design of record, 2026-09-24) |
+| **Which levels exist, and their exact numbers (size, seed, storm onset, enemies, economy)?** | `docs/reference/CORN-FIELD-MAZE-FSD.md` §6 (the level table) |
+| **How does the cookie take damage / what is the health model?** | `docs/reference/CORN-FIELD-MAZE-FSD.md` §5 (dough integrity) |
 | Why does this crew exist / what is the rejected gingerbread man? | `docs/DECISIONS.md` (§M0) |
 | Which tasks are there, by number, and what are their verify criteria? | `docs/plans/2026-09-17-mvp-plan.md` |
 | Where did the replacement cookie asset come from and what is its licence status? | `docs/ASSETS-INVENTED.md` |
