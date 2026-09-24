@@ -15,6 +15,14 @@ public sealed class FarmWalkerController : MonoBehaviour
     public float MinPitch = -87f;
     public float MaxPitch = 48f;
 
+    /// <summary>
+    /// M21 (§25.1): held by the front end — the title, help, introduction and pause screens. The
+    /// camera still tracks and the player may still look around the field; only the body, the walk
+    /// cycle and the movement input stop. Freezing through this flag rather than disabling the
+    /// controller is what keeps the field alive behind the title screen.
+    /// </summary>
+    public bool Frozen;
+
     /// <summary>Seconds of full-storm rain to reach near-full dissolve (atmospheric, not instant).</summary>
     public const float DissolveRainSeconds = 210f;
 
@@ -194,7 +202,8 @@ public sealed class FarmWalkerController : MonoBehaviour
     {
         UpdateDissolveFromRain();
 
-        if (!MobileControls.ShouldShow && Input.GetKeyDown(KeyCode.Escape))
+        // M21 (§25.1): while the run is live, Esc belongs to the front end (it opens the pause menu).
+        if (!GameFrontEnd.IsPlaying && !MobileControls.ShouldShow && Input.GetKeyDown(KeyCode.Escape))
         {
             bool locked = Cursor.lockState == CursorLockMode.Locked;
             Cursor.lockState = locked ? CursorLockMode.None : CursorLockMode.Locked;
@@ -219,6 +228,15 @@ public sealed class FarmWalkerController : MonoBehaviour
             AnimateModel(0f, false);
             if (!_eating && _body != null && _body.enabled)
                 ApplyGravityOnly();
+            return;
+        }
+
+        if (Frozen)
+        {
+            // The front end is up. The look block above has already run, so the camera keeps tracking
+            // and the player can still look around; the body and the walk cycle are what stop.
+            AnimateModel(0f, false);
+            if (_body != null && _body.enabled) ApplyGravityOnly();
             return;
         }
 

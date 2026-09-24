@@ -514,8 +514,8 @@ daily challenges · pets/companions · anything that needs a new Unity package w
 4. ~~Final boss payoff?~~ **RESOLVED 2026-09-24 (Todd): run summary + leaderboard submit, then "wander again" with everything unlocked — the current post-win behaviour, kept as-is.**
 5. ~~Level re-play?~~ **RESOLVED 2026-09-24 (Todd): free replay of any cleared node, half coins, no repeat completion bonus (see §10).**
 6. ~~Level sizes, and whether the field always stays a rectangle?~~ **RESOLVED 2026-09-24 (Todd): start 21×21 square, grow to 37×37, then change the overall shape once the square is figured out — plus portals that change orientation, a compass that later points elsewhere, and a moon/star sky that stops being usable. Written up as §23.**
-7. **Movement model — first-person or third-person?** (§25.2). One word. Recommendation is third-person: the cookie's own body is the health model (§5), and it disappears in first-person.
-8. **What is the chasing threat called?** (§25.4). Candidates: *the Husk*, *the Thresher*, *the Hollow* — or Todd's own.
+7. ~~Movement model — first-person or third-person?~~ **RESOLVED 2026-09-24 (Todd): third-person, polished to mobile convention.** The cookie stays on screen; his body is the health model (§5). See §25.2.
+8. ~~What is the chasing threat called?~~ **RESOLVED 2026-09-24 (Todd): *the Husk*.** Rename passes over code, docs, HUD and cue names (§25.4, M24).
 9. **Is the cob the right throwable?** (§25.3) — dried corn cob, 0.25 kg, thrown at 14 m/s, 7.0 m range, 1/3 of the chaser's health and a 1.1 s stagger that buys 2.6 m of a 4 m cell.
 
 ## 23. The confidence curve — sizes, shapes, portals, a compass that lies, a sky that stops working
@@ -796,13 +796,35 @@ Three full-screen states before the player takes control, built in code like eve
 
 | # | Screen | Contents | Exit |
 |---|---|---|---|
-| 1 | **Title** | Game name, the moon already risen behind it, the rustle already playing (the front end is not silent — §25.6 starts here). Buttons: **Play**, **Help**, **Leaderboard** (§15, greyed until signed in), **Settings**. | `Play` → 2, or `Continue` if a save exists (§14) |
+| 1 | **Title** | Game name, the field already alive behind it, the rustle already playing (the front end is not silent — §25.6 starts here). Buttons: **Play**, **Help**. | `Play` → 3 on a first run, straight into the maze after that |
 | 2 | **Help** | Two panels, no wall of text: **Move** (stick, RUN, dash) and **Fight** (SWING, the three abilities, **and the new throw — §25.3**). Reachable from the title and from pause. | Back → 1, `Start` → 3 |
 | 3 | **Introduction** | Four lines of premise, skippable with a tap, and the only place the threat is named (§25.4). Ends on the dusk sky (§25.5) — the player's first frame of play is the field at dusk, from the maze's start cell. | Play begins (§25.5 clock starts) |
 | — | **Pause** | New: a pause state, because the front end makes one necessary. `R` restarts today (`GameBootstrap.cs:51`); a pause with Resume / Restart / Help / Quit to title is the phone-expected shape. | — |
 
+Leaderboard and Settings are **deliberately absent** rather than dead buttons: neither system exists
+yet (§15 is M15, settings/persistence is M8). They join the title when they can do something. The same
+discipline governs the help text, which describes only the controls the build actually has — walk,
+look, run, pause. The cane arrives with M10 and the cob with M23, and the help screen gains them then.
+
 The old §16 "hint text, fades after 24 s" stays, but it is no longer the tutorial: help lives in a
-screen the player can return to.
+screen the player can return to. It is **held** until the player leaves the introduction, so its 24 s
+cannot burn down behind the title screen.
+
+**Built 2026-09-24 (M21).** `Assets/Scripts/GameFrontEnd.cs` (new, ~460 lines) holds the four screens
+plus the pause control; the hooks are four small patches, no rewiring:
+
+| File | Hook |
+|---|---|
+| `GameBootstrap.cs` | stores the maze, holds the HUD and the body, creates the front end, and spawns the Husk + plays the start tone only in `BeginRun` — so the beast's 5 s clock cannot start behind the title |
+| `FarmWalkerController.cs` | `public bool Frozen` — the look block still runs (the player can look around the field from the title); the body and the walk cycle stop. Esc hands over to the pause menu while the run is live |
+| `GameHud.cs` | `Hold()` / `Begin()` for the 24 s hint |
+| `MobileControls.cs` | `public static bool Suppressed` — hides the stick and zeroes its input while a front-end screen is up, so a drag meant for a button can never also drive the player |
+
+The front-end screens run at `Time.timeScale = 1` — the sky, the storm and the rustle must live behind
+them. **Only the pause screen stops time** (`timeScale = 0` plus `AudioListener.pause`), which also
+freezes the Husk without any enemy-side pause logic. A restart (`R` / RESTART) sets `RequestAutoPlay`
+before reloading, so it lands in the maze instead of the title; the introduction plays once per app
+run.
 
 **No new art.** The title, help and intro are drawn from the same procedural register as the rest of
 the UI (Dough's panel set, §17). Nothing here may require a font or an image file that does not
@@ -810,8 +832,10 @@ already exist.
 
 ### 25.2 Movement — the decision first, then the contract
 
-> **OPEN — needs Todd, one word: first-person or third-person?** "NORMAL 3D, FPS movements" reads two
-> ways and they are two different games:
+> **RESOLVED 2026-09-24 (Todd): (b) — third-person, polished to mobile convention.** The cookie stays
+> on screen, and his body *is* the health model (§5). "NORMAL 3D, FPS movements" is therefore read in
+> its loose sense: analog move, free look, a camera that never fights the player. The comparison below
+> is kept as the record of the decision:
 >
 > | | (a) **First-person** | (b) **Third-person, mobile-standard, polished** |
 > |---|---|---|
@@ -820,9 +844,8 @@ already exist.
 > | Combat | the cane's 1.6 m arc (§9) happens off-screen; the swing is unreadable | the arc is readable, which is what makes 3-hit kills fair |
 > | Feel | genuine dread and a real horror read — you cannot see what is behind you, which is exactly what §25.4's threats want | expected by every player of a phone game; the "normal" in Todd's sentence |
 >
-> The recommendation is **(b)**, for one concrete reason: §5's whole health model is the cookie's
-> integrity, and in (a) the player never sees the thing they are protecting. But this is Todd's call
-> and it is one word.
+> **Decision (Todd, 2026-09-24): (b).** The one concrete reason stands: §5's whole health model is the
+> cookie's integrity, and in (a) the player never sees the thing they are protecting.
 
 Whichever way it goes, the **feel contract** below is what "acceptable and expected for Unity and
 iPhone" means, and it is measured, not asserted:
@@ -907,19 +930,20 @@ stems with the ground behind it):
 > hit it with a cob (§25.3) to cut its 3 s short. This is the threat that makes the corn itself
 > frightening, and it is built entirely out of §24's measured peek spot.
 
-**The rename.** Todd: the current name is *"pretty silly"*. The object is `CrumbBeast.cs` (316 lines)
+**The rename — RESOLVED 2026-09-24 (Todd): the thing chasing Gingy is *the Husk*.** One pass: the
+class and its file, the `Spawn` call, §8's table, §9/§14's references, the HUD's death line, and
+`MazeMoodAudio`'s chase-sting cue names — no aliases.
+
+Todd: the current name is *"pretty silly"*. The object is `CrumbBeast.cs` (316 lines)
 and the rename reaches: `CrumbBeast.cs` itself, the `CrumbBeast.Spawn` call (`GameBootstrap.cs:45`),
 §8's enemy table, §9/§14's references, the HUD's death line, and `MazeMoodAudio`'s chase-sting cue
 names. **Candidates, Todd's call:**
 
-| Name | Read |
-|---|---|
-| **the Husk** | what is left of a corn plant once it is stripped — short, cold, and it does not read as a joke |
-| **the Thresher** | a machine that strips corn; keeps the harvest grammar and sounds like a threat |
-| **the Hollow** | the Halloween read; least specific of the three, most atmospheric |
-
-Whatever is chosen becomes the name in the code, the docs, the HUD and the cue names in one pass —
-no aliases, no "formerly known as".
+| Name | Read | Verdict |
+|---|---|---|
+| **the Husk** | what is left of a corn plant once it is stripped — short, cold, and it does not read as a joke | **CHOSEN 2026-09-24** |
+| the Thresher | a machine that strips corn; keeps the harvest grammar and sounds like a threat | not chosen |
+| the Hollow | the Halloween read; least specific of the three, most atmospheric | not chosen |
 
 ### 25.5 Dusk, the Halloween sky, and the moonrise
 
@@ -959,9 +983,9 @@ cheat to do it.
 | # | Milestone | Owner | Depends on |
 |---|---|---|---|
 | **M21** | Front end: title / help / introduction + pause (§25.1) | Squall → Dough | **nothing — this can start now, independently of M0** |
-| **M22** | Movement decision + the feel contract + the two defects (§25.2) | Furrow | the one-word answer in §25.2 |
+| **M22** | Movement: the feel contract + the two defects (§25.2) — the model is settled (third-person) | Furrow | — |
 | **M23** | Pick up and throw: cobs, ballistics, the stagger, lane ammo (§25.3) | Furrow → Dough | M10 (combat framework) |
-| **M24** | The rename, one pass across code/docs/HUD/cues (§25.4) | Furrow | Todd's pick |
+| **M24** | The rename → **the Husk**, one pass across code/docs/HUD/cues (§25.4) | Furrow | — |
 | **M25** | Dusk phase, moonrise, Halloween cloud upgrade (§25.5) | Squall | M17 (the sky) |
 | **M26** | Rustle + music: the threat term and the device listen pass (§25.6) | Rattle | M21 (the front end must exist to be quiet before the game starts) |
 

@@ -10,6 +10,13 @@ public sealed class MobileControls : MonoBehaviour
     public bool Running { get; private set; }
     public bool RestartPressed { get; private set; }
 
+    /// <summary>
+    /// M21 (§25.1): true while the front end is showing a screen that is not the run itself (title,
+    /// help, introduction, pause). Hides the stick and the buttons and zeroes their input, so a drag
+    /// meant for a menu button can never also drive the player.
+    /// </summary>
+    public static bool Suppressed;
+
     public static bool ShouldShow
     {
         get
@@ -101,7 +108,7 @@ public sealed class MobileControls : MonoBehaviour
         RestartPressed = false;
         LookDelta = Vector2.zero;
 
-        if (!ShouldShow)
+        if (!ShouldShow || Suppressed)
         {
             Move = Vector2.zero;
             Running = false;

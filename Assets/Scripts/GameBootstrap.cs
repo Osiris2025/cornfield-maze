@@ -5,7 +5,9 @@ public sealed class GameBootstrap : MonoBehaviour
 {
     FarmWalkerController _player;
     GameHud _hud;
+    MazeData _maze;
     bool _won;
+    bool _beastSpawned;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoStart()
@@ -42,15 +44,36 @@ public sealed class GameBootstrap : MonoBehaviour
         StormWeather.Install(_player.transform);
         PathMudWetness.Install();
         NightSky.Install(_player.transform, gold.transform, maze);
-        CrumbBeast.Spawn(maze, _player);
+
+        // M21 (§25.1): the front end owns the first moments, and everything above is already running —
+        // the sky, the storm and the field's rustle — so the title screen is neither silent nor static.
+        // Only the body is held, the HUD is held, and the Husk waits for the player to start.
+        _maze = maze;
+        _player.Frozen = true;
+        _hud.Hold();
+        GameFrontEnd.Create(_player, BeginRun);
+    }
+
+    /// <summary>Called by the front end when the player leaves the introduction (M21, §25.1).</summary>
+    void BeginRun()
+    {
+        if (_player != null) _player.Frozen = false;
+        if (_hud != null) _hud.Begin();
+        if (_beastSpawned || _maze == null || _player == null) return;
+        _beastSpawned = true;
+        CrumbBeast.Spawn(_maze, _player);
         PlayTone(220f, 0.15f);
     }
 
     void Update()
     {
-        if (Input.GetKeyDown(KeyCode.R)
-            || (MobileControls.Instance != null && MobileControls.Instance.RestartPressed))
+        if (GameFrontEnd.IsPlaying
+            && (Input.GetKeyDown(KeyCode.R)
+                || (MobileControls.Instance != null && MobileControls.Instance.RestartPressed)))
+        {
+            GameFrontEnd.RequestAutoPlay();   // a restart lands in the maze, not on the title (§25.1)
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        }
 
         if (MobileControls.ShouldShow) return;
 
