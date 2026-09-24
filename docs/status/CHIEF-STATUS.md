@@ -1,47 +1,98 @@
 # Corn Field Maze — Chief Status
 
-**Updated:** 2026-09-17 20:45 EDT — pass 1 (docs + scripts only; **no Unity touched**)
-**Milestone:** M0 — the gingerbread cookie. **Nothing else closes until the gate.**
+**Updated:** 2026-09-24 22:25 EDT — overnight loop, pass 1 of the night
+**Milestone:** M22 (movement — the FPS/touch feel contract) — **DONE this pass**; next pass takes M20.
+**Project root:** `/Volumes/files1/projects/cornmaze/CornFieldMaze` (APFS). The old files2 tree is retired.
+
+## Correction to the previous status file (it would have misled every worker)
+
+The 2026-09-17 file claims **the Unity slot is held by an open editor. That is false now** — no editor
+holds this project, and build → launch → capture has been proven end to end. Everything else in it is
+superseded by the M0 / M21 work committed since (`ca83b66` front end, `dd4f529` corn blocks, `8671f1e` FSD §25).
 
 ## Crew
 
 | Name | Handle | Role | State |
 |---|---|---|---|
-| Harrow | @corn-chief | chief | pass 1 run; verified every artefact below by hand |
-| Dough | @corn-art | cookie, animation, materials | **T4a done** — `docs/reference/INDEX.md`, `docs/COOKIE-BRIEF.md` |
-| Furrow | @corn-gameplay | maze, walker, beast, gold, HUD, touch | idle (M2, behind M0) |
-| Squall | @corn-world | corn, sky, storm, mud | idle (M3, behind M0) |
-| Rattle | @corn-audio | mood bed, cues, jingle, iOS audio | idle (M4, behind M0) |
-| Lantern | @corn-qa | verify, Mac/iPhone builds, perf, evidence | **T2/T3 written — UNRUN** (see Blockers 1) |
+| Harrow | @corn-chief | chief | running M22; verifies each claim himself |
+| Dough | @corn-art | cookie, silhouette, materials | M0/M21 landed; queued M20 blocks / M23 cob |
+| Furrow | @corn-gameplay | controller, maze, HUD, touch, throw | **M22 this pass** |
+| Squall | @corn-world | corn field, sky, dusk, storm | queued: M20, then M25 |
+| Rattle | @corn-audio | bed, cues, jingle, rustle | queued: M26 (+ M24 cue names) |
+| Lantern | @corn-qa | builds, captures, measured evidence | builds + captures this pass |
 
-## This pass — written but NOT green
+## Queue (FSD §25) — one milestone per pass, in order
 
-- **T4a** `docs/reference/INDEX.md` (question → narrowest file, 20 rows) · `docs/COOKIE-BRIEF.md` (M0 brief, incl. LOCKED tone).
-- **T2** `scripts/build-mac.sh` (batchmode `BuildStandaloneMac` → `Builds/mac-build.log`, one-Unity-writer guard) · `scripts/verify.sh` (asserts on the **artefact**: log marker `Built standalone player:` + non-empty `.app` executable + no `error CS`; prints one PASS/FAIL line).
-- **T3** `scripts/capture.sh` (fresh `{position,size}` of the game window read **every run**, `-ApplePersistenceIgnoreState YES`, final frame at 2556x1179 into `artifacts/review/<category>/`) · `scripts/build-ios.sh` (`BuildIosPlayer` → `Builds/iOS`).
-- **None of these was executed.** Only `bash -n` (syntax) is clean. **There is no green verify for this pass and I am not claiming one.**
-- Two defects found by Harrow's verification and fixed before commit: `verify.sh` would have **false-FAILed every run** (its `failed:` grep matched Unity's real `[W] opendir() failed:` warning — proven against `Builds/ios-build.log`); `build-ios.sh` was mislabelled T2.
+| M | What | Owner | State |
+|---|---|---|---|
+| M21 | front end: title, help, intro, pause | Dough+Furrow | **DONE** `ca83b66` · frame `artifacts/front-end-title-m21.png` |
+| M22 | movement feel: dead zone, look, sprint, no lane auto-centring | Furrow | **in flight — see the pass result below** |
+| M20 | the real corn blocks in the maze, CUTOUT leaves, LOD chain | Squall+Dough | not started |
+| M25 | dusk, Halloween sky, moonrise | Squall | not started |
+| M24 | the rename to the Husk, everywhere | Furrow+Rattle | not started |
+| M23 | pick up and throw (the cob) | Furrow+Dough | not started |
+| M26 | rustle + music off one threat-distance term | Rattle+Squall | not started |
+
+## M22 — what was MEASURED in the code before touching it
+
+- `MobileControls.ReadTouches` had **no dead zone at all** — `ClampMagnitude(raw / radius, 1f)` fed
+  straight into `Move`; §25.2 requires 0.12 ramped to full by 0.30.
+- `FarmWalkerController.CorridorMove` returns **only a cardinal unit vector**. A deliberate sideways
+  push scores ≈0 against every corridor direction and `CanStep` refuses the wall, so the move is
+  `Vector3.zero` — **pushing sideways moved the player nowhere at all.**
+- `ConstrainToPath` then **hard-snapped to the lane centreline** (`pos.z = center.z` / `pos.x =
+  center.x`) and only afterwards clamped to ±0.42 m. That is the auto-centring §25.2 lands.
+- Wall cells **do** carry colliders (`MazeWorldBuilder.AddCornBlock`: `BoxCollider` 3.68 m × 2.7 m at
+  1.35 m), so the lane can be held by the world instead of by the controller — which is why the
+  centring snap can go without the player escaping into the corn.
+- Look-drag is already "anywhere on the right half" (`pos.x >= Screen.width * 0.46f` — no fixed
+  look-pad), and sprint already exists (hold RUN → 7.4). Those two are a check, not a build.
 
 ## Blockers
 
-1. **Unity 6000.3.23f1 has the slot (pid 77444, this project).** No batchmode build, no import probe, no capture. `verify.sh` cannot earn its green until Todd closes the editor.
-2. **Unity import of the FBX landed mid-pass** (`Assets/GingerbreadMan/gb_man.fbx.meta`, guid `d92b875a…`, 20:39) — but the importer's own state (**25 bones, 4 submeshes, material shader**) has **not** been read back. Blender is not Unity. T4's verify is still open.
-3. **`.meta` files are untracked** (`Assets/GingerbreadMan*`) — owner Dough, commit with T5.
-4. **Licence/provenance of `gb_man.fbx` is UNKNOWN** — fine for us, **blocks App Store shipping**. Logged in `docs/ASSETS-INVENTED.md`.
-5. `appleDeveloperTeamID` empty, automatic signing off → T21/M6.
-6. `scripts/crew-supervisor.sh` is modified in the tree by another writer — left alone, not committed.
-
-## Last commits
-
-`fbbd5bb` tri-count corrected to 3,238 (Ernie) · `b87d666` **tone LOCKED: scary game** (Ernie) · `db855e8` M0 structure · `cc98d3e` the supplied asset · `ddd9006` baseline. **This pass: one commit — "pass 1: T4a + T2 + T3 …"** (message names the task numbers; sha is in `git log`).
+Nothing blocking tonight. Standing, non-blocking:
+1. `gb_man.fbx` licence/provenance still unknown (App Store only) — `docs/ASSETS-INVENTED.md`.
+2. `appleDeveloperTeamID` empty / automatic signing off — real only at the iPhone device build.
+3. Two pre-existing working-tree items on the M0 path are left untouched as ordered: deleted
+   `Assets/GingerbreadMan.meta`, modified `Assets/Settings/UniversalRenderPipelineGlobalSettings.asset`.
 
 ## CAPTURES FOR TODD
 
-- **Asset previews — `artifacts/review/cookie/`** (Blender, not Unity): `ASSET-PREVIEW-front.png`, `-side.png`, `-back.png`, `-head.png`. ⚠️ **Not the gate.**
-- **The gate frame does not exist and could not be made this pass.** It must come from a **plain launch of the Mac build** at iPhone aspect 2556x1179. Path once the slot frees: Lantern builds → `scripts/capture.sh cookie`.
+- `artifacts/front-end-title-m21.png` — the title screen with the corn field alive behind it (M21).
+- M22's frame + measured numbers: see the pass result at the foot of this file.
 
-## Need from Todd
+## Last commits
 
-1. **Close the Unity editor on this project** so the crew can build — nothing can go green until then.
-2. **Source/licence of `gb_man.fbx`** (files dated Dec 2020, no author string) before any App Store upload.
-3. Nothing else. Tone (scary, victim not mascot) is read and written into `docs/COOKIE-BRIEF.md` §8.
+`b02bd55` overnight loop cap · `ca83b66` M21 front end · `8671f1e` FSD §25 · `dd4f529` corn block set.
+
+## Pass result — M22 (movement feel) — DONE this pass
+
+**Verified on the BUILT Mac app, not in the editor.** The numbers come from `-m22selftest`, which drives
+the real `FarmWalkerController` inside the real maze — full report in `artifacts/m22-feel-report.txt`.
+
+| §25.2 check | Measured | Verdict |
+|---|---|---|
+| Stick dead zone | 0.05 → 0.000 and 0.12 → 0.000 move; 0.21 → 0.500; 0.30 → 1.000 | **PASS** (0.12 ramped to full by 0.30) |
+| A deliberate sideways push | moved **0.420 m** — it moved **0.000 m** before this pass | **PASS** (the push used to be refused outright) |
+| Lane bound | held at 0.420 m = `LaneHalf` | **PASS** — the player never leaves the lane |
+| Release, no yank | stayed at 0.420 m (change 0.000 m) | **PASS** — the old code snapped to the centreline |
+| Walk / sprint | **4.38 / 7.40 m/s** against constants 4.40 / 7.40 | **PASS** |
+| Look | 0.14°/pt (exposed), invert-Y toggle, drag anywhere right of x ≥ 598 px of 1300 | exposed |
+
+Frame: `artifacts/review/world/m22-2026-09-24.png` — **2556x1179 plain launch** of the built app: title
+screen with the corn field alive behind it, no harness, no other window on top.
+
+**Defects found and fixed while verifying:**
+1. `MobileControls` had **no dead zone at all** — raw displacement went straight into `Move`.
+2. `CorridorMove` refused any input no corridor answered: a sideways push moved the player 0.000 m.
+3. `ConstrainToPath` **hard-snapped to the lane centreline** — the auto-centring §25.2 lands.
+4. `GameFrontEnd.Instance` was **declared and read but never assigned** (permanently null, so nothing
+   outside `Create` could reach the front end). Fixed in `Create`.
+
+`M22FeelSelfTest.cs` ships in the build but is dormant unless launched with `-m22selftest`.
+
+**Deliberately NOT done this pass:**
+- **The camera boom fix.** §25.2 ties it to M20 — a boom tuned against the placeholder corn is tuned
+  against the wrong world. Hook for the M20 pass: the boom in `FarmWalkerController` (`boom`/`desired`).
+- **The 60 fps floor is not claimed.** It is a *phone* target, no device is attached, and Mac frame time
+  is not evidence for it. It is measured when M20's field and a device exist.

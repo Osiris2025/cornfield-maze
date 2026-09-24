@@ -23,10 +23,31 @@ public sealed class FarmWalkerController : MonoBehaviour
     /// </summary>
     public bool Frozen;
 
+    // ---- M22 (§25.2) diagnostics hook -------------------------------------------------------
+    /// <summary>When set, the controller reads this instead of the keyboard and the touch stick, so
+    /// M22FeelSelfTest can measure the REAL movement path rather than a re-implementation of it.</summary>
+    public bool InjectInput;
+    public Vector2 InjectedMove;
+    public bool InjectedRun;
+
+    /// <summary>The corridor axis chosen this frame — which axis the lane bound applies to.</summary>
+    Vector3 _alongDir;
+
+    /// <summary>The maze this walker is in (exposed for measurement).</summary>
+    public MazeData Maze => _maze;
+
     /// <summary>Seconds of full-storm rain to reach near-full dissolve (atmospheric, not instant).</summary>
     public const float DissolveRainSeconds = 210f;
 
-    const float LaneHalf = 0.42f;
+    /// <summary>
+    /// M22 (§25.2): the lane half-width. A BOUND, not a rail — the player may stand anywhere across
+    /// the lane. Public so the movement self-test measures against this number instead of a copy of it.
+    /// </summary>
+    public const float LaneHalf = 0.42f;
+
+    /// <summary>Distance over which the lane bound eases the player to a stop, so a sideways push
+    /// slows into the edge rather than hitting an invisible wall.</summary>
+    const float LaneFeather = 0.08f;
 
     MazeData _maze;
     CharacterController _body;
@@ -219,8 +240,12 @@ public sealed class FarmWalkerController : MonoBehaviour
         if (MobileControls.Instance != null)
         {
             var look = MobileControls.Instance.LookDelta;
-            _yaw += look.x * TouchLookSensitivity;
-            _pitch = Mathf.Clamp(_pitch - look.y * TouchLookSensitivity, MinPitch, MaxPitch);
+            // M22 (§25.2): the sensitivity is exposed (it was a private-feeling constant) and the
+            // invert-Y toggle is honoured. The default is unchanged at 0.14 deg/pt.
+            float sens = MobileControls.Instance.LookSensitivity > 0f ? MobileControls.Instance.LookSensitivity : TouchLookSensitivity;
+            float invert = MobileControls.Instance.InvertY ? -1f : 1f;
+            _yaw += look.x * sens;
+            _pitch = Mathf.Clamp(_pitch - look.y * sens * invert, MinPitch, MaxPitch);
         }
 
         if (_won || _caught)
@@ -242,12 +267,17 @@ public sealed class FarmWalkerController : MonoBehaviour
 
         float hx = Input.GetAxisRaw("Horizontal");
         float hz = Input.GetAxisRaw("Vertical");
+        if (InjectInput)
+        {
+            hx = InjectedMove.x;
+            hz = InjectedMove.y;
+        }
         if (MobileControls.Instance != null)
         {
             hx = Mathf.Clamp(hx + MobileControls.Instance.Move.x, -1f, 1f);
             hz = Mathf.Clamp(hz + MobileControls.Instance.Move.y, -1f, 1f);
         }
-        bool running = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+        bool running = InjectedRun || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
             || (MobileControls.Instance != null && MobileControls.Instance.Running);
         float speed = running ? RunSpeed : WalkSpeed;
         // Soften when very soggy, but still able to finish if the player is quick.
@@ -401,35 +431,47 @@ public sealed class FarmWalkerController : MonoBehaviour
         if (!_maze.IsPath(cell.x, cell.y))
             cell = _maze.NearestPathCell(transform.position);
 
+        var centre = _maze.CellToWorld(cell.x, cell.y);
         var dirs = new[] { Vector3.forward, Vector3.back, Vector3.right, Vector3.left };
         var steps = new[] { new Vector2Int(0, 1), new Vector2Int(0, -1), new Vector2Int(1, 0), new Vector2Int(-1, 0) };
 
+        // M22 (§25.2): the corridor is still the rail — we pick the best direction that is actually
+        // OPEN — but a push that no corridor answers is no longer thrown away. It becomes a sideways
+        // step WITHIN the lane. Before this, a deliberate sideways push scored ~0 against every
+        // corridor direction, CanStep refused the wall, and the move came back Vector3.zero: the
+        // player could not step across their own lane at all.
         int best = -1;
-        int second = -1;
-        float bestScore = -1f;
-        float secondScore = -1f;
+        float bestScore = 0.35f;
         for (int i = 0; i < 4; i++)
         {
+            if (!CanStep(cell, steps[i])) continue;
             float score = Vector3.Dot(intent, dirs[i]);
-            if (score > bestScore)
-            {
-                second = best;
-                secondScore = bestScore;
-                best = i;
-                bestScore = score;
-            }
-            else if (score > secondScore)
-            {
-                second = i;
-                secondScore = score;
-            }
+            if (score > bestScore) { bestScore = score; best = i; }
         }
 
-        if (best >= 0 && bestScore >= 0.35f && CanStep(cell, steps[best]))
-            return dirs[best];
-        if (second >= 0 && secondScore >= 0.55f && CanStep(cell, steps[second]))
-            return dirs[second];
-        return Vector3.zero;
+        // Full analog along the corridor: the along component keeps the stick's magnitude, so a
+        // half-pushed stick is half speed. (It used to return a unit vector — full speed at 0.35.)
+        var along = best >= 0 ? dirs[best] * bestScore : Vector3.zero;
+
+        // Whatever the corridor did not take is the player's own lateral intent, held inside the lane.
+        var residual = intent - along;
+        residual.y = 0f;
+        var lateral = Vector3.zero;
+        float lateralAmount = residual.magnitude;
+        if (lateralAmount > 0.001f)
+        {
+            var lateralDir = residual / lateralAmount;
+            var offset = transform.position - centre;
+            offset.y = 0f;
+            // How much lane is left in the direction the player is pushing? The bound eases them to a
+            // stop at the edge rather than overruling the push.
+            float room = LaneHalf - Mathf.Max(0f, Vector3.Dot(offset, lateralDir));
+            lateral = lateralDir * (lateralAmount * Mathf.Clamp01(room / LaneFeather));
+        }
+
+        var move = along + lateral;
+        if (along.sqrMagnitude > 0.0001f) _alongDir = along.normalized;
+        return move;
     }
 
     bool CanStep(Vector2Int cell, Vector2Int step)
@@ -467,22 +509,27 @@ public sealed class FarmWalkerController : MonoBehaviour
         bool ns = north || south;
         float half = _maze.CellSize * 0.5f - 0.38f;
 
-        bool alongX = Mathf.Abs(_travel.x) >= Mathf.Abs(_travel.z) && _travel.sqrMagnitude > 0.01f;
+        bool alongX = _alongDir.sqrMagnitude > 0.01f
+            ? Mathf.Abs(_alongDir.x) >= Mathf.Abs(_alongDir.z)
+            : (Mathf.Abs(_travel.x) >= Mathf.Abs(_travel.z) && _travel.sqrMagnitude > 0.01f);
         if (ew && !ns) alongX = true;
         else if (ns && !ew) alongX = false;
-        else if (_travel.sqrMagnitude <= 0.01f)
+        else if (_travel.sqrMagnitude <= 0.01f && _alongDir.sqrMagnitude <= 0.01f)
             alongX = Mathf.Abs(pos.x - center.x) >= Mathf.Abs(pos.z - center.z);
 
+        // M22 (§25.2): the lane is a BOUND, not a rail. The old code snapped the player onto the
+        // centreline (pos.z = center.z / pos.x = center.x) and only then clamped to the lane — that is
+        // the auto-centring that fought the player's own input. Now the perpendicular axis is clamped
+        // at the lane edge and nothing more, so a deliberate sideways push decides where in the lane
+        // the player stands. The corridor walls are still held by the colliders on the corn blocks.
         if (alongX)
         {
-            pos.z = center.z;
             if (!west) pos.x = Mathf.Max(pos.x, center.x - half);
             if (!east) pos.x = Mathf.Min(pos.x, center.x + half);
             pos.z = Mathf.Clamp(pos.z, center.z - LaneHalf, center.z + LaneHalf);
         }
         else
         {
-            pos.x = center.x;
             if (!south) pos.z = Mathf.Max(pos.z, center.z - half);
             if (!north) pos.z = Mathf.Min(pos.z, center.z + half);
             pos.x = Mathf.Clamp(pos.x, center.x - LaneHalf, center.x + LaneHalf);

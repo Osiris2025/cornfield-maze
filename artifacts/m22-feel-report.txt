@@ -1,0 +1,12 @@
+begin (contract: stick dead zone 0.12 ramped to full by 0.30; a deliberate sideways push must move the player; the lane bound must hold)
+run handed over after 1.0 s: frozen=False isPlaying=True frontEndPresent=True
+stick curve (mag -> output magnitude): 0.0500->0.000  0.1199->0.000  0.1200->0.000  0.2100->0.500  0.2999->0.999  0.3000->1.000  0.6000->1.000  1.0000->1.000
+PASS dead zone: input below 0.12 produces no move and input at 0.30 produces full move
+measuring in cell 1,18 centre (4.00, 0.00, 72.00) along=(0.00, 0.00, 1.00) lateral=(1.00, 0.00, 0.00) laneHalf=0.42
+PASS sidestep: a deliberate sideways push moved the player 0.420 m (was 0.000 m before M22 - the push was refused)
+PASS lane bound: held at 0.420 m, lane half is 0.420 m - the player never leaves the lane
+PASS no yank: released at 0.420 m off-centre and stayed there (0.420 m) — the old auto-centring would have snapped it to the centreline
+measured speed: walk=4.38 m/s (constant is 4.40) sprint=7.40 m/s (constant is 7.40)
+PASS speed: walk and sprint match the shipped constants within tolerance
+touch surface: look sensitivity=0.14 deg/pt (constant 0.14), invertY=False, look-drag region=x >= 598 px of 1300 (drag anywhere on the right half, no fixed pad)
+end

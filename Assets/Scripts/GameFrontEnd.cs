@@ -87,6 +87,10 @@ public sealed class GameFrontEnd : MonoBehaviour
         var front = go.AddComponent<GameFrontEnd>();
         front._player = player;
         front._onPlay = onPlay;
+        // M22: Instance was declared and read but never assigned, so the singleton was permanently
+        // null and nothing outside this method could reach the front end. Assigned here, which is the
+        // only place the object is created.
+        Instance = front;
         IsPlaying = false;
         return front;
     }
@@ -283,6 +287,16 @@ public sealed class GameFrontEnd : MonoBehaviour
     {
         Show(Stage.Playing);
         if (_onPlay != null) _onPlay();
+    }
+
+    /// <summary>
+    /// M22 diagnostics only: start the run without a human tapping Play, so M22FeelSelfTest measures
+    /// the real controller. Called only when the player is launched with "-m22selftest".
+    /// </summary>
+    public static void ForcePlayForTest()
+    {
+        if (Instance == null) return;
+        Instance.BeginRun();
     }
 
     // ---- pause -------------------------------------------------------------

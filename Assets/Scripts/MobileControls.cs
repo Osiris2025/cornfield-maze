@@ -10,6 +10,39 @@ public sealed class MobileControls : MonoBehaviour
     public bool Running { get; private set; }
     public bool RestartPressed { get; private set; }
 
+    // ---- M22 (§25.2) the feel contract ------------------------------------------------------
+    /// <summary>Stick dead zone: below this the stick reads as centred. Narrow lanes make a
+    /// hair-trigger stick feel broken, which is the defect this lands.</summary>
+    public const float DeadZone = 0.12f;
+
+    /// <summary>Full deflection: the stick ramps 0 -> 1 between DeadZone and this, so the whole
+    /// analog range stays usable instead of jumping to full speed at 0.12.</summary>
+    public const float FullZone = 0.30f;
+
+    /// <summary>Screen x fraction where the look region begins. §25.2: a drag anywhere on the right
+    /// half is look — there is no fixed look-pad, and this is the boundary that proves it.</summary>
+    public const float LookHalfSplit = 0.46f;
+
+    /// <summary>§25.2 look sensitivity in degrees per point. Kept at the shipped 0.14, now exposed
+    /// so a settings screen can own it (M8) and so the self-test can read it.</summary>
+    public float LookSensitivity = 0.14f;
+
+    /// <summary>§25.2: the invert-Y toggle exists as a setting; the default matches the shipped feel.</summary>
+    public bool InvertY;
+
+    /// <summary>
+    /// The stick response, as one pure function so the behaviour can be both used and measured.
+    /// Radial dead zone, then a linear ramp to full deflection at <see cref="FullZone"/>.
+    /// </summary>
+    public static Vector2 StickCurve(Vector2 raw, float radius)
+    {
+        if (radius <= 0.0001f) return Vector2.zero;
+        float magnitude = raw.magnitude / radius;
+        if (magnitude <= DeadZone || raw.sqrMagnitude < 0.000001f) return Vector2.zero;
+        float ramp = Mathf.Clamp01((magnitude - DeadZone) / (FullZone - DeadZone));
+        return raw.normalized * ramp;
+    }
+
     /// <summary>
     /// M21 (§25.1): true while the front end is showing a screen that is not the run itself (title,
     /// help, introduction, pause). Hides the stick and the buttons and zeroes their input, so a drag
@@ -167,7 +200,7 @@ public sealed class MobileControls : MonoBehaviour
                     continue;
                 }
 
-                if (pos.x < Screen.width * 0.46f && _moveFinger < 0)
+                if (pos.x < Screen.width * LookHalfSplit && _moveFinger < 0)
                 {
                     _moveFinger = touch.fingerId;
                     _moveOrigin = pos;
@@ -176,7 +209,7 @@ public sealed class MobileControls : MonoBehaviour
                     continue;
                 }
 
-                if (pos.x >= Screen.width * 0.46f && _lookFinger < 0)
+                if (pos.x >= Screen.width * LookHalfSplit && _lookFinger < 0)
                 {
                     _lookFinger = touch.fingerId;
                     _lookLast = pos;
@@ -194,9 +227,10 @@ public sealed class MobileControls : MonoBehaviour
                 {
                     var raw = pos - _moveOrigin;
                     float radius = Mathf.Max(48f, _stickRadiusPx);
-                    var clamped = Vector2.ClampMagnitude(raw / radius, 1f);
-                    Move = clamped;
-                    SetKnob(clamped);
+                    // M22 (§25.2): the raw displacement used to go straight to Move. Now it passes
+                    // through the dead zone + ramp, so a hair-trigger touch does not move the player.
+                    Move = StickCurve(raw, radius);
+                    SetKnob(Move);
                 }
             }
             else if (touch.fingerId == _lookFinger)
