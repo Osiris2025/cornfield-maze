@@ -522,7 +522,8 @@ and no lie may make a node unwinnable at zero upgrades (§23.8).
 ### 23.1 Sizes: square first, square for twelve nodes
 
 21×21 (ch1) → 25×25 (ch2) → 29×29 (ch3) → 33×33 (ch4) → 37×37 (ch5). **Square all the way through
-L12**, because a shape betrayal only reads as a betrayal if the shape was learnable first. This
+L12**, because a shape betrayal only reads as a betrayal if the shape was learnable first. **Confirmed by
+Todd 2026-09-24: the flip starts at L13.** This
 supersedes the rectangles in §6 (21×17 … 29×25); the level table in §6 is regenerated to match.
 
 ### 23.2 Then the field stops being a square
@@ -632,7 +633,8 @@ of the rain. It needs `Icing Seal` T3 (window ÷ 0.55 ≈ 182 s of survivable st
 `Faster Feet` T3 (run 123 s). That is a deliberate spend of the economy in §10/§11 — the first content
 that *requires* an upgrade — and it is the reason the shop exists. **Chapter 1–2 stay walkable with zero
 upgrades, and the §8 fairness law is still verified with zero upgrades** (fairness = enemies, not
-weather; the weather exception is this paragraph and nowhere else).
+weather; the weather exception is this paragraph and nowhere else). **Confirmed by Todd 2026-09-24:
+keep the upgrade gate — chapter 5 is meant to cost the shop.**
 
 ### 23.7 Ownership and build-order impact
 
