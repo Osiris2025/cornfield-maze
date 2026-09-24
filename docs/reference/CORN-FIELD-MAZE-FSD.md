@@ -173,7 +173,7 @@ verify the same maze (boss nodes continue the series at virtual indices 21–25,
 **Economy consequence (deliberate, verified by arithmetic):** first-clear income is **1,362 coins**
 (1,112 from levels + 250 from bosses) against a **1,450-coin** full upgrade tree (§11). **A player
 cannot max every upgrade in one pass** — that is the point. Replays pay maze + drops but **not** the
-completion bonus, so farming is possible but slow (~20–38 coin per replay).
+completion bonus, and replay pays at **half** rate — farming is possible but slow (~11–19 coin per replay).
 
 - The shipped constants `Seed 1661 / Width 25 / Height 21 / CellSize 4` are replaced by
   **`LevelTable`** (one static readonly array, one file) — per the data-over-code rule. Level 9's
@@ -252,6 +252,8 @@ out of scope and stays out (§21).
 **Rules:**
 - Coins are visual objects in the world (procedural: gold-rimmed sweet discs), auto-collected on
   contact within 0.9 m.
+- **Replay (settled 2026-09-24):** any cleared node can be replayed freely. A replay pays **half** its
+  maze coins and half its enemy drops, and **never** the completion bonus.
 - Coins uncollected at level end are **lost** — the level-select map shows collected/available.
 - Coin totals are integers everywhere; no floating point in the wallet.
 
@@ -288,7 +290,7 @@ the clearing.
 | B1 | **The Kneading Hands** | 300 | Slap (unblockable, telegraphed) / two-hand pincer closing the arena / — | 50¢ + Dash unlock |
 | B2 | **Sugar Ant Queen** | 450 | Ant spawns (3 at a time) / glob spit down three lanes / spawn + spit together | 50¢ (Ant colonies enter the level table from L17) |
 | B3 | **The Oven Wraith** | 600 | Heat-wave push (knocks you back a lane) / floor embers (dough drain zones) / embers + push | 50¢ + Sugar Rush unlock |
-| B4 | **The Stale Loaf Colossus** | 800 | Roll (charges a lane, breaks pillar clusters) / crumb spray (arc of 5 globs) / roll twice in a row | 50¢ + a cane skin (code-generated, cosmetic) |
+| B4 | **The Stale Loaf Colossus** | 800 | Roll (charges a lane, breaks pillar clusters) / crumb spray (arc of 5 globs) / roll twice in a row | 50¢ only |
 | B5 | **The Crumb Beast Prime** | 1100 | All of the above, one per phase: charge, glob arc, hands | **the pot of gold** + Icing Glob unlock + run summary + leaderboard submit |
 
 - **B5 is the game's answer to "what is at the end".** It is the chapter-1 enemy, grown. Killing it
@@ -439,19 +441,14 @@ before Todd has looked at a frame of the new cookie from a plain launch.
 
 ## 21. Out of scope (explicitly)
 
-Multiplayer · **achievements** · ads · analytics · in-app purchases · a second playable character ·
-Android/WebGL · cloud saves · daily challenges · pets/companions · anything that needs a new Unity
-package without Todd's approval.
+Multiplayer · **achievements** · ads · analytics · in-app purchases · **cosmetic rewards or weapon skins**
+(cut 2026-09-24: every reward is functional) · a second playable character · Android/WebGL · cloud saves ·
+daily challenges · pets/companions · anything that needs a new Unity package without Todd's approval.
 
 ## 22. Open questions for Todd
 
 1. ~~Confirmed as 5 chapters × 4 levels + 5 bosses (25 nodes)?~~ **RESOLVED 2026-09-24 (Todd): yes — 5 chapters of 4 levels + a chapter boss, 25 nodes, gold behind the final boss.**
-2. **Candy Cane as the weapon** — bytes right to you, or do you want a different first weapon
-   (rolling pin / icing squirt)?
-3. **Weapon skins as boss rewards** (B4 grants one cosmetic) — keep or cut? It is the only
-   non-functional reward in the design and can be dropped without touching anything else.
-4. **Final boss payoff.** After the gold: run summary and leaderboard submit, then a "wander again"
-   (the current post-win behaviour) with everything unlocked. Do you want a New Game+ style loop
-   instead, or an ending card?
-5. **Level re-play** — allowed freely (half coins, no completion bonus) or locked to a "previous
-   chapter" range?
+2. ~~Candy Cane as the weapon?~~ **RESOLVED 2026-09-24 (Todd): candy cane — melee, 1.6 m arc, 3-hit kills.**
+3. ~~Weapon skins as boss rewards?~~ **RESOLVED 2026-09-24 (Todd): CUT. Every reward is functional — coins or an ability.**
+4. ~~Final boss payoff?~~ **RESOLVED 2026-09-24 (Todd): run summary + leaderboard submit, then "wander again" with everything unlocked — the current post-win behaviour, kept as-is.**
+5. ~~Level re-play?~~ **RESOLVED 2026-09-24 (Todd): free replay of any cleared node, half coins, no repeat completion bonus (see §10).**
