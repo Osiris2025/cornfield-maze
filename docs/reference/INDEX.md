@@ -34,3 +34,10 @@ Where to look for what. Maintained by **Dough** (@corn-art). One line per questi
 | Where did the corn models come from, and what is their licence? | `docs/ASSETS-INVENTED.md` → **licence UNKNOWN, must be confirmed before App Store** |
 | How do I regenerate the corn blocks? | `scripts/corn_block_build.py` (design-time only, never in the build) |
 | How was the corn density decided, and how is it proven? | `scripts/corn_block_verify.py` (ray test + renders) + FSD §24.3 |
+| **Is there a title / help / introduction screen before the game starts?** | **No — `GameBootstrap.Start()` drops the player straight into the maze.** Requirement: FSD §25.1 (M21) |
+| What is the movement target — "normal 3D / FPS" on a phone? | FSD §25.2's feel-contract table. **First-person vs third-person is open with Todd.** |
+| Can objects be picked up and thrown at threats? | **No — nothing in the tree carries or throws.** Requirement + the cob's ballistics: FSD §25.3 (M23) |
+| What is the thing chasing Gingy called? | `Assets/Scripts/CrumbBeast.cs` today; **rename open with Todd** — FSD §25.4 |
+| What keeps a threat from just parking in a corridor? | **The flow law** (no threat may hold the player still >1.5 s) + §8's fairness law — FSD §25.4 |
+| Where is the dusk / moonrise / Halloween sky required? | FSD §25.5 (M25), built on `Assets/Scripts/NightSky.cs` |
+| Where are the cornstalk rustle and the eerie music? | `Assets/Scripts/MazeMoodAudio.cs` — **already built** (`CornRustle`, `AnxiousDrama`). The gap is the threat-distance term + a device listen pass: FSD §25.6 (M26) |

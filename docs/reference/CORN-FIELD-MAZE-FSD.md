@@ -493,6 +493,12 @@ before Todd has looked at a frame of the new cookie from a plain launch.
 | **M18** | Portals (placement, transit, facing change, tells) + the compass and its target rotation (§23.3, §23.4) | Furrow → Squall |
 | **M19** | Shape/portal/lie-schedule verification harness (§23.8) | Lantern |
 | **M20** | Corn block swap: `MazeWorldBuilder` plants 4 blocks per wall cell instead of 6–9 scattered stalks, materials set to Cutout, LOD chain wired (§24) | Squall → Dough |
+| **M21** | Front end — title / help / introduction + pause (§25.1); independent of M0, can start now | Squall → Dough |
+| **M22** | Movement: the first-person/third-person decision, the feel contract, `CorridorMove` and the post-M20 camera (§25.2) | Furrow |
+| **M23** | Pick up and throw — cobs, ballistics, the 1.1 s stagger, lane ammo (§25.3) | Furrow → Dough |
+| **M24** | The rename of the chasing threat, one pass across code / docs / HUD / cues (§25.4) | Furrow |
+| **M25** | Dusk phase, moonrise, Halloween cloud upgrade (§25.5) | Squall |
+| **M26** | Rustle + music: the single threat-distance term and the device listen pass (§25.6) | Rattle |
 
 ## 21. Out of scope (explicitly)
 
@@ -508,6 +514,9 @@ daily challenges · pets/companions · anything that needs a new Unity package w
 4. ~~Final boss payoff?~~ **RESOLVED 2026-09-24 (Todd): run summary + leaderboard submit, then "wander again" with everything unlocked — the current post-win behaviour, kept as-is.**
 5. ~~Level re-play?~~ **RESOLVED 2026-09-24 (Todd): free replay of any cleared node, half coins, no repeat completion bonus (see §10).**
 6. ~~Level sizes, and whether the field always stays a rectangle?~~ **RESOLVED 2026-09-24 (Todd): start 21×21 square, grow to 37×37, then change the overall shape once the square is figured out — plus portals that change orientation, a compass that later points elsewhere, and a moon/star sky that stops being usable. Written up as §23.**
+7. **Movement model — first-person or third-person?** (§25.2). One word. Recommendation is third-person: the cookie's own body is the health model (§5), and it disappears in first-person.
+8. **What is the chasing threat called?** (§25.4). Candidates: *the Husk*, *the Thresher*, *the Hollow* — or Todd's own.
+9. **Is the cob the right throwable?** (§25.3) — dried corn cob, 0.25 kg, thrown at 14 m/s, 7.0 m range, 1/3 of the chaser's health and a 1.1 s stagger that buys 2.6 m of a 4 m cell.
 
 ## 23. The confidence curve — sizes, shapes, portals, a compass that lies, a sky that stops working
 
@@ -749,3 +758,212 @@ Added to §19's doctrine, all as committed artefacts:
 |---|---|---|
 | Corn block swap in `MazeWorldBuilder` + Cutout materials + LOD chain | Squall → Dough | **M20** |
 | The block set, LODs, manifest, brief | Dough | **M20** |
+
+## 25. Presentation, feel and the threat rework
+
+**Source: Todd, 2026-09-24 (verbatim):** *"this program needs to make sure it has the same title, help,
+introduction pages before startig the game. alao, I think thinkt he original name for the object
+chasing gingy is pretty silly. we need hazards and threats that keep the movement flowing, but that
+original one was pretty corny. Make sure that we have NORMAL 3D, FPS movemnts that are acceptable and
+expected for a unity and iphone games. make it so objects can be picked up and thrown at any threats
+that do a small amount of damage that in early mazes can help gingy get past the threat to move around
+it before being eaten. Make sure a propoer dusk, brillialnt skyscape with halloween clouds and
+halloween moon rises up during initial game place. add the proper rustling of cornstoalks and eerie
+background music that sits the player on edge and adds to the impending doom."*
+
+Six requirements. Three are absent from the tree, two are already built and need a listen/look pass,
+one is a rename that reaches across the code, the docs and the audio cues.
+
+### 25.0 What is already in the tree (verified 2026-09-24, not assumed)
+
+| Requirement | In the tree today | Verdict |
+|---|---|---|
+| Title / help / introduction | **Nothing.** `GameBootstrap.AutoStart` runs on `AfterSceneLoad` and `Start()` (`GameBootstrap.cs:18-47`) builds the maze, spawns the player at `maze.StartWorld` and hands over control on the same frame the scene loads. A grep for `title\|intro\|help\|splash\|pressStart\|tutorial` across `Assets/Scripts` returns **0 matches**. | **ABSENT — build (§25.1)** |
+| Movement | Present and substantial: `FarmWalkerController.cs` (714 lines) — third-person boom `CameraDistance 5.2` / `CameraHeight 2.1`, touch-look `TouchLookSensitivity 0.14` with pitch clamped, `CharacterController`, `Gravity 18`, `CorridorMove`; `MobileControls.cs` (328) stick + SWING / RUN / dash / rush / glob. | **PRESENT — needs the §25.2 decision and the feel contract** |
+| Pick up & throw | **Nothing carries or throws anything.** The only `Rigidbody` in the tree is `PotOfGold.cs:79` and it is kinematic. No pickup, no held item, no throw arc, no throwable projectile. | **ABSENT — build (§25.3)** |
+| Dusk and moonrise | `NightSky.cs` (363) already carries the moon, star drift and the cloud grammar of §23.5. There is **no dusk phase and no rise**: the sky enters whatever state `Install` leaves it. | **PARTIAL (§25.5)** |
+| Cornstalk rustle | **Already built.** `MazeMoodSynth.CornRustle(8f)` looped on a source parented to the listener follower; volume driven by gust + the player's own movement + storm, pitch by movement (`MazeMoodAudio.cs:110, 168-172`). | **PRESENT — needs §25.6** |
+| Eerie music | **Already built**, and then some: `MazeMoodSynth.AnxiousDrama(16f)` bed plus wind, hollow howl, `ChaseStrings`, panic stabs, `_music`/`_rustle` mixed by tension and storm with ducking (`MazeMoodAudio.cs:106, 152-172, 248-342`). | **PRESENT — needs §25.6** |
+
+Two of Todd's six asks are already in the code and have never been heard on a device. §25.6 is
+therefore a listen pass and one missing signal, not a rebuild — say so rather than rebuilding what
+already exists.
+
+### 25.1 The front end — title, help, introduction
+
+Three full-screen states before the player takes control, built in code like every other screen
+(§16), in this order:
+
+| # | Screen | Contents | Exit |
+|---|---|---|---|
+| 1 | **Title** | Game name, the moon already risen behind it, the rustle already playing (the front end is not silent — §25.6 starts here). Buttons: **Play**, **Help**, **Leaderboard** (§15, greyed until signed in), **Settings**. | `Play` → 2, or `Continue` if a save exists (§14) |
+| 2 | **Help** | Two panels, no wall of text: **Move** (stick, RUN, dash) and **Fight** (SWING, the three abilities, **and the new throw — §25.3**). Reachable from the title and from pause. | Back → 1, `Start` → 3 |
+| 3 | **Introduction** | Four lines of premise, skippable with a tap, and the only place the threat is named (§25.4). Ends on the dusk sky (§25.5) — the player's first frame of play is the field at dusk, from the maze's start cell. | Play begins (§25.5 clock starts) |
+| — | **Pause** | New: a pause state, because the front end makes one necessary. `R` restarts today (`GameBootstrap.cs:51`); a pause with Resume / Restart / Help / Quit to title is the phone-expected shape. | — |
+
+The old §16 "hint text, fades after 24 s" stays, but it is no longer the tutorial: help lives in a
+screen the player can return to.
+
+**No new art.** The title, help and intro are drawn from the same procedural register as the rest of
+the UI (Dough's panel set, §17). Nothing here may require a font or an image file that does not
+already exist.
+
+### 25.2 Movement — the decision first, then the contract
+
+> **OPEN — needs Todd, one word: first-person or third-person?** "NORMAL 3D, FPS movements" reads two
+> ways and they are two different games:
+>
+> | | (a) **First-person** | (b) **Third-person, mobile-standard, polished** |
+> |---|---|---|
+> | Camera | at the cookie's eyes; `CameraDistance → 0`, look drives the body | the current shape: boom at 5.2 m, move-and-look apart, freely orbiting |
+> | The cookie | visible only in the front end, the death shot and shadows | always on screen — he is the character Todd asked to be proud of, and the health model (§5) is *his body* |
+> | Combat | the cane's 1.6 m arc (§9) happens off-screen; the swing is unreadable | the arc is readable, which is what makes 3-hit kills fair |
+> | Feel | genuine dread and a real horror read — you cannot see what is behind you, which is exactly what §25.4's threats want | expected by every player of a phone game; the "normal" in Todd's sentence |
+>
+> The recommendation is **(b)**, for one concrete reason: §5's whole health model is the cookie's
+> integrity, and in (a) the player never sees the thing they are protecting. But this is Todd's call
+> and it is one word.
+
+Whichever way it goes, the **feel contract** below is what "acceptable and expected for Unity and
+iPhone" means, and it is measured, not asserted:
+
+| Rule | Value | Why |
+|---|---|---|
+| Stick dead zone, then full analog | 0.12, ramped to full by 0.30 | narrow lanes make a hair-trigger stick feel broken |
+| Look from a drag **anywhere** on the right half | not a fixed look-pad | the current `MobileControls` layout must be checked against this |
+| Look sensitivity | 0.14°/pt, with an invert-Y toggle | keep the current constant, but expose it |
+| Pitch clamp | ±35° (existing `MinPitch`/`MaxPitch`) | unchanged |
+| Sprint | hold RUN → 7.4 (§-existing), no stamina bar | §4 |
+| Frame floor | 60 fps on the oldest supported device | §18 budget already sets the caps |
+| Safe area | notch side and home-bar bottom respected | §16 |
+
+**Two live defects this section lands:**
+
+1. **`CorridorMove`** (`FarmWalkerController.cs:238, 375`) centres the player into the lane. Lane
+   centring is *not* a movement convention any phone player expects — it is doing the job a collider
+   should do. Requirement: if it fights the player's own input at any speed, remove the centring and
+   hold the lane with colliders; if it is load-bearing for cornering at 7.4, keep it and clamp it so
+   it can never overrule a deliberate sideways push.
+2. **The camera will be inside the corn after M20.** The boom is 5.2 m at 2.1 m height; §24's blocks
+   are 2.0 m of stalks with a ~2.6 m leaf spread and a 3.8 m canopy. Once the field is real, the
+   third-person camera spends its life inside leaves. `FarmWalkerController` already lerps the boom to
+   `CameraDistance * 0.62` when looking up (`:357`) — that is the hook: the boom needs a real
+   occlusion/canopy response, and it must be validated against the **new** field, not the old stalks.
+
+### 25.3 Pick up and throw — the cob
+
+The mechanic Todd asked for: *"objects can be picked up and thrown at any threats that do a small
+amount of damage that in early mazes can help gingy get past the threat to move around it before
+being eaten."* That sentence sets the entire design: the throw is **not** a weapon that kills, it is a
+tool that buys a walk-around — so its value is measured in **metres of ground and seconds**, never in
+damage.
+
+| Property | Value | Derivation, not vibes |
+|---|---|---|
+| Item | a dried **corn cob**, 190 mm long, 45 mm across | the cob already exists in the corn geometry; no new model |
+| Mass | 0.25 kg | real dried cob, 0.15–0.30 kg |
+| Pickup radius | 1.2 m, tap-to-pick, a THROW control appears only in range | one in hand; picking up a second drops the first |
+| Throw | 14 m/s at 20° above the horizon | — |
+| Range | **7.0 m** under the game's own gravity: `R = v²·sin2θ / g = 14² × 0.643 / 18` | ≈ 1.75 cells of the 4 m grid |
+| Effect on the chaser | **1/3 of its health** (6 dough of 18) **and a 1.1 s stagger** | the stagger is the point |
+| Ground bought | **2.6 m** of the 4 m cell at base chaser speed 2.35 | `2.35 × 1.1` — enough to walk past it in an early maze, not enough to trivialise a boss |
+| Interaction | a thrown cob cancels an Icing Wisp glob in flight | one more reason to throw while moving |
+| Ammo | finite cobs lying in the lanes, ~1 per 6 route cells, none in a dead end's only mouth | never shop-bought (§10), never farmable |
+
+**Binding constraints (these are the ones that keep it honest):**
+
+- **The fairness law (§8) still holds.** A cob is never the only way past anything: every level stays
+  completable at base walk speed with zero upgrades by a player who walks the route and never detours.
+  Throwing is *always* optional, or §8 is broken.
+- **A projectile needs physics.** The tree has no non-kinematic `Rigidbody` today; the player is a
+  `CharacterController`. Cobs get a real ballistic arc and their own colliders, the player stays
+  kinematic — the two must not be allowed to interact through physics.
+- **The flow law (§25.4) applies to the throw too:** picking up and throwing must be doable at a walk
+  or a run. There is no aiming stance, no slow-walk, no stop-to-throw.
+
+### 25.4 Threats — the flow law, and the rename
+
+**The flow law (binding, new, 2026-09-24).** Sitting beside §8's fairness law:
+
+> **No threat may require the player to stop moving for more than 1.5 s.** A threat is passed by
+> *moving* — sidestepping, running, turning a corner — or it is not shipped. Danger comes from being
+> driven somewhere, never from being held in place.
+
+This law indicts two enemies already in §8:
+
+| Enemy | Today | Required |
+|---|---|---|
+| **Stale Loaf** | stationary, body-checks anything entering its cell, 3 cane hits to break — it **stops** movement | it must move you: roll slowly down the lane (~0.8 m/s) so you sidestep and keep going, or be forbidden from ever sealing a lane. A stationary blocker in a 4 m corridor is a wall in a game about flow. |
+| **Icing Wisp** | holds a lane 6–10 cells away and spits a glob every 2.2 s — it makes you **wait** | keep the position, change the pressure: the glob travels the lane *line*, so the answer is a sidestep *while running*, never a stop and wait |
+
+And it gives a better home to the thing Todd asked for earlier — **something peeking at you through
+the corn** (§24: the field's see-through is at the *base* of the wall, 5.6 %, a lower metre of bare
+stems with the ground behind it):
+
+> **The rusher.** A threat that only exists at the base of the corn wall — it is what the 5.6 %
+> see-through was for. It bursts out of a wall cell, is **faster than the player for 3 s** and then
+> cannot turn a corner: it commits to a lane and overshoots. It never catches a player who keeps
+> turning. It is unkillable by cane and it is *meant* to be — the answer is to run the corner, or to
+> hit it with a cob (§25.3) to cut its 3 s short. This is the threat that makes the corn itself
+> frightening, and it is built entirely out of §24's measured peek spot.
+
+**The rename.** Todd: the current name is *"pretty silly"*. The object is `CrumbBeast.cs` (316 lines)
+and the rename reaches: `CrumbBeast.cs` itself, the `CrumbBeast.Spawn` call (`GameBootstrap.cs:45`),
+§8's enemy table, §9/§14's references, the HUD's death line, and `MazeMoodAudio`'s chase-sting cue
+names. **Candidates, Todd's call:**
+
+| Name | Read |
+|---|---|
+| **the Husk** | what is left of a corn plant once it is stripped — short, cold, and it does not read as a joke |
+| **the Thresher** | a machine that strips corn; keeps the harvest grammar and sounds like a threat |
+| **the Hollow** | the Halloween read; least specific of the three, most atmospheric |
+
+Whatever is chosen becomes the name in the code, the docs, the HUD and the cue names in one pass —
+no aliases, no "formerly known as".
+
+### 25.5 Dusk, the Halloween sky, and the moonrise
+
+The player's **first frame of play is dusk**, and the moon rises while they are still in the early
+levels of the first maze.
+
+| Beat | Time | What |
+|---|---|---|
+| Dusk | t = 0 | sun just below the horizon, warm band low in the west, the field reading as silhouette, the stalks already rustling (§25.6 — the front end has been playing it since the title) |
+| Rise | 0–40 s | the moon climbs from the horizon; **big and low** — deliberately oversized for the Halloween read, not a physical moon — harvest-orange, slightly oblate near the horizon |
+| Cloud | throughout | ragged scraps and a few long strips crossing the moon's path, with occasional fast low scud; **every cloud that crosses steals the moon's light off the field for a beat** — that interruption is the "brilliant" part, and it is free once the grammar is right |
+| Night | by the time the player is ~2 cells in | hands over to §23.5's sky, including its rule that the moon is a usable bearing early and a liar later |
+
+Owner **Squall**. Most of it is cheap: `NightSky` already carries the moon and the cloud grammar, so
+this is a phase ramp, a directional-light colour ramp, and a cloud upgrade — not a new system.
+
+### 25.6 Rustle and music — one number, so they cannot disagree
+
+Both exist (§25.0). The missing signal is **the threat's distance**, and it is the honest version of
+"impending doom": the field itself tells the player how close the thing is, and no music sting has to
+cheat to do it.
+
+- **One source of truth.** A single normalised `threat` value from `|chaser − player|` in cells drives
+  the rustle envelope *and* the music bed's tension term. They cannot drift apart if they read the
+  same number.
+- **Rustle:** gain `0.16` at 8 cells → `0.40` at 1.5 cells, pitch `+0-4 %`, on top of the existing
+  gust/movement/storm shaping (`MazeMoodAudio.cs:170-172`). Inside 3 cells it gains a low partial —
+  the "something is in the stalks next to you" register.
+- **Music:** the existing `tension` term (`:153`) comes from the same value, still capped at `0.42`
+  with ducking during stings — the bed must not fatigue.
+- **The listen pass is the deliverable.** Neither of these can be judged in the editor. §25.6 is
+  complete when a device recording exists, not when the numbers are set.
+- **Cue names follow the rename** (§25.4).
+
+### 25.7 Ownership, order, and what this does not change
+
+| # | Milestone | Owner | Depends on |
+|---|---|---|---|
+| **M21** | Front end: title / help / introduction + pause (§25.1) | Squall → Dough | **nothing — this can start now, independently of M0** |
+| **M22** | Movement decision + the feel contract + the two defects (§25.2) | Furrow | the one-word answer in §25.2 |
+| **M23** | Pick up and throw: cobs, ballistics, the stagger, lane ammo (§25.3) | Furrow → Dough | M10 (combat framework) |
+| **M24** | The rename, one pass across code/docs/HUD/cues (§25.4) | Furrow | Todd's pick |
+| **M25** | Dusk phase, moonrise, Halloween cloud upgrade (§25.5) | Squall | M17 (the sky) |
+| **M26** | Rustle + music: the threat term and the device listen pass (§25.6) | Rattle | M21 (the front end must exist to be quiet before the game starts) |
+
+**Unchanged by this section:** §8's fairness law, the M20 corn block swap, the cookie gate (M0/G1,
+open since 2026-09-17) and every rule in §21. §25 adds constraints to the enemies; it removes none.
