@@ -128,52 +128,56 @@ where `amount` 0→1 washes the cookie (icing first, via the `gb_man_decoration`
 boss (5 bosses)"; 4 chapters with 5 bosses does not divide, so this resolves to **5 chapters of 4
 levels (20) + 5 bosses = 25 nodes.** Confirm at §22 if you meant 4 chapters of 5.
 
-Difficulty rises on four independent axes — size, storm timing, enemy set, rain window — so that no
-single ramp has to carry the curve:
+Difficulty rises on five independent axes — size, **shape**, storm timing, enemy set, rain window — so
+that no single ramp has to carry the curve:
 
 | Axis | Chapter 1 | → | Chapter 5 |
 |---|---|---|---|
-| Maze size (cells) | 21×17 | → | 29×25 |
+| Maze size (cells) | 21×21 (square) | → | 37×37 |
+| Maze shape | square, every node for 12 nodes | → | octagon · circle · diamond · ring · blob · cross · wedge (§23.2) |
 | Storm onset | 60 s | → | 8 s |
 | Rain window (dough) | 210 s | → | 100 s |
 | Enemy types present | Beast | → | Beast + Loaf + Wisp + Ants |
 | Corridor bias (dead-end depth) | 0.58 | → | 0.50 |
 
 **The level table** (deterministic; `Seed = 1661 + 7919 × L` so every level is reproducible and QA can
-verify the same maze (boss nodes continue the series at virtual indices 21–25, so B1 = 167960); `StraightBias` is `MazeGenerator`'s existing corridor-straightness constant).
+verify the same maze (boss nodes continue the series at virtual indices 21–25, so B1 = 167961 after its validated offset); `StraightBias` is `MazeGenerator`'s existing corridor-straightness constant).
 
-> ⚠️ **Seeds are validated, not just computed** (2026-09-24). Every seed below was run through the
-generator and checked against the §7 invariants; the formula seed passed at **19 of 20 levels**, and
-**L1 was moved 9580 → 9581** because its exit gate landed 2 cells from the start. The offset is part
-of the table, not a rewrite of the formula: `seed(L) = 1661 + 7919 × L + offset(L)`.
+> ⚠️ **Seeds are validated, not just computed** (re-verified 2026-09-24 for the square-and-shaped
+ladder). Every seed below was carved at its node's **size and shape** and checked against §7's
+invariants; the formula seed passes **23 of 25 nodes**. The two offsets are **L5 = 41257** and
+**B1 = 167961** (each failing seed put its exit gate within 4 cells of the start on the grid).
+**L1 needed no offset once the field became 21×21 square** — the gate-too-close defect that moved it
+to 9581 under the old 21×17 size does not occur at 21×21. The offset is part of the table, not a
+rewrite of the formula: `seed(Node) = 1661 + 7919 × Node + offset(Node)`.
 
-| Node | Maze | Seed | Bias | Storm onset | Rain window | Enemies | Maze¢ | Drop¢ | Comp¢ | Level¢ |
-|---|---|---|---|---|---|---|---|---|---|---|
-| L1 | 21×17 | **9581** | 0.58 | 60 s | 210 s | Beast ×1 | 7 | 3 | 12 | 22 |
-| L2 | 21×17 | 17499 | 0.58 | 56 s | 210 s | Beast ×1 | 8 | 3 | 14 | 25 |
-| L3 | 21×17 | 25418 | 0.58 | 52 s | 210 s | Beast ×2 | 9 | 6 | 16 | 31 |
-| L4 | 21×17 | 33337 | 0.58 | 48 s | 210 s | Beast ×2 | 10 | 6 | 18 | 34 |
-| **B1** | arena | 167960 | — | 0 s | 210 s | **The Kneading Hands** | — | — | 50 | 50 |
-| L5 | 23×19 | 41256 | 0.56 | 50 s | 180 s | Beast ×2 | 11 | 6 | 20 | 37 |
-| L6 | 23×19 | 49175 | 0.56 | 46 s | 180 s | Beast ×2 | 12 | 6 | 22 | 40 |
-| L7 | 23×19 | 57094 | 0.56 | 42 s | 180 s | Beast ×3 | 13 | 9 | 24 | 46 |
-| L8 | 23×19 | 65013 | 0.56 | 38 s | 180 s | Beast ×3 | 14 | 9 | 26 | 49 |
-| **B2** | arena | 175879 | — | 0 s | 180 s | **Sugar Ant Queen** | — | — | 50 | 50 |
-| L9 | 25×21 | 72932 | 0.54 | 40 s | 150 s | Beast ×2 + Loaf | 15 | 6 | 28 | 49 |
-| L10 | 25×21 | 80851 | 0.54 | 36 s | 150 s | Beast ×2 + Loaf | 16 | 6 | 30 | 52 |
-| L11 | 25×21 | 88770 | 0.54 | 32 s | 150 s | Beast ×3 + Loaf | 17 | 9 | 32 | 58 |
-| L12 | 25×21 | 96689 | 0.54 | 28 s | 150 s | Beast ×3 + Loaf | 18 | 9 | 34 | 61 |
-| **B3** | arena | 183798 | — | 0 s | 150 s | **The Oven Wraith** | — | — | 50 | 50 |
-| L13 | 27×23 | 104608 | 0.52 | 30 s | 120 s | Beast ×3 + Loaf + Wisp | 19 | 9 | 36 | 64 |
-| L14 | 27×23 | 112527 | 0.52 | 26 s | 120 s | Beast ×3 + Loaf + Wisp | 20 | 9 | 38 | 67 |
-| L15 | 27×23 | 120446 | 0.52 | 22 s | 120 s | Beast ×4 + Loaf + Wisp ×2 | 21 | 12 | 40 | 73 |
-| L16 | 27×23 | 128365 | 0.52 | 18 s | 120 s | Beast ×4 + Loaf + Wisp ×2 | 22 | 12 | 42 | 76 |
-| **B4** | arena | 191717 | — | 0 s | 120 s | **The Stale Loaf Colossus** | — | — | 50 | 50 |
-| L17 | 29×25 | 136284 | 0.50 | 20 s | 100 s | Beast ×3 + Loaf + Wisp + Ants | 23 | 9 | 44 | 76 |
-| L18 | 29×25 | 144203 | 0.50 | 16 s | 100 s | Beast ×3 + Loaf + Wisp + Ants | 24 | 9 | 46 | 79 |
-| L19 | 29×25 | 152122 | 0.50 | 12 s | 100 s | Beast ×4 + Loaf + Wisp ×2 + Ants | 25 | 12 | 48 | 85 |
-| L20 | 29×25 | 160041 | 0.50 | 8 s | 100 s | Beast ×4 + Loaf + Wisp ×2 + Ants | 26 | 12 | 50 | 88 |
-| **B5** | arena | 199636 | — | 0 s | 100 s | **The Crumb Beast Prime** | — | — | 50 | 50 |
+| Node | Maze | Shape | Seed | Bias | Storm onset | Rain window | Enemies | Maze¢ | Drop¢ | Comp¢ | Level¢ |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| L1 | 21×21 | square | 9580 | 0.58 | 60 s | 210 s | Beast ×1 | 7 | 3 | 12 | 22 |
+| L2 | 21×21 | square | 17499 | 0.58 | 56 s | 210 s | Beast ×1 | 8 | 3 | 14 | 25 |
+| L3 | 21×21 | square | 25418 | 0.58 | 52 s | 210 s | Beast ×2 | 9 | 6 | 16 | 31 |
+| L4 | 21×21 | square | 33337 | 0.58 | 48 s | 210 s | Beast ×2 | 10 | 6 | 18 | 34 |
+| **B1** | 37×37 | **cross** | 167961 | — | 0 s | 210 s | **The Kneading Hands** | — | — | 50 | 50 |
+| L5 | 25×25 | square | 41257 | 0.56 | 50 s | 180 s | Beast ×2 | 11 | 6 | 20 | 37 |
+| L6 | 25×25 | square | 49175 | 0.56 | 46 s | 180 s | Beast ×2 | 12 | 6 | 22 | 40 |
+| L7 | 25×25 | square | 57094 | 0.56 | 42 s | 180 s | Beast ×3 | 13 | 9 | 24 | 46 |
+| L8 | 25×25 | square | 65013 | 0.56 | 38 s | 180 s | Beast ×3 | 14 | 9 | 26 | 49 |
+| **B2** | 37×37 | **ring** | 175879 | — | 0 s | 180 s | **Sugar Ant Queen** | — | — | 50 | 50 |
+| L9 | 29×29 | square | 72932 | 0.54 | 40 s | 150 s | Beast ×2 + Loaf | 15 | 6 | 28 | 49 |
+| L10 | 29×29 | square | 80851 | 0.54 | 36 s | 150 s | Beast ×2 + Loaf | 16 | 6 | 30 | 52 |
+| L11 | 29×29 | square | 88770 | 0.54 | 32 s | 150 s | Beast ×3 + Loaf | 17 | 9 | 32 | 58 |
+| L12 | 29×29 | square | 96689 | 0.54 | 28 s | 150 s | Beast ×3 + Loaf | 18 | 9 | 34 | 61 |
+| **B3** | 37×37 | **octagon** | 183798 | — | 0 s | 150 s | **The Oven Wraith** | — | — | 50 | 50 |
+| L13 | 33×33 | **octagon** | 104608 | 0.52 | 30 s | 120 s | Beast ×3 + Loaf + Wisp | 19 | 9 | 36 | 64 |
+| L14 | 33×33 | **octagon** | 112527 | 0.52 | 26 s | 120 s | Beast ×3 + Loaf + Wisp | 20 | 9 | 38 | 67 |
+| L15 | 33×33 | **circle** | 120446 | 0.52 | 22 s | 120 s | Beast ×4 + Loaf + Wisp ×2 | 21 | 12 | 40 | 73 |
+| L16 | 33×33 | **octagon** | 128365 | 0.52 | 18 s | 120 s | Beast ×4 + Loaf + Wisp ×2 | 22 | 12 | 42 | 76 |
+| **B4** | 37×37 | **wedge** | 191717 | — | 0 s | 120 s | **The Stale Loaf Colossus** | — | — | 50 | 50 |
+| L17 | 37×37 | **circle** | 136284 | 0.5 | 20 s | 100 s | Beast ×3 + Loaf + Wisp + Ants | 23 | 9 | 44 | 76 |
+| L18 | 37×37 | **diamond** | 144203 | 0.5 | 16 s | 100 s | Beast ×3 + Loaf + Wisp + Ants | 24 | 9 | 46 | 79 |
+| L19 | 37×37 | **ring** | 152122 | 0.5 | 12 s | 100 s | Beast ×4 + Loaf + Wisp ×2 + Ants | 25 | 12 | 48 | 85 |
+| L20 | 37×37 | **blob** | 160041 | 0.5 | 8 s | 100 s | Beast ×4 + Loaf + Wisp ×2 + Ants | 26 | 12 | 50 | 88 |
+| **B5** | 37×37 | **blob** | 199636 | — | 0 s | 100 s | **The Crumb Beast Prime** | — | — | 50 | 50 |
 
 **Economy consequence (deliberate, verified by arithmetic):** first-clear income is **1,362 coins**
 (1,112 from levels + 250 from bosses) against a **1,450-coin** full upgrade tree (§11). **A player
@@ -181,8 +185,11 @@ cannot max every upgrade in one pass** — that is the point. Replays pay maze +
 completion bonus, and replay pays at **half** rate — farming is possible but slow (~11–19 coin per replay).
 
 - The shipped constants `Seed 1661 / Width 25 / Height 21 / CellSize 4` are replaced by
-  **`LevelTable`** (one static readonly array, one file) — per the data-over-code rule. Level 9's
-  maze (25×21) is the shipped maze's size, and `Seed 1661` is retained as the table's base term.
+  **`LevelTable`** (one static readonly array, one file) — per the data-over-code rule. `Seed 1661` is
+  retained as the table's base term; the shipped 25×21 field size is **retired from the ladder** (the
+  ladder is 21×21 → 37×37 square, then shaped — §23.1).
+- The shipped 21×17 / 23×19 / 25×21 / 27×23 / 29×25 rectangles are likewise retired: Todd's 2026-09-24
+  brief replaces them with squares and then with shapes (§23).
 
 ## 7. Maze generation spec
 
@@ -191,7 +198,8 @@ completion bonus, and replay pays at **half** rate — farming is possible but s
 1. **Solvable** — a path from start cell to exit cell exists (generator proves it; a level that fails
    the solve assert is a hard failure, not a reroll at runtime).
 2. **Dead ends that cost you** — ≥ 5 dead ends, ≥ 2 of depth ≥ 6 cells and the deepest ≥ 12 cells
-   (measured, 2026-09-24: over the 20 validated mazes the generator produces 5–17 dead ends, 3–10 of
+   (measured, 2026-09-24: over the 45 shape/size combinations surveyed in §23.2 the generator
+   produces 5–32 dead ends, deepest 12–84 — the earlier 5–17 / 12–70 range was the rectangle ladder, 3–10 of
    them depth ≥ 6, deepest 12–70). **An earlier draft demanded 18 % of all cells; that is
    unsatisfiable by this generator** — a recursive backtracker with `StraightBias 0.58` yields a long
    snaking route and comparatively few dead ends, so the rule was corrected to the measured range
@@ -206,10 +214,17 @@ completion bonus, and replay pays at **half** rate — farming is possible but s
 6. **An exit gate** that is visually distinct from the gold (the gold is reserved for boss 5), and
    **≥ 8 cells of grid (Manhattan) distance from the start**. `FarthestCell` measures *path* distance,
    so a maze whose route doubles back can legally place the gate two cells from the start (L1's
-   formula seed did exactly that: start (1,15), gate (1,13), 115 path-steps apart). Grid distance is a
-   separate, asserted check.
+   formula seed did exactly that: start (1,15), gate (1,13), 115 path-steps apart — that 21×17 ladder is
+   retired in §6, and the check stays because it is a property of `FarthestCell`, not of one seed). Grid
+   distance is a separate, asserted check.
 7. **The route must be a real trek** — the solution path covers ≥ 40 % of the walkable lanes
-   (measured range across the validated table: 50–72 %).
+   (measured range across the validated table: 44–68 %).
+8. **One field, never two** — a shaped mask must carve a **single connected component**. Cells inside
+   the mask with no in-mask neighbour stay as standing corn (visible, unreachable); if the carve
+   produces two or more components, that node's shape+mseed is a hard failure, not a reroll (§23.2).
+9. **Portals obey placement law** — chapter 3+ only; both ends on lane and on the route, ≥ 8 cells
+   apart on the grid, ≥ 4 cells clear of start and gate, honest pairs may skip ≤ 22 % of the route,
+   decoys may throw back ≤ 19 %. Each pair carries a wind tell (§23.3).
 
 Boss nodes generate a **short approach maze (~⅓ of the chapter's size) ending in a clearing**:
 a 9×9 open lane grid with four pillar clusters for line-of-sight play. The arena is generated by the
@@ -441,6 +456,9 @@ Every claim is an artefact (inherited rule):
 | Level table | `LevelTable` dump (JSON) committed; re-dump diffs clean for the same seed |
 | Solvability + dead ends | the generator's own solve assert printed per node |
 | **Level invariants** | a per-node dump asserting: start-exit structure, gate ≥ 8 cells grid-distance, ≥ 5 dead ends / ≥ 2 deep ≥ 6 / deepest ≥ 12, route ≥ 40 % of lanes, no enemy within 3 cells of start |
+| **Shape dump** (§23.2) | per node: mask name, connected-component count (**must be 1**), lanes, route and route %, dead ends, deepest, gate + grid distance — at the node's own size and shape |
+| **Portal dump** (§23.3) | per portal: kind, endpoints, route steps moved, grid gap, and every placement rule asserted; any violation is a hard failure |
+| **Lie schedule** (§23.4–23.6) | per node: what the compass points at, moon period, star drift, storm onset/window as configured; re-dump diffs clean for the same seed |
 | Fairness law | scripted walk of the solution route per level, walk speed, zero upgrades → never caught |
 | Save | round-trip log: write → kill process → read → identical struct; corrupt-file test |
 | Economy | arithmetic check: first-clear income vs tree cost, printed (§6's numbers) |
@@ -468,6 +486,9 @@ before Todd has looked at a frame of the new cookie from a plain launch.
 | **M14** | HUD/UI at device aspect incl. map, shop, summary (§16) | Furrow → Dough |
 | **M15** | GameCenter plugin + leaderboard + App Store Connect (§15) | Lantern |
 | **M16** | Balance pass, device build, TestFlight | Lantern → Harrow |
+| **M17** | Maze masks + the shape set + per-node shapes and the sky (moon, star drift, cloud grammar) (§23.2, §23.5) | Squall |
+| **M18** | Portals (placement, transit, facing change, tells) + the compass and its target rotation (§23.3, §23.4) | Furrow → Squall |
+| **M19** | Shape/portal/lie-schedule verification harness (§23.8) | Lantern |
 
 ## 21. Out of scope (explicitly)
 
@@ -482,3 +503,158 @@ daily challenges · pets/companions · anything that needs a new Unity package w
 3. ~~Weapon skins as boss rewards?~~ **RESOLVED 2026-09-24 (Todd): CUT. Every reward is functional — coins or an ability.**
 4. ~~Final boss payoff?~~ **RESOLVED 2026-09-24 (Todd): run summary + leaderboard submit, then "wander again" with everything unlocked — the current post-win behaviour, kept as-is.**
 5. ~~Level re-play?~~ **RESOLVED 2026-09-24 (Todd): free replay of any cleared node, half coins, no repeat completion bonus (see §10).**
+6. ~~Level sizes, and whether the field always stays a rectangle?~~ **RESOLVED 2026-09-24 (Todd): start 21×21 square, grow to 37×37, then change the overall shape once the square is figured out — plus portals that change orientation, a compass that later points elsewhere, and a moon/star sky that stops being usable. Written up as §23.**
+
+## 23. The confidence curve — sizes, shapes, portals, a compass that lies, a sky that stops working
+
+**Source: Todd, 2026-09-24 (verbatim):** *"I like that size to start or maybe 21x21 to give it a square
+shape, and increase to as high as maybe 37x37 but at some point, the overall shape might need to change
+when victims start thinking they have the square shape figured out. I want them to be 'confident' but
+then have their confidence blown."* — the four named mechanisms: (1) changing the overall shape of the
+maze, (2) portals between two points that may change your orientation, (3) a compass that later points
+at something else (the centre, or the nearest enemy), (4) a moon/stars you think you can steer by, until
+the moon arcs too fast and the sky clouds over into rain that melts a gingerbread man.
+
+**The rule that keeps this cruel instead of cheap: the game teaches a rule, lets the player trust it,
+then breaks exactly that rule — and every break has a learnable tell.** Nothing lies twice the same way,
+and no lie may make a node unwinnable at zero upgrades (§23.8).
+
+### 23.1 Sizes: square first, square for twelve nodes
+
+21×21 (ch1) → 25×25 (ch2) → 29×29 (ch3) → 33×33 (ch4) → 37×37 (ch5). **Square all the way through
+L12**, because a shape betrayal only reads as a betrayal if the shape was learnable first. This
+supersedes the rectangles in §6 (21×17 … 29×25); the level table in §6 is regenerated to match.
+
+### 23.2 Then the field stops being a square
+
+L13 is the first non-square node — an **octagon** (corners cut, still orderly, a shape you can still
+"read"). After that the field keeps moving: circle, diamond, then in chapter 5 a hollow **ring** you can
+see across but must walk around, a 3-lobe **blob**, a **cross**, and a rotated **wedge**. Shape rotation
+lands on boss arenas too (B1 cross, B2 ring, B3 octagon, B4 wedge, B5 blob).
+
+Shapes are cell masks over the same straight-biased DFS carver (**`MazeGenerator` gains a mask; nothing
+else about the carve changes**). Cells inside the mask with no in-mask neighbour are left as standing
+corn — visible, unreachable, and the reason a ring reads as a ring. The carve still starts at
+`(1, Height-2)`, the shipped start corner, and the exit gate rule is unchanged (§7).
+
+Every shape was carved for real at its node size; **all eight produce a single connected field and pass
+the §7 invariants**:
+
+| Shape | Size | Node | Seed | Lanes | Route | % of lanes | Dead ends | Deepest | Gate | Parts | Invariants |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| rect | 21×21 | L1 | 9580 | 199 | 135 | 68% | 10 | 58 | (1, 1) | 1 | pass |
+| rect | 29×29 | L9 | 72932 | 391 | 237 | 61% | 21 | 30 | (27, 9) | 1 | pass |
+| octagon | 33×33 | L13 | 104608 | 391 | 189 | 48% | 23 | 46 | (9, 13) | 1 | pass |
+| circle | 33×33 | L15 | 120446 | 375 | 181 | 48% | 23 | 50 | (21, 11) | 1 | pass |
+| diamond | 37×37 | L18 | 144203 | 287 | 135 | 47% | 22 | 28 | (31, 21) | 1 | pass |
+| ring | 37×37 | L19 | 152122 | 391 | 195 | 50% | 24 | 18 | (27, 33) | 1 | pass |
+| blob | 37×37 | L20 | 160041 | 471 | 227 | 48% | 23 | 18 | (21, 23) | 1 | pass |
+| cross | 37×37 | L21 | 167960 | 359 | 201 | 56% | 20 | 22 | (29, 15) | 1 | pass |
+| wedge | 37×37 | L24 | 191717 | 335 | 163 | 49% | 20 | 40 | (13, 27) | 1 | pass |
+| blob | 37×37 | L25 | 199636 | 471 | 313 | 66% | 19 | 32 | (25, 13) | 1 | pass |
+
+### 23.3 Portals (chapter 3 onward) — help first, then the one that walks you back
+
+- **Chapter 3** — one honest pair. It is a shortcut, it works, and the player learns "portals help".
+- **Chapter 4** — one honest pair **plus one decoy**: the decoy's entrance sits on the route *after*
+  the honest one, and its exit puts you back where you were ~18 % of a route ago.
+- **Chapter 5** — two honest pairs plus a decoy; every pair changes your **facing** on transit
+  (yaw ±90° or 180°, seeded per portal), so even a correct shortcut costs you your bearings.
+- **Rules (all enforced at generation, all verified):** both ends on lane, on the route, ≥ 8 cells
+  apart on the grid, ≥ 4 cells clear of the start cell and of the exit gate. No portal may skip more
+  than 22 % of the route or throw you back more than 19 % of it — a portal is a nudge, not a teleport
+  home.
+- **The tell:** an honest portal's corn-husk ring turns *with* the wind (`StormWeather.WindDir`); a
+  decoy's turns against it. Learnable in one level if you look, invisible if you don't.
+
+| Node | Shape | Route | Honest portals | Decoy portals | Saving | Cost |
+|---|---|---|---|---|---|---|
+| L13 | octagon | 189 | 1 | 1 | +36 cells (19%) | −34 cells (18%) |
+| L17 | circle | 261 | 2 | 1 | +51 cells (20%), +47 cells (18%) | −48 cells (18%) |
+| L20 | blob | 227 | 2 | 1 | +50 cells (22%), +45 cells (20%) | −41 cells (18%) |
+| L25 | blob | 313 | 2 | 1 | +61 cells (19%), +64 cells (20%) | −61 cells (19%) |
+
+### 23.4 The compass — found at L3, honest for eleven nodes
+
+Found in a dead end on L3 and pointed at the exit gate. It tells the truth, node after node, through
+**L13** — eleven nodes of trust. From L14 the needle still moves like a working compass, at the same
+speed and with the same feel, and points at:
+
+| Nodes | What the needle tracks | Why it is plausible |
+|---|---|---|
+| L14, L18, L22 | the maze **centre** | a real feature; walking there feels like progress |
+| L15, L19, L23 | the **nearest Crumb Beast** | reads as a shortcut, walks you into the one thing you avoid |
+| L16, L20, L24 | the gate, **90° off at every turn** | you arrive, eventually, by luck and exhaustion |
+| L17, L21, L25 | the **previous level's exit gate** | the needle is not wrong about a gate; it is wrong about *which* |
+
+The compass never stops being useful — that is what makes it work. It tells you where *something* is.
+
+### 23.5 The sky — the moon, the stars, the clouds
+
+The shipped `NightSky` already draws 420 field stars, a 7-star hint constellation and a gold tip star,
+and already fades them under storm (`StarVisibility(storm)`). Three additions:
+
+1. **A moon** — the bait: a single bright disc that is a genuinely reliable bearing early. Its period
+   is cut chapter by chapter until one walk of a level sweeps it across the whole sky.
+2. **Star drift** — the hint constellation starts fixed, then rotates.
+3. **The constellation is per seed, not per sky.** `NightSky` generates its hint stars from the level
+   seed, so the pattern a player "learns" in chapter 1 **is not the pattern in chapter 2**. That is
+   already true in the shipped code; this section turns it from accident into mechanic — the player who
+   navigates by the stars is navigating by a sky that is rebuilt every level.
+
+| Chapter | Size | Walk time | Run time | Moon period | Moon sweep per walk | Stars drift | Sweep per walk |
+|---|---|---|---|---|---|---|---|
+| 1 | 21×21 | 123 s | 73 s | 4909 s | 9° | 0.00°/s | 0° |
+| 2 | 25×25 | 146 s | 87 s | 2927 s | 18° | 0.00°/s | 0° |
+| 3 | 29×29 | 215 s | 128 s | 1724 s | 45° | 0.05°/s | 11° |
+| 4 | 33×33 | 172 s | 102 s | 430 s | 144° | 0.35°/s | 60° |
+| 5 | 37×37 | 237 s | 141 s | 285 s | 300° | 0.90°/s | 214° |
+
+(Periods are quoted as multiples of the chapter's own walk time — 40× / 20× / 8× / 2.5× / 1.2× — so a
+regenerated level keeps the same relationship rather than the same seconds.)
+
+### 23.6 The bill — clouds, rain, and the melt arithmetic
+
+The betrayal lands because the same clouds that steal the sky bring the rain. `StormWeather` already
+ramps (`CalmSeconds` then `RampSeconds`) and drives the dissolve rate; per-level onset/window values
+stay as §6 sets them. What the bigger mazes change is whether the walk even fits:
+
+| Chapter | Rain window (§6) | Walk | Run | Run with Faster Feet T3 | Icing Seal T3 survivable storm | Verdict at zero upgrades |
+|---|---|---|---|---|---|---|
+| 1 | 210 s | 123 s | 73 s | 63 s | 382 s | walkable |
+| 2 | 180 s | 146 s | 87 s | 76 s | 327 s | walkable |
+| 3 | 150 s | 215 s | 128 s | 111 s | 273 s | must run |
+| 4 | 120 s | 172 s | 102 s | 89 s | 218 s | must run |
+| 5 | 100 s | 237 s | 141 s | 123 s | 182 s | needs upgrades |
+
+**Consequence, stated plainly rather than hidden:** at 37×37 the chapter-5 finale cannot be walked out
+of the rain. It needs `Icing Seal` T3 (window ÷ 0.55 ≈ 182 s of survivable storm) and, for comfort,
+`Faster Feet` T3 (run 123 s). That is a deliberate spend of the economy in §10/§11 — the first content
+that *requires* an upgrade — and it is the reason the shop exists. **Chapter 1–2 stay walkable with zero
+upgrades, and the §8 fairness law is still verified with zero upgrades** (fairness = enemies, not
+weather; the weather exception is this paragraph and nowhere else).
+
+### 23.7 Ownership and build-order impact
+
+| Work | Owner | Slots after §20's table |
+|---|---|---|
+| Maze mask + shape set + per-node shape table | Squall | **M17** (new) |
+| Portal placement, transit, facing change, tells | Furrow → Squall | **M18** (new) |
+| Compass item, needle target rotation, HUD read-out | Furrow | **M18** (new) |
+| Moon, star drift, cloud grammar, per-level sky seed | Squall | **M17** (new) |
+| Verification harness for all four (§23.8) | Lantern | **M19** (new) |
+
+M17–M19 sit after M7 (generation) and M13 (bosses) and before M16 (balance/TestFlight). M0 stays first
+and still open.
+
+### 23.8 Verification
+
+Added to §19's doctrine, all as committed artefacts:
+
+- **Shape dump** — per node: mask name, connected-component count (must be 1), lanes, route length and
+  route %, dead ends, deepest, gate and its grid distance. A shape that carves into two fields fails.
+- **Portal dump** — per portal: kind, both endpoints, route steps moved, grid gap, and every §23.3
+  constraint asserted. Any pair that violates a rule is a hard failure, not a reroll.
+- **Lie schedule dump** — per node: what the compass points at, and the moon period, star drift and
+  storm onset/window actually configured. Diffed clean across runs for the same seed.
+- **Fairness walk with zero upgrades** on every node, including the shaped ones.
