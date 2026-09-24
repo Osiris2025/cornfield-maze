@@ -445,8 +445,7 @@ package without Todd's approval.
 
 ## 22. Open questions for Todd
 
-1. **Confirmed as 5 chapters × 4 levels + 5 bosses (25 nodes)?** Your brief said 4 chapters / 5 bosses;
-   5 chapters is the only way it divides.
+1. ~~Confirmed as 5 chapters × 4 levels + 5 bosses (25 nodes)?~~ **RESOLVED 2026-09-24 (Todd): yes — 5 chapters of 4 levels + a chapter boss, 25 nodes, gold behind the final boss.**
 2. **Candy Cane as the weapon** — bytes right to you, or do you want a different first weapon
    (rolling pin / icing squirt)?
 3. **Weapon skins as boss rewards** (B4 grants one cosmetic) — keep or cut? It is the only
