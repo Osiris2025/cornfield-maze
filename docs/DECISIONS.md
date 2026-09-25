@@ -5,7 +5,7 @@
 
 ## Product
 
-- **Corn Field Maze** — third-person 3D maze game. You play a **gingerbread cookie**. Long dead ends force backtracking; reach the **pot of gold** to win. Stay too long in the rain and the cookie softens and dissolves. Wrong turns risk the **Crumb Beast**, a hungry cookie-chasing chase beast (original — not Sesame Street IP).
+- **Corn Field Maze** — third-person 3D maze game. You play a **gingerbread cookie**. Long dead ends force backtracking; reach the **pot of gold** to win. Stay too long in the rain and the cookie softens and dissolves. Wrong turns risk **the Husk**, a hungry cookie-chasing thing that hunts the lanes (original — not Sesame Street IP; renamed from “Crumb Beast” on 2026-09-24 at Todd's call).
 - **Target: iPhone, landscape-only, arm64.** The Mac standalone build is the review surface Todd plays.
 - Reference: `README.md` (player-facing description of the intended game), `IDEA.md`.
 - **The design of record is `docs/reference/CORN-FIELD-MAZE-FSD.md`** (2026-09-24): 25 nodes (5 chapters x 4 levels + 5 bosses), procedural levels, dough-integrity health, combat + 3 abilities, coins and a shop, boss-gated gold, one GameCenter leaderboard. Where the FSD and this document disagree about **product scope**, the FSD wins; on **tone, architecture, asset policy, review gates, naming and working rules**, this document still wins.
@@ -39,7 +39,7 @@ Todd, verbatim, on the supplied cookie's hollow ring eyes and big red ring mouth
 Read as *scary game*. Consequences, and they are requirements:
 
 - **The wide-eyed, hollow, ring-eyes-and-red-ring-mouth face is DELIBERATE. Do not "fix" it.** Any pass that rounds the rings into friendly dot-eyes, shrinks the mouth into a smile, or adds cartoon charm has misread the product and is a defect. The stunned, staring face is the point.
-- **The register is horror, not cosy.** The existing shipped material already agrees with this and is now the reference standard: the README's *"looping anxious underscore, chase-string stabs, hollow wind"*, the **horror bed** that ducks on a win, a **Crumb Beast** that eats you, the cookie **dissolving in the rain with its icing washing off first**, the sky going almost night-dark, and lightning before thunder. Every art, audio and feel decision is judged against that register.
+- **The register is horror, not cosy.** The existing shipped material already agrees with this and is now the reference standard: the README's *"looping anxious underscore, chase-string stabs, hollow wind"*, the **horror bed** that ducks on a win, a **Husk** that eats you, the cookie **dissolving in the rain with its icing washing off first**, the sky going almost night-dark, and lightning before thunder. Every art, audio and feel decision is judged against that register.
 - **The cookie is the victim, not a mascot.** Design him as something you are uneasy about watching get eaten.
 - **Cute-and-scary is allowed; cute-and-safe is not.** Warm baked dough and icing can stay — a gingerbread man is a soft thing in a bad place. Do not sand off the menace to make him likeable.
 - **This is a taste call owned by Todd.** If a bot thinks a change makes the game less scary, it escalates to Harrow with options laid out rather than deciding.
@@ -66,7 +66,7 @@ Read as *scary game*. Consequences, and they are requirements:
 ## Current state of the code (measured 2026-09-17)
 
 - **19 C# files, 5,632 lines** (re-measured 2026-09-24; was 18 / 5,213 on 2026-09-17), no assemblies (`.asmdef`), **no tests**, no git history at baseline (the baseline commit is the project's first). `scripts/verify.sh` now exists but is **UNRUN** — see `docs/status/CHIEF-STATUS.md`.
-- The world is **built at runtime from code** — `MazeGenerator.Build()` → `MazeWorldBuilder.Build()` → `FarmWalkerController.Spawn()` → `PotOfGold`, `GameHud`, `MazeMoodAudio`, `StormWeather`, `PathMudWetness`, `NightSky`, `CrumbBeast`, all from `GameBootstrap.Start()`. `Assets/Scenes/CornMaze.unity` is a near-empty host scene; `Editor/CornMazeSetup.cs` (`CornMaze.Run`) creates it.
+- The world is **built at runtime from code** — `MazeGenerator.Build()` → `MazeWorldBuilder.Build()` → `FarmWalkerController.Spawn()` → `PotOfGold`, `GameHud`, `MazeMoodAudio`, `StormWeather`, `PathMudWetness`, `NightSky`, `Husk`, all from `GameBootstrap.Start()`. `Assets/Scenes/CornMaze.unity` is a near-empty host scene; `Editor/CornMazeSetup.cs` (`CornMaze.Run`) creates it.
 - Textures are **procedurally generated in code** (`Materials.cs` — fbm/value noise for gravel, field grass, path grass, plaid). Audio is **procedurally synthesized in code** (`MazeMoodAudio.cs`, 1,028 lines).
 - Known defects carried in from the original build: HUD canvas is `referenceResolution 1920x1080` (a desktop size, on a phone game); `README.md` still references `/Users/arl480/Unity_Projects/CornFieldMaze` (another machine) and Unity 6000.3.23f1 instructions that no longer match this host.
 

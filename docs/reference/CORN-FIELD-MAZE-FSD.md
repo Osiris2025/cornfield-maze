@@ -108,7 +108,7 @@ where `amount` 0→1 washes the cookie (icing first, via the `gb_man_decoration`
 
 | Source | Dough cost |
 |---|---|
-| Crumb Beast contact | 18 |
+| the Husk contact | 18 |
 | Stale Loaf body-check | 12 |
 | Sugar Ant sting (per ant, per bite) | 5 |
 | Icing Wisp glob | 8 |
@@ -177,7 +177,7 @@ rewrite of the formula: `seed(Node) = 1661 + 7919 × Node + offset(Node)`.
 | L18 | 37×37 | **diamond** | 144203 | 0.5 | 16 s | 100 s | Beast ×3 + Loaf + Wisp + Ants | 24 | 9 | 46 | 79 |
 | L19 | 37×37 | **ring** | 152122 | 0.5 | 12 s | 100 s | Beast ×4 + Loaf + Wisp ×2 + Ants | 25 | 12 | 48 | 85 |
 | L20 | 37×37 | **blob** | 160041 | 0.5 | 8 s | 100 s | Beast ×4 + Loaf + Wisp ×2 + Ants | 26 | 12 | 50 | 88 |
-| **B5** | 37×37 | **blob** | 199636 | — | 0 s | 100 s | **The Crumb Beast Prime** | — | — | 50 | 50 |
+| **B5** | 37×37 | **blob** | 199636 | — | 0 s | 100 s | **The Husk Prime** | — | — | 50 | 50 |
 
 **Economy consequence (deliberate, verified by arithmetic):** first-clear income is **1,362 coins**
 (1,112 from levels + 250 from bosses) against a **1,450-coin** full upgrade tree (§11). **A player
@@ -239,7 +239,7 @@ same builder, not hand-authored.
 
 | Enemy | Type | Speed | Behaviour | Dough | Coins | Appears |
 |---|---|---|---|---|---|---|
-| **Crumb Beast** (existing) | chaser | 2.35 → 3.40 by L20 | Path-locked A* toward the player, repath 0.85 s, catch 0.62 | 18 | 3 | L1+ |
+| **the Husk** (renamed 2026-09-24, was Crumb Beast) | chaser | 2.35 → 3.40 by L20 | Path-locked A* toward the player, repath 0.85 s, catch 0.62 | 18 | 3 | L1+ |
 | **Stale Loaf** | blocker | 0 | Stationary in a lane, no chase; body-checks anything that enters its cell; 3 cane hits to break | 12 | 4 | L9+ |
 | **Sugar Ants** | swarm | 3.10 | Spawns as one cluster of 5; scatters when hit; dies in 1 hit; never leaves corn rows | 5/hit | 1 each (5) | L17+ |
 | **Icing Wisp** | ranged | 1.20 drift | Holds a lane 6–10 cells away, spits a glob down the corridor every 2.2 s; globs are dodgeable by moving off the lane line; dies in 2 hits | 8 | 4 | L13+ |
@@ -248,7 +248,7 @@ same builder, not hand-authored.
 and never on the start cell itself.
 
 > ⚠️ **Live defect in the shipped code, found while generating the sample maze.**
-> `CrumbBeast.Spawn` (`CrumbBeast.cs:35`) looks for a *side path* off the start cell and skips the
+> `Husk.Spawn` (`Husk.cs:35`) looks for a *side path* off the start cell and skips the
 > gold-bound first step. **The start cell of this generator has exactly one exit, always** — measured
 > over 2 000 seeds at both 21×17 and 29×25, the start cell has a single open neighbour, 2 000/2 000 —
 > so that neighbour is *always* the skipped gold-bound step and the "behind you on a side path" branch
@@ -335,7 +335,7 @@ the clearing.
 | B2 | **Sugar Ant Queen** | 450 | Ant spawns (3 at a time) / glob spit down three lanes / spawn + spit together | 50¢ (Ant colonies enter the level table from L17) |
 | B3 | **The Oven Wraith** | 600 | Heat-wave push (knocks you back a lane) / floor embers (dough drain zones) / embers + push | 50¢ + Sugar Rush unlock |
 | B4 | **The Stale Loaf Colossus** | 800 | Roll (charges a lane, breaks pillar clusters) / crumb spray (arc of 5 globs) / roll twice in a row | 50¢ only |
-| B5 | **The Crumb Beast Prime** | 1100 | All of the above, one per phase: charge, glob arc, hands | **the pot of gold** + Icing Glob unlock + run summary + leaderboard submit |
+| B5 | **The Husk Prime** | 1100 | All of the above, one per phase: charge, glob arc, hands | **the pot of gold** + Icing Glob unlock + run summary + leaderboard submit |
 
 - **B5 is the game's answer to "what is at the end".** It is the chapter-1 enemy, grown. Killing it
   calls the existing `PotOfGold.Spawn(...)` at the arena centre — `OnCollected` is still the single
@@ -597,7 +597,7 @@ speed and with the same feel, and points at:
 | Nodes | What the needle tracks | Why it is plausible |
 |---|---|---|
 | L14, L18, L22 | the maze **centre** | a real feature; walking there feels like progress |
-| L15, L19, L23 | the **nearest Crumb Beast** | reads as a shortcut, walks you into the one thing you avoid |
+| L15, L19, L23 | the **nearest Husk** | reads as a shortcut, walks you into the one thing you avoid |
 | L16, L20, L24 | the gate, **90° off at every turn** | you arrive, eventually, by luck and exhaustion |
 | L17, L21, L25 | the **previous level's exit gate** | the needle is not wrong about a gate; it is wrong about *which* |
 
@@ -934,10 +934,11 @@ stems with the ground behind it):
 class and its file, the `Spawn` call, §8's table, §9/§14's references, the HUD's death line, and
 `MazeMoodAudio`'s chase-sting cue names — no aliases.
 
-Todd: the current name is *"pretty silly"*. The object is `CrumbBeast.cs` (316 lines)
-and the rename reaches: `CrumbBeast.cs` itself, the `CrumbBeast.Spawn` call (`GameBootstrap.cs:45`),
-§8's enemy table, §9/§14's references, the HUD's death line, and `MazeMoodAudio`'s chase-sting cue
-names. **Candidates, Todd's call:**
+**Built 2026-09-24 (M24, `4d2b253`).** `CrumbBeast.cs` (316 lines) is now `Assets/Scripts/Husk.cs`
+with `Husk.Spawn` (`GameBootstrap.cs:74`), and every call site and cue name goes with it: `Husk.cs`,
+`CornCob.cs`, `GameBootstrap.cs`, `MazeMoodAudio.cs`, `GameHud.cs`, `GameFrontEnd.cs`,
+`M22FeelSelfTest.cs`, `SkyCapture.cs`, `README.md`, `docs/COOKIE-BRIEF.md`. No alias is left behind.
+The name was chosen from these three:
 
 | Name | Read | Verdict |
 |---|---|---|
@@ -980,14 +981,25 @@ cheat to do it.
 
 ### 25.7 Ownership, order, and what this does not change
 
-| # | Milestone | Owner | Depends on |
+**All seven are built.** The overnight crew run of 2026-09-24 closed the whole set; every commit
+below is in `git log` and every claim has an artifact under `artifacts/`.
+
+| # | Milestone | Owner | Status 2026-09-24 |
 |---|---|---|---|
-| **M21** | Front end: title / help / introduction + pause (§25.1) | Squall → Dough | **nothing — this can start now, independently of M0** |
-| **M22** | Movement: the feel contract + the two defects (§25.2) — the model is settled (third-person) | Furrow | — |
-| **M23** | Pick up and throw: cobs, ballistics, the stagger, lane ammo (§25.3) | Furrow → Dough | M10 (combat framework) |
-| **M24** | The rename → **the Husk**, one pass across code/docs/HUD/cues (§25.4) | Furrow | — |
-| **M25** | Dusk phase, moonrise, Halloween cloud upgrade (§25.5) | Squall | M17 (the sky) |
-| **M26** | Rustle + music: the threat term and the device listen pass (§25.6) | Rattle | M21 (the front end must exist to be quiet before the game starts) |
+| **M21** | Front end: title / help / introduction + pause (§25.1) | Squall → Dough | **built** — `ca83b66` · `artifacts/front-end-title-m21.png` |
+| **M22** | Movement: the feel contract + the two defects (§25.2) | Furrow | **built** — `7518c78` · `artifacts/m22-feel-report.txt` |
+| **M20** | The block set in the maze, Cutout leaves, LOD chain, the boom fix (§24) | Squall + Dough | **built** — `7a6a93f` · `artifacts/m20-field-report.txt` |
+| **M25** | Dusk phase, moonrise, Halloween cloud upgrade (§25.5) | Squall | **built** — `874d90f` · `artifacts/m25-sky-report.txt` · `sky-t0/t40.png` |
+| **M24** | The rename → **the Husk**, one pass across code/HUD/cues (§25.4) | Furrow + Rattle | **built** — `4d2b253` |
+| **M23** | Pick up and throw: cobs, ballistics, the stagger, lane ammo (§25.3) | Furrow + Dough | **built** — `318b543` · `artifacts/m23-throw-report.txt` |
+| **M26** | Rustle + music: the threat term and the listen pass (§25.6) | Rattle + Squall | **built** — `aa0f23a` · `artifacts/m26-threat-report.txt` · `artifacts/m26-threat-listen.wav` |
+
+**Open, and it is the only open item in §25:** the §25.6 *device* listen pass needs a physical iPhone.
+The Mac mix exists as a real WAV and two independent measurements agree on it rising 2.4x as the Husk
+closes, but the phone's speaker, mix and iOS audio session are not the Mac's.
+
+M20 is not a §25 milestone. It is listed with them because it landed in the same run and every §25
+item was built against it — the field, the sky, the cob and the boom fix all assume the block set is in.
 
 **Unchanged by this section:** §8's fairness law, the M20 corn block swap, the cookie gate (M0/G1,
 open since 2026-09-17) and every rule in §21. §25 adds constraints to the enemies; it removes none.
