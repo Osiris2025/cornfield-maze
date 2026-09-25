@@ -1,0 +1,58 @@
+# M28 — the chaser becomes a scarecrow (owner: Dough; Furrow on the hit volume and walk)
+
+## Measured on the built Mac app
+
+M28 the scarecrow — measured on the built Mac app, 2026-09-25 12:34:22Z
+Husk settled and parked 88.0 m from the player (catch range is 0.62 m) — it walks at 2.35 m/s, so leaving it near him for the settle is a catch
+built from 60 primitives; it measures 2.31 m tall (the cookie is 1.80 m and the corn stands 2.90-3.20 m, so it breaks the lane line, not the canopy); the widest thing on it is 1.76 m across
+hit volume: capsule 2.60 m tall, radius 0.50 m, trigger=True — unchanged from M23, so a thrown cob (1/3 of 18 health, 1.10 s stagger) hits exactly what it hit before. The crossbar is wider than the volume and the report says so: a cob through the sleeve end passes through. Widening the volume would move M23's measured 7.104 m, and M28 is a look change.
+frames taken in the lane the player starts in, at dusk, before he has moved: the Husk stands 8.0 m in front of him, facing him, and is re-pinned every frame so it walks and never reaches him
+frame m28-scarecrow-lane.png -> written this run (1509153 bytes)
+frame m28-scarecrow-close.png -> written this run (1143821 bytes)
+lurch measured over 5.0 s of walking (2276 frames): distance/time = 2.11 m/s = 90% of MoveSpeed 2.35 m/s over 7 surges
+the residual is the sampling window, not the walk: a full sine integrates to exactly MoveSpeed, and 5.0 s cuts the first and last surge in half — plus 1 frame(s) where a corner repath held it still. The tell is the swing, not the mean.
+the tell: instantaneous speed 0.00 to 3.64 m/s (the peak is 1.55x the base speed, against the designed 1.55x), one surge every 0.71 s against the designed 0.72 s
+this is a look change, not a balance change: MoveSpeed, CatchDistance and the 8 s reform are all untouched, and M23's cob numbers (7.104 m bought, 18 -> 12 health, 1.10 s stagger) still hold
+silhouette frame at night=True (night01=1.00) after 0.0 s
+frame m28-scarecrow-silhouette.png -> written this run (1216521 bytes)
+silhouette frame: camera 12 m out at 1.30 m, every part swapped to a flat black unlit material, night01=1.00 — the frame is the answer to whether it reads
+frame time over 1278 frames after a 90-frame warm-up: avg 2.35 ms, p95 3.33 ms, worst 4.34 ms
+the phone is the 60 fps target and no device is attached; this is the Mac build.
+
+## M23's cob, re-run against the new creature (the hit-volume regression)
+
+range: level-ground 7.104 m vs nominal 6.999 m (tolerance 0.25) -> PASS
+husk visible height 2.31 m over 60 renderers; hit volume 2.6 m tall, 0.5 m radius (a column, so the 20° arc connects at close range)
+husk hit: PASS — health 18 -> 12 (expected 12, i.e. one third of 18), hitsTaken=1
+husk stagger: 1.10 s (contract 1.1 s) -> PASS
+ground bought: 2.585 m = 2.35 m/s x 1.10 s (contract 2.585 m) -> PASS
+after three hits: scattered=True (expected True; it re-forms in 8 s, it does not die)
+
+SILHOUETTE TEST — the acceptance test, and the answer is yes.
+artifacts/review/world/m28-scarecrow-silhouette.png: 12 m out at night (night01=1.00), every renderer
+swapped to a flat black unlit material, so nothing but the shape is left. The shape reads as a
+scarecrow: a box head set on a slight tilt, a thin stake under it, and the crossbar straight out to
+both sides at shoulder height. The T is unmistakable at 12 m and it is unmistakable as a stake with a
+sack on it — not a sphere, not a person, not a blob. It also survives being small in frame, which is
+the state the player actually meets it in.
+
+THE FRAMES
+artifacts/review/world/m28-scarecrow-lane.png      dusk, at a lane's end, walking toward the camera.
+                                                   Cross, tilted sack head, dark sockets, tattered coat,
+                                                   post showing under the torn hem, straw at the cuffs.
+                                                   (M29's ragged lane margin is in this frame too.)
+artifacts/review/world/m28-scarecrow-close.png     the head: two hollow sockets with the faint glow,
+                                                   a seam of small dark stitches across the sack, and
+                                                   the whole head set on a wrong tilt.
+artifacts/review/world/m28-scarecrow-silhouette.png the acceptance test, described above.
+
+WHAT THE FRAMES COST TO GET, because the first three runs were wrong and the report says so:
+  - run 1: the harness teleported the player, the creature caught him, and every frame carried a
+    'Caught by the Husk' overlay while the lurch measured 0.00 m/s on a creature that had stopped.
+  - run 2: the capture waited on a file that already existed from run 1, so it reported run 1's
+    pictures as run 2's evidence. Frames are now checked for freshness, not existence.
+  - run 3: the close-up was taken from behind the creature and read as a headless pole.
+  - run 4: the glow was buried behind the socket box, where nothing could see it.
+  - run 5: the seam read as a toothy grin; thirteen small stitches replaced nine large ones.
+  - run 6: the walk was measured with the player parked 88 m off, where the creature will not path;
+    it stood still for 5719 of 5723 frames. The measured window is a real 16-22 m chase.

@@ -260,10 +260,21 @@ public sealed class M23ThrowSelfTest : MonoBehaviour
         if (huskBody != null) huskBody.enabled = true;
         yield return new WaitForSeconds(0.35f);
 
-        var huskRenderer = husk.GetComponentInChildren<Renderer>(true);
-        Emit("husk visible height " + (huskRenderer != null ? huskRenderer.bounds.size.y.ToString("0.00") : "?") +
-             " m; hit volume " + Husk.HitVolumeHeight + " m tall, " + Husk.HitVolumeRadius + " m radius" +
-             " (a column, so the 20° arc connects at close range)");
+        // The whole creature, not the first child renderer. This line reported 1.15 m for the M28 scarecrow
+        // because it grabbed whichever renderer came first — a measurement of the first part it happened to
+        // find, printed as if it were the height of the thing.
+        var huskBounds = new Bounds(husk.transform.position, Vector3.zero);
+        bool huskAny = false;
+        foreach (var r in husk.GetComponentsInChildren<Renderer>(true))
+        {
+            if (r == null) continue;
+            if (!huskAny) { huskBounds = r.bounds; huskAny = true; }
+            else huskBounds.Encapsulate(r.bounds);
+        }
+        float huskHeight = huskAny ? huskBounds.max.y - husk.transform.position.y : 0f;
+        Emit("husk visible height " + huskHeight.ToString("0.00") + " m over " +
+             husk.GetComponentsInChildren<Renderer>(true).Length + " renderers; hit volume " + Husk.HitVolumeHeight +
+             " m tall, " + Husk.HitVolumeRadius + " m radius (a column, so the 20° arc connects at close range)");
 
         float healthBefore = husk.Health;
         string throwFirstContact = "";
