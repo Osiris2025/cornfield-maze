@@ -78,8 +78,8 @@ for a decal 4 m away, so its inside/outside split is not quoted as evidence).
 
 ## 4. CAPTURES FOR TODD
 
-    artifacts/m32b-puddle-moon.png          M32b: pass 3 — down the lane now; the puddle is not in it
-    artifacts/m31-ground-lane.png           M31b: down the lane at eye level — solid, not a ghost
+    artifacts/review/world/m32b-puddle-moon.png          M32b: pass 3 — down the lane now; the puddle is not in it
+    artifacts/review/world/m31-ground-lane.png           M31b: down the lane at eye level — solid, not a ghost
     artifacts/reference/m31b-lane-alpha-preview.png      M31b: the baked alpha — flat interior, eaten edge
     artifacts/review/world/m32-reflection-on.png         M32: the matte ground as it ships
     artifacts/m32b-puddle-report-3.txt                   M32b pass 3: the stand fixed, the glint not there
