@@ -1,10 +1,62 @@
-M32c pass 6 — the environment map is real and read back; the water reflects it ~400x better than the lane, and
-it still does not read as water at this angle. OPEN, no done marker.
+M32c pass 7 — the environment map carries the storm's horizon band and the moon; the water reflects it 5.59/255
+against the lane's 0.00, the lane is inside the ceiling at 1.12x, and the sheen is still not visible. OPEN, no
+done marker.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
 Evidence: artifacts/review/world/m32c-water-on.png (the acceptance frame), m32c-water-off.png,
 m32c-water-mask.png, m32c-lane-mask.png, m32c-lane-control.png, m32c-water-black.png, m32c-water-nomoon.png;
 raw harness output artifacts/m32c-puddle-raw.txt.
+
+PASS 7 — WHAT THE MAP HAS TO CARRY, AND WHY IT STILL DOES NOT SHOW
+
+Pass 6 built a night-sky cube and measured the water reflecting 3.93 of 255 — real, and invisible. The reason is
+not Fresnel. At the acceptance view (eye 1.15 m, water about 4 m down the lane) the view is ~74 deg off the
+water's normal, and Schlick gives a dielectric **0.23** there, not the 0.04 that "grazing" is often taken to
+mean. The water reflects 23 % of the sky; what limits the sheen is that **a night sky is dark**. So the map was
+rebuilt around what a night puddle actually shows:
+
+  * the STORM'S LIT CLOUD BAND at the horizon — the part a shallow view reflects, and the reason the reflection
+    belongs at the horizon end of the puddle and falls off as the view steepens (the map's horizon/zenith ratio
+    is now 0.34 / 0.030, where pass 6 had 0.10 / 0.015);
+  * the moon disc at `DuskSky.MoonDirection`, unscaled, keeping its 255 peak;
+  * a halo, and its width was chosen on measurement, not taste: at 20 deg the halo spreads the moon's light over
+    the sphere and what the water actually reflects DROPS (mean |change| 5.68 -> 2.99 of 255), because the
+    water's ripple normal scatters a broad source instead of catching it. Narrow and brighter wins;
+  * and the whole map except the disc is scaled by a **solved** factor so the cube's mean hits the 49.8 of 255
+    that the two measured points say puts the ground back on the 22.32 baseline. Adding brightness to the sky
+    must not sneak brightness into the ground, so the solve accounts for the halo's own contribution to the mean
+    (gradient mean 28.7, halo mean 2.4, scale 1.601).
+
+THE ACCEPTANCE LINES, MEASURED (same frozen pose, masks from the renderer)
+
+    water, on the water's own pixels: 54,405 px, mean G 44.12, bright(>140) 0 (0.0 %)
+    lane,  on the lane's own pixels:   8,928 px, mean G 22.27
+    field:                             5,222 px, mean G 19.88
+    ->  water/lane 1.98x,  lane/field 1.12x       (the order wants 1.15x or darker — MET)
+    ENVIRONMENT ON vs OFF, on the water: 44.12 vs 46.57, mean |change| 5.59 of 255
+    THE SAME SWITCH ON THE LANE, lobe and env reflections restored: +0.00 of 255
+    THE ENVIRONMENT'S OWN CUBE, read back (face mean G of 255):
+      +X 54.5 [18 bright] · -X 39.3 · +Y 18.2 · -Y 104.5 [16 bright] · +Z 41.0 · -Z 39.5 · overall 49.51, peak 255 on +X
+    FRESNEL: near half 37.43, grazing far half 50.81 — brighter toward the horizon, falling off as the view steepens
+
+So: the water carries the sky and the lane does not — 5.59 of 255 against 0.00, and the water's grazing end is
+2.3x the field. The environment map is real, holds a 255-peak moon in the right direction, and is read back
+face by face. And the water still has **0 pixels brighter than 140**: the reflection is a diffuse lift at the
+horizon end of the puddle, not a glint, because at 26 deg off the mirror direction there is no moon to catch —
+you are reflecting the cloud band, not the moon.
+
+ONE HONEST SENTENCE: does the puddle read as water in this frame? **No — it reads as a wet lane with a lighter,
+slightly mottled patch where the water is.** The lane half of the order is done and measured. The water half is
+now a taste decision, not a defect I can tune away: a physically correct dielectric reflecting a night sky at
+this angle gives a few levels of 255. To get a *sheen* someone has to choose a stylisation — a brighter
+atmospheric halo in the sky, a shallower acceptance view, or a water material that is not a plain dielectric —
+and every one of those is a look decision, not a measurement.
+
+WHY THIS STOPS HERE: passes 5, 6 and 7 each fixed a real fault (the empty capture; the negative-radiance bug
+that took the scene's ambient with it; the dark sky), and each was measured. There is no fault left to find on
+this path — the remaining gap is a choice. Further passes would be the tuning the order told me not to do.
+
+=========================== PASS 6 AND EARLIER, BELOW ===========================
 
 PASS 6 — THE ENVIRONMENT MAP, BUILT AND READ BACK
 
