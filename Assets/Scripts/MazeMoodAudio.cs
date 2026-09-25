@@ -19,6 +19,35 @@ public sealed class MazeMoodAudio : MonoBehaviour
     const float RustleVol = 0.16f;
     const float BrushVol = 0.13f;
 
+    // ---- M26 (§25.6): one threat number, so the field and the score cannot disagree -------------
+    /// <summary>
+    /// How close the Husk is, normalised: 1 at <see cref="ThreatNearCells"/>, 0 at
+    /// <see cref="ThreatFarCells"/> or further. This is the single source of truth — the cornstalk
+    /// rustle envelope, the low stalk partial and the music's tension term all read this one value,
+    /// which is exactly why they can never drift apart.
+    /// </summary>
+    public static float Threat01 { get; private set; }
+    /// <summary>The same number in cells, for reading and for the self-test.</summary>
+    public static float ThreatCells { get; private set; } = 99f;
+    /// <summary>0 at 3 cells, 1 by 1.5: the "something is in the stalks next to you" partial.</summary>
+    public static float StalkLow01 { get; private set; }
+    /// <summary>The music's tension term as computed this frame, so the self-test reads and not re-derives it.</summary>
+    public static float Tension01 { get; private set; }
+
+    /// <summary>
+    /// §25.6's own number, before the gust/movement/storm shaping: 0.16 at 8 cells, 0.40 at 1.5 cells.
+    /// Exposed so verification can check the spec against the spec, not against the weather.
+    /// </summary>
+    public static float RustleThreatGain => Mathf.Lerp(RustleVol, RustleThreatNear, Threat01);
+
+    /// <summary>§25.6 numbers: rustle gain 0.16 at 8 cells, 0.40 at 1.5 cells, pitch +0-4 %.</summary>
+    public const float ThreatFarCells = 8f;
+    public const float ThreatNearCells = 1.5f;
+    /// <summary>Inside this many cells the stalks gain a low partial (§25.6).</summary>
+    public const float StalkLowCells = 3f;
+    const float RustleThreatNear = 0.40f;
+    const float StalkLowVol = 0.10f;
+
     Transform _listenerFollow;
     Vector3 _goldWorld;
     Vector3[] _deadEnds;
@@ -29,9 +58,13 @@ public sealed class MazeMoodAudio : MonoBehaviour
     AudioSource _howl;
     AudioSource _rustle;
     AudioSource _brush;
+    AudioSource _stalkLow;
     AudioSource _win;
     float _move;
     float _winMix;
+    Husk _husk;
+    float _threatTimer;
+    float _cellSize = 4f;
 
     public static MazeMoodAudio Install(Transform player, MazeData maze)
     {
@@ -44,6 +77,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
         mood._listenerFollow = player;
         mood._goldWorld = maze.GoldWorld;
         mood._deadEnds = FindDeadEnds(maze);
+        mood._cellSize = Mathf.Max(0.001f, maze.CellSize);
         if (player != null)
             mood._lastPos = player.position;
         return mood;
@@ -96,6 +130,8 @@ public sealed class MazeMoodAudio : MonoBehaviour
         _howl = MakeSource("Howl", HowlVol, 0f, true, 118);
         _rustle = MakeSource("Rustle", RustleVol, 0.30f, true, 128);
         _brush = MakeSource("Brush", 0f, 0.42f, true, 132);
+        // M26: the low partial that only exists when the thing is in the stalks beside you.
+        _stalkLow = MakeSource("StalkLow", 0f, 0.34f, true, 130);
         _win = MakeSource("WinTheme", 0f, 0f, true, 20);
         if (_listenerFollow != null)
         {
@@ -109,6 +145,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
         _howl.clip = MazeMoodSynth.HollowHowl(12f);
         _rustle.clip = MazeMoodSynth.CornRustle(8f);
         _brush.clip = MazeMoodSynth.CornBrush(5f);
+        _stalkLow.clip = MazeMoodSynth.StalkLow(4f);
         _win.clip = MazeMoodSynth.GoldStrike(6.4f);
 
         _music.Play();
@@ -117,6 +154,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
         _howl.Play();
         _rustle.Play();
         _brush.Play();
+        _stalkLow.Play();
         Gust01 = 0.22f;
         WinThemePlaying = false;
         _winMix = 0f;
@@ -148,7 +186,19 @@ public sealed class MazeMoodAudio : MonoBehaviour
             _winMix = Mathf.MoveTowards(_winMix, 1f, Time.deltaTime / 0.55f);
         float duck = 1f - 0.92f * _winMix;
 
+        // ---- M26 (§25.6): one threat number, refreshed a few times a second ---------------------
+        // The Husk can also be scattered and re-form, so the lookup is re-done rather than cached
+        // forever; 0.5 s is far more often than a person can notice, and cheap.
+        _threatTimer -= Time.deltaTime;
+        if (_husk == null || _threatTimer <= 0f)
+        {
+            _threatTimer = 0.5f;
+            _husk = FindFirstObjectByType<Husk>();
+        }
+        UpdateThreat();
+
         float tension = Tension();
+        Tension01 = tension;
         if (_music != null)
             _music.volume = Mathf.Min(0.42f, MusicVol * (1f + 0.30f * tension + 0.55f * storm)) * duck;
         if (_chase != null)
@@ -167,9 +217,21 @@ public sealed class MazeMoodAudio : MonoBehaviour
         }
         if (_rustle != null)
         {
-            float rustle = RustleVol * (0.36f + 0.42f * Gust01) * (1f + 0.40f * _move) * (1f + 1.55f * storm);
+            // §25.6: the threat term rides ON TOP of the existing gust / movement / storm shaping, and
+            // at Threat01 = 0 this is the identical expression it was before M26 — the field does not
+            // change until the Husk is actually near.
+            float rustle = Mathf.Lerp(RustleVol, RustleThreatNear, Threat01) *
+                           (0.36f + 0.42f * Gust01) * (1f + 0.40f * _move) * (1f + 1.55f * storm);
             _rustle.volume = Mathf.Min(0.40f, rustle) * (1f - 0.40f * _winMix);
-            _rustle.pitch = 1f + 0.028f * _move + 0.06f * storm;
+            _rustle.pitch = 1f + 0.04f * Threat01 + 0.028f * _move + 0.06f * storm;
+        }
+        if (_stalkLow != null)
+        {
+            // Inside 3 cells the stalks gain a low partial: the "something is in the stems beside you"
+            // register, which the papery rustle alone cannot give.
+            _stalkLow.volume = Mathf.Min(0.16f, StalkLowVol * StalkLow01 * (1f + 0.5f * Threat01)) *
+                               (1f - 0.40f * _winMix);
+            _stalkLow.pitch = 0.96f + 0.06f * Threat01;
         }
         if (_brush != null)
         {
@@ -184,6 +246,26 @@ public sealed class MazeMoodAudio : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// M26 (§25.6): the one number. Distance to the Husk in cells, normalised so 1 means "in the stalks
+    /// beside you" and 0 means "somewhere else in the field". Everything downstream reads this.
+    /// </summary>
+    void UpdateThreat()
+    {
+        if (_listenerFollow == null || _husk == null)
+        {
+            Threat01 = 0f;
+            ThreatCells = 99f;
+            StalkLow01 = 0f;
+            return;
+        }
+
+        float cells = Vector3.Distance(_listenerFollow.position, _husk.transform.position) / _cellSize;
+        ThreatCells = cells;
+        Threat01 = Mathf.Clamp01((ThreatFarCells - cells) / (ThreatFarCells - ThreatNearCells));
+        StalkLow01 = Mathf.Clamp01((StalkLowCells - cells) / (StalkLowCells - ThreatNearCells));
+    }
+
     float Tension()
     {
         if (_listenerFollow == null) return 0f;
@@ -195,7 +277,10 @@ public sealed class MazeMoodAudio : MonoBehaviour
             for (int i = 0; i < _deadEnds.Length; i++)
                 ends = Mathf.Max(ends, 0.7f * (1f - Mathf.Clamp01(Vector3.Distance(pos, _deadEnds[i]) / 7f)));
         }
-        return Mathf.Max(gold, ends);
+        // M26: the threat is a term of the SAME tension the bed already used, so the music and the
+        // stalks move together. The 0.42 cap on the music volume and the ducking during stings are
+        // untouched — the bed still must not fatigue.
+        return Mathf.Max(gold, Mathf.Max(ends, Threat01));
     }
 
     AudioSource MakeSource(string name, float volume, float spatial, bool loop, int priority)
@@ -669,6 +754,42 @@ static class MazeMoodSynth
         var data = new float[frames * 2];
         LoopCross(rawL, rawR, data, frames, extra);
         return Clip("CornRustle", data, frames, 2);
+    }
+
+    /// <summary>
+    /// M26 (§25.6): the low partial the stalks gain once the Husk is inside three cells. Not a sting —
+    /// a bed: a slow low body with a damped papery layer, seam-crossfaded so it loops without a click.
+    /// </summary>
+    public static AudioClip StalkLow(float seconds)
+    {
+        int extra = Mathf.RoundToInt(0.30f * Rate);
+        int frames = Mathf.RoundToInt(seconds * Rate);
+        int total = frames + extra;
+        var rawL = new float[total];
+        var rawR = new float[total];
+        var rng = new Rng(2601);
+        float lpL = 0f, lpR = 0f;
+
+        for (int i = 0; i < total; i++)
+        {
+            float t = i / (float)Rate;
+            // Harmonics of 27.5 Hz, so every partial completes whole cycles across the loop.
+            float body = 0.55f * Mathf.Sin(2f * Mathf.PI * 55f * t)
+                       + 0.30f * Mathf.Sin(2f * Mathf.PI * 82.5f * t + 0.7f)
+                       + 0.18f * Mathf.Sin(2f * Mathf.PI * 110f * t + 1.9f);
+            float swell = 0.62f + 0.38f * Mathf.Sin(2f * Mathf.PI * (2f / seconds) * t);
+
+            float n = rng.NextSigned();
+            lpL += 0.045f * (n - lpL);
+            lpR += 0.045f * (n * 0.82f - lpR);
+
+            rawL[i] = body * swell * 0.50f + lpL * 0.75f;
+            rawR[i] = body * swell * 0.46f + lpR * 0.75f;
+        }
+
+        var data = new float[frames * 2];
+        LoopCross(rawL, rawR, data, frames, extra);
+        return Clip("StalkLow", data, frames, 2);
     }
 
     /// <summary>
