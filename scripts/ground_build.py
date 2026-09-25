@@ -292,8 +292,28 @@ def build(variant):
         print(f"[ground:{variant}] tileability {label}: wrap step is {rx:.2f}x / {ry:.2f}x a normal "
               f"column step (1.0 = seamless)")
 
+    # ---- the lane's transparency ------------------------------------------------------------
+    # Todd, 2026-09-25: "the path way should not be layered, it should be blended via transparancy.
+    # the path is currenly bubbly and janky". He is right, and the cause was the *method*: the lane
+    # was composited as a strip with its half-width pulsing on a low-frequency mask, so the boundary
+    # came out as large smooth blobs -- bubbles -- and read as a separate layer laid on the field.
+    #
+    # Transparency instead: the lane fades out along its width over a wide band and the fade is eaten
+    # into at a FINE scale, so the margin dissolves into the field rather than being drawn on it.
+    # Shipped as a strip: U runs along the lane, V across it.
+    strip = np.empty((SIZE // 4, SIZE, 3), dtype=np.float32)
+    v = (np.arange(SIZE // 4, dtype=np.float32) / (SIZE // 4 - 1))[:, None]
+    # across the width: solid in the middle, fading to nothing at both edges
+    ramp = np.clip(v / 0.16, 0, 1) * np.clip((1.0 - v) / 0.16, 0, 1)
+    ramp = ramp * ramp * (3.0 - 2.0 * ramp)
+    grain = periodic_fbm(SIZE, 22, 4, 77)[:SIZE // 4, :]          # fine, and tileable in U
+    grit = np.clip((grain - 0.30) / 0.55, 0.0, 1.0)              # sparse holes in the fade
+    lane_alpha = np.clip(ramp * (0.55 + 0.75 * grit), 0.0, 1.0)
+    lane_alpha = np.clip((lane_alpha - 0.10) / 0.80, 0.0, 1.0)
+    lane_alpha = np.repeat(lane_alpha[:, :, None], 3, axis=2)
+
     return dict(variant=variant, size=SIZE, field_alb=f_alb, field_nor=f_nor, field_rgh=f_rgh,
-                lane_alb=l_alb, lane_nor=l_nor, lane_rgh=l_rgh, edge=edge,
+                lane_alb=l_alb, lane_nor=l_nor, lane_rgh=l_rgh, edge=edge, lane_alpha=lane_alpha,
                 field_raw=f_alb_raw, lane_raw=l_alb_raw, ship=(variant == SHIP))
 
 
@@ -316,15 +336,24 @@ def previews(res_map):
             cx, cy = x0 + t * px, y0 + t * py
             dist = np.minimum(dist, np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2))
 
-        half = (78.0 + 26.0 * (e - 0.5) * 2.0) * k           # the edge mask is 2-D; half-width wobbles with it
-        lane_amt = np.clip((half - dist) / (22.0 * k), 0.0, 1.0)
-        rim = np.clip(1.0 - np.abs(dist - half) / (14.0 * k), 0.0, 1.0) * 0.45   # packed at the rim
+        # Transparency, not a layer: a wide smooth fade with a FINE grain eating into it. The
+        # half-width is constant -- a lane does not pulse -- so nothing reads as a bubble.
+        half = 70.0 * k
+        t = np.clip((dist - 0.50 * half) / (0.90 * half), 0.0, 1.0)
+        falloff = 1.0 - (t * t * (3.0 - 2.0 * t))            # smoothstep down across the margin
+        grain = periodic_fbm(size, 20, 4, 77)                 # fine erosion, tileable
+        grit = np.clip((grain - 0.30) / 0.55, 0.0, 1.0)
+        lane_amt = np.clip(falloff * (0.55 + 0.75 * grit), 0.0, 1.0)
+        lane_amt = np.clip((lane_amt - 0.10) / 0.80, 0.0, 1.0)
+        # the ground underneath keeps its own colour where the lane is thin, so the two mix rather
+        # than one covering the other
+        rim = np.clip(1.0 - np.abs(dist - half * 0.95) / (0.5 * half), 0.0, 1.0) * 0.30
 
         prev = np.clip((ground * (1.0 - lane_amt[:, :, None]) + lane * lane_amt[:, :, None])
-                       * (1.0 + 0.10 * rim[:, :, None]), 0.0, 1.0)
+                       * (1.0 + 0.06 * rim[:, :, None]), 0.0, 1.0)
         raw = np.clip((r["field_raw"] * (1.0 - lane_amt[:, :, None])
                        + r["lane_raw"] * lane_amt[:, :, None])
-                      * (1.0 + 0.10 * rim[:, :, None]), 0.0, 1.0)
+                      * (1.0 + 0.06 * rim[:, :, None]), 0.0, 1.0)
 
         base = os.path.join(REF, "ground-preview" if r["ship"] else f"ground-preview-{variant}")
         for path, img, label in ((f"{base}.png", prev, "graded (dusk)"),
@@ -353,10 +382,11 @@ def main():
                               (f"T_Ground_Lane_N", r["lane_nor"], "Non-Color"),
                               (f"T_Ground_Lane_R", r["lane_rgh"], "Non-Color"),
                               (f"T_Ground_LaneEdge", np.repeat(r["edge"][:, :, None], 3, axis=2),
-                               "Non-Color")):
+                               "Non-Color"),
+                              (f"T_Ground_LaneAlpha", r["lane_alpha"], "Non-Color")):
             if arr.ndim == 3 and arr.shape[2] == 1:     # roughness is single-channel; PNG is not
                 arr = np.repeat(arr, 3, axis=2)
-            rgba = np.concatenate([arr, np.ones((r["size"], r["size"], 1), dtype=np.float32)], axis=2)
+            rgba = np.concatenate([arr, np.ones((arr.shape[0], arr.shape[1], 1), dtype=np.float32)], axis=2)
             p = os.path.join(OUT_DIR, name + ".png")
             n = save(rgba, p, cs)
             print(f"[ground:{r['variant']}] SHIP wrote {p}  ({n // 1024} KB)  {r['size']}px")
