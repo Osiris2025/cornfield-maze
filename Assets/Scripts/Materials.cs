@@ -44,10 +44,84 @@ public static class Materials
                       new Color(0.88f, 0.83f, 0.72f), 0.05f);
     }
 
+    /// <summary>
+    /// M31 (§17): the lane, blended into the field by alpha rather than cut out of it.
+    ///
+    /// The fade is baked into the albedo's alpha (T_Ground_LaneA, baked by scripts/m31_lane_alpha_bake.py
+    /// from the strip Todd shipped) and the material is set to Alpha Blend, so URP/Lit's own base-map alpha
+    /// drives opacity. That is what keeps the lit shader on the lane: it still gets the moon, the normal map
+    /// and the PathMudWetness wetness path. No in-house shader, no second texture sampled per pixel.
+    /// </summary>
     public static Material GroundLane()
     {
-        return Ground("Ground/T_Ground_Lane", "Ground/T_Ground_Lane_N",
-                      new Color(0.94f, 0.92f, 0.88f), 0.11f);
+        var mat = Ground("Ground/T_Ground_LaneA", "Ground/T_Ground_Lane_N",
+                         new Color(0.94f, 0.92f, 0.88f), 0.11f);
+        MakeAlphaBlend(mat);
+        return mat;
+    }
+
+    /// <summary>
+    /// Turns a URP/Lit material into a fading one. These are URP's own property names and keywords, which is
+    /// why the stock shader can do this: `_SrcBlend`/`_DstBlend` are the pass's blend factors, `_Surface`
+    /// and `_SURFACE_TYPE_TRANSPARENT` are what URP's Lit reads to drop ZWrite and switch to forward
+    /// transparency, and the queue has to move or the lane sorts behind the field it is drawn over.
+    /// </summary>
+    public static void MakeAlphaBlend(Material mat)
+    {
+        if (mat == null) return;
+        mat.SetOverrideTag("RenderType", "Transparent");
+        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);        // 0 opaque, 1 transparent
+        if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);            // 0 alpha
+        if (mat.HasProperty("_SrcBlend"))
+            mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (mat.HasProperty("_DstBlend"))
+            mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
+        if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 0f);
+        if (mat.HasProperty("_BaseColor"))
+        {
+            var c = mat.GetColor("_BaseColor");
+            c.a = 1f;                       // the fade lives in the map, not in the tint
+            mat.SetColor("_BaseColor", c);
+        }
+        mat.DisableKeyword("_ALPHATEST_ON");
+        mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+    }
+
+    /// <summary>The same material forced back to opaque — used by the M31 harness to measure what the blend
+    /// actually costs, by rendering the identical lane with and without it.</summary>
+    public static void MakeOpaque(Material mat)
+    {
+        if (mat == null) return;
+        mat.SetOverrideTag("RenderType", "Opaque");
+        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 0f);
+        if (mat.HasProperty("_SrcBlend"))
+            mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.One);
+        if (mat.HasProperty("_DstBlend"))
+            mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.Zero);
+        if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 1f);
+        mat.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
+    }
+
+    /// <summary>Reads the blend state back off a material, so the report can print what is actually set
+    /// rather than what the builder intended.</summary>
+    public static string DescribeBlend(Material mat)
+    {
+        if (mat == null) return "NO MATERIAL";
+        float surface = mat.HasProperty("_Surface") ? mat.GetFloat("_Surface") : -1f;
+        float src = mat.HasProperty("_SrcBlend") ? mat.GetFloat("_SrcBlend") : -1f;
+        float dst = mat.HasProperty("_DstBlend") ? mat.GetFloat("_DstBlend") : -1f;
+        float zwrite = mat.HasProperty("_ZWrite") ? mat.GetFloat("_ZWrite") : -1f;
+        return "renderQueue=" + mat.renderQueue + " renderType=" + mat.GetTag("RenderType", false) +
+               " _Surface=" + surface + " (0 opaque, 1 transparent)" +
+               " _SrcBlend=" + src + " _DstBlend=" + dst +
+               " _ZWrite=" + zwrite +
+               " keyword _SURFACE_TYPE_TRANSPARENT=" + mat.IsKeywordEnabled("_SURFACE_TYPE_TRANSPARENT") +
+               " baseMap=" + (mat.HasProperty("_BaseMap") && mat.GetTexture("_BaseMap") != null
+                   ? mat.GetTexture("_BaseMap").name : "none");
     }
 
     /// <summary>

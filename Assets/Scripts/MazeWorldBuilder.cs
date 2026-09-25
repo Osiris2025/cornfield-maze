@@ -11,7 +11,6 @@ public static class MazeWorldBuilder
         var gravelMat = Materials.GroundLane();
         PathMudWetness.RegisterGravel(gravelMat);
         var fieldMat = Materials.GroundField();
-        GroundLaneMesh.Prepare();
         // The lane dressing quads are boxes a few centimetres across, so they need their own texture scale:
         // the lane material tiles once per 2 m of world UV, and a 16 cm tuft with that mapping would show a
         // single gravel stone blown up to the size of a fist.
@@ -73,25 +72,54 @@ public static class MazeWorldBuilder
                 var center = maze.CellToWorld(x, y);
                 if (!maze.IsWall[x, y])
                 {
-                    PlaceLane(pathRoot.transform, center + Vector3.up * 0.03f, lane, lane, gravelMat);
-
+                    // M31: the cell's own piece exists to fade the edges that face corn. A straight run needs
+                    // one piece — the fade runs across the lane, and the two edges along it are covered by the
+                    // connectors. A corner or a dead end needs both, because it has exposed edges on both
+                    // axes; a four-way junction needs neither, because all four of its sides are covered by
+                    // the connectors running out of it. Placing one square piece for every cell (M29) meant a
+                    // north-south cell got its fade running down the lane instead of across it.
                     bool east = maze.IsPath(x + 1, y);
+                    bool west = maze.IsPath(x - 1, y);
                     bool north = maze.IsPath(x, y + 1);
+                    bool south = maze.IsPath(x, y - 1);
+                    bool needAcrossZ = !north || !south;    // a north or south edge faces corn
+                    bool needAcrossX = !east || !west;      // an east or west edge faces corn
+                    // One core piece per cell, fading across the axis whose edge faces corn. When both do —
+                    // a corner or a dead end — it fades the axis the lane runs along, and the other exposed
+                    // edge keeps its hard line: a linear strip cannot fade two adjacent sides at once, and
+                    // the alternative (two overlapping pieces) was measured as a brighter plate with a
+                    // straight edge, which is the exact defect this milestone removes.
+                    bool axisX;
+                    if (needAcrossZ && !needAcrossX) axisX = true;        // only north/south face corn
+                    else if (needAcrossX && !needAcrossZ) axisX = false;  // only east/west face corn
+                    else if (needAcrossZ && needAcrossX)
+                        // Both axes have an exposed edge: a corner or a dead end. Fade the axis the lane runs
+                        // along. At a corner the arms are on both axes, so it is a coin toss — taken as the
+                        // east-west axis, and the frame of a corner says which edge is left hard.
+                        axisX = (east || west) && !(north || south);
+                    else axisX = false;                                   // four-way junction: all sides covered
+                    PlaceLane(pathRoot.transform, center + Vector3.up * 0.03f, lane, lane, gravelMat, axisX);
+
+                    // Connectors ABUT the core piece: from this cell's edge to the next cell's edge. M29 ran
+                    // them centre to centre, so every connector overlapped the two core pieces it sat between
+                    // — two alpha layers over the same ground, which the M31 frame caught as a bright
+                    // rectangle with a hard edge in the middle of the lane.
+                    float span = maze.CellSize - lane;
                     if (east)
                     {
                         PlaceLane(
                             pathRoot.transform,
                             center + new Vector3(maze.CellSize * 0.5f, 0.03f, 0f),
-                            maze.CellSize, lane,
-                            gravelMat);
+                            span, lane,
+                            gravelMat, true);
                     }
                     if (north)
                     {
                         PlaceLane(
                             pathRoot.transform,
                             center + new Vector3(0f, 0.03f, maze.CellSize * 0.5f),
-                            lane, maze.CellSize,
-                            gravelMat);
+                            lane, span,
+                            gravelMat, false);
                     }
 
                     ScatterPathDressing(pathRoot.transform, center, maze, x, y, lane, grassMat, pebbleMats, rng);
@@ -177,16 +205,17 @@ public static class MazeWorldBuilder
     }
 
     /// <summary>
-    /// M29: a lane piece — a mesh, not a cube, because its margin has to be ragged rather than a cut line
-    /// (see GroundLaneMesh, which explains why this is geometry and not a blend shader). No collider: the
-    /// field cube underneath is the floor the player walks on and the lane sits 3 cm above it.
+    /// M31: a lane piece — a quad laid over the field, blended into it by the alpha fade in the lane
+    /// material (see GroundLaneMesh: the geometric cut M29 used was still a cut line, just an irregular
+    /// one). No collider: the field cube underneath is the floor the player walks on and the lane sits
+    /// 3 cm above it.
     /// </summary>
-    static void PlaceLane(Transform parent, Vector3 pos, float w, float d, Material mat)
+    static void PlaceLane(Transform parent, Vector3 pos, float w, float d, Material mat, bool uAlongX)
     {
         var path = new GameObject("Lane");
         path.transform.SetParent(parent, false);
         path.transform.position = pos;
-        path.AddComponent<MeshFilter>().sharedMesh = GroundLaneMesh.Build(w, d, pos);
+        path.AddComponent<MeshFilter>().sharedMesh = GroundLaneMesh.Build(w, d, pos, uAlongX);
         path.AddComponent<MeshRenderer>().sharedMaterial = mat;
     }
 

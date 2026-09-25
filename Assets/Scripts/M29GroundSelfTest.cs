@@ -201,19 +201,19 @@ public class M29GroundSelfTest : MonoBehaviour
             }
         }
 
-        Emit("ragged margin: a boundary line wanders by up to " + maxWander.ToString("0.00") +
-             " m (mean over " + edgesMeasured + " faces " + (sumWander / Mathf.Max(1, edgesMeasured)).ToString("0.00") +
-             " m; " + raggedEdges + " of " + edgesMeasured + " faces wander more than 5 cm). " +
-             "A straight lane would read 0.00 m and 0 of " + edgesMeasured + ".");
+        Emit("margin: the lane boundary is no longer geometry, so this harness has nothing to wander — M31 " +
+             "replaced the cut with an alpha fade (see artifacts/m31-lane-blend-report.txt). The lane piece " +
+             "is now " + edgesMeasured + " quad faces, all four edges dead straight, and the fade is what " +
+             "shapes the join. Measuring the vertices here would report 0.00 m and read as a regression " +
+             "when it is the fix.");
         Emit("metres per repeat: " + Materials.GroundTileMetres.ToString("0.00") + " m (constant) — a " +
              sizeX.ToString("0.00") + " x " + sizeZ.ToString("0.00") + " m piece carries a UV span of " +
              uvSpanX.ToString("0.00") + " x " + uvSpanZ.ToString("0.00") + ", i.e. " +
              (sizeX / Mathf.Max(0.01f, uvSpanX)).ToString("0.00") + " m per repeat measured off the mesh");
-        Emit("raggedness mask readable=" + GroundLaneMesh.MaskLoaded +
-             " — sampled " + GroundLaneMesh.MaskMin.ToString("0.00") + "/" + GroundLaneMesh.MaskMean.ToString("0.00") +
-             "/" + GroundLaneMesh.MaskMax.ToString("0.00") + " (min/mean/max), cut from " +
-             GroundLaneMesh.MaskLowCut.ToString("0.00") + " to " + GroundLaneMesh.MaskHighCut.ToString("0.00") +
-             "; GroundLaneMesh reads it on the CPU, and unreadable would mean straight lanes");
+        var laneMat = Materials.GroundLane();
+        Emit("lane blend (M31): " + Materials.DescribeBlend(laneMat) + " — the fade is baked into the lane " +
+             "albedo's alpha, so there is no mask to read on the CPU and no separate alpha texture sampled " +
+             "per pixel");
     }
 
     /// <summary>The textures actually resident, with the format the runtime chose for them.</summary>
@@ -244,9 +244,9 @@ public class M29GroundSelfTest : MonoBehaviour
         Emit("gpu/cpu above are computed from each texture's own format, size and mip count, because " +
              "Profiler.GetRuntimeMemorySizeLong reports 0 for the DXT maps in a build (it returned the readable " +
              "one only). The profiler column is printed beside them so the two can be compared.");
-        Emit("the mask's CPU copy is the single biggest item and it exists only because GroundLaneMesh reads the " +
-             "mask at world-build time. Phone follow-up, worth doing before submission: bake the jitter offsets " +
-             "into the lane meshes at design time and drop Read/Write from T_Ground_LaneEdge.");
+        Emit("the mask's CPU copy is gone with the geometry it fed (M31): nothing in Ground/ is Read/Write any " +
+             "more, and the fade is baked into the lane albedo at design time. That was the single biggest " +
+             "item in the M29 table and the phone follow-up it asked for.");
         Emit("the noise it replaced was three CPU-made RGBA32 tiles (128/128/96 px) — about 0.13 MB resident, " +
              "so the added weight is the difference, and it is the whole cost of the photographic floor.");
         Emit("NOTE: formats above are what the STANDALONE build chose; the phone target's own compression is a " +

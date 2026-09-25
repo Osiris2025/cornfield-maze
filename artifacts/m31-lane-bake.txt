@@ -1,0 +1,15 @@
+M31 lane alpha bake — measured off the textures, not asserted from the design
+
+  source albedo      T_Ground_Lane.png      1024x1024
+  source strip       T_Ground_LaneAlpha.png 1024x256
+  output             T_Ground_LaneA.png     1024x1024, 2810525 bytes, RGBA
+  bake               RGB = lane albedo, A = the strip's fade, U along the lane, V across it
+
+  strip V profile    edge 0.000 -> centre 0.867 -> edge 0.000
+  alpha at the mesh's edge (V=0 / V=1): 0.000 / 0.000  <- the geometry stops where the fade has already reached zero, so there is no line at the edge
+  full-strength band  V 0.278 .. 0.855  = 1.20 m of 2.08 m lane width (the plateau, measured at the strip's own peak)
+  centre line alpha  0.867  <- the lane is not fully opaque even in the middle: the field reads through it, which is what makes it a blend rather than a layer
+  half-width (alpha 0.5) 0.84 m from the centre line
+  U tiling           seam 0.00 vs interior step 0.01  -> tileable
+  U sample used      u (the strip's own grain along the lane)
+

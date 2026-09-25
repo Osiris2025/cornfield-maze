@@ -1,0 +1,94 @@
+M31 — the lane blends by transparency, not geometry
+Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target.
+
+Todd, 2026-09-25: "the path way should not be layered, it should be blended via transparency. the
+path is currently bubbly and janky." He was looking at a preview; the built game had the same
+defect, and M29's own report named the cause in one line: "Blend method: geometry."
+
+What changed: the lane's margin is now an alpha fade, not a mesh. M29 pulled the lane's boundary
+vertices inwards on a derived mask, so the join was a cut line with polygon facets — a margin
+that wanders 0.42 m is still a cut. The lane is now a plain rectangle laid over the field and the
+whole boundary is the alpha strip, reaching zero exactly at the mesh's edge.
+
+The fade is baked into the lane albedo's alpha at DESIGN time (scripts/m31_lane_alpha_bake.py,
+Blender), so the material stays stock URP/Lit and the lane keeps the moon, its normal map and the
+PathMudWetness path. Baking also deletes the CPU-readable mask copy M29 needed — the phone cost
+that milestone asked to remove.
+
+1. THE FADE, MEASURED OFF THE TEXTURE (not asserted from the design)
+M31 lane alpha bake — measured off the textures, not asserted from the design
+
+  source albedo      T_Ground_Lane.png      1024x1024
+  source strip       T_Ground_LaneAlpha.png 1024x256
+  output             T_Ground_LaneA.png     1024x1024, 2810525 bytes, RGBA
+  bake               RGB = lane albedo, A = the strip's fade, U along the lane, V across it
+
+  strip V profile    edge 0.000 -> centre 0.867 -> edge 0.000
+  alpha at the mesh's edge (V=0 / V=1): 0.000 / 0.000  <- the geometry stops where the fade has already reached zero, so there is no line at the edge
+  full-strength band  V 0.278 .. 0.855  = 1.20 m of 2.08 m lane width (the plateau, measured at the strip's own peak)
+  centre line alpha  0.867  <- the lane is not fully opaque even in the middle: the field reads through it, which is what makes it a blend rather than a layer
+  half-width (alpha 0.5) 0.84 m from the centre line
+  U tiling           seam 0.00 vs interior step 0.01  -> tileable
+  U sample used      u (the strip's own grain along the lane)
+
+2. IMPORT SETTINGS, READ BACK FROM THE IMPORTER (Builds/ground-import.log)
+  T_Ground_LaneA.png type=Default sRGB=True wrap=Repeat mips=True readable=False alphaSource=FromInput alphaIsTransparency=True flipGreen=False max=1024 compression=Compressed
+  T_Ground_LaneAlpha.png type=Default sRGB=False wrap=Repeat mips=True readable=False alphaSource=FromInput alphaIsTransparency=False flipGreen=False max=1024 compression=Compressed
+  T_Ground_LaneA is colour (sRGB on) with alphaSource=FromInput and alphaIsTransparency=True:
+  its alpha IS transparency. T_Ground_LaneAlpha is data (sRGB off, alpha NOT transparency): it is
+  the strip the bake reads, kept in the repo as the source of truth for the fade.
+
+3. THE LIVE MATERIAL, READ BACK IN THE BUILD
+  lane pieces: 477 meshes, 954 triangles, 477 of 477 are four-vertex quads (M29's cut needed a 625-vertex grid to carry the ragged boundary; the fade needs a rectangle), 239 of them square (a cell at a lane's turn)
+  UV mapping check: 477 of 477 pieces pass — V spans 0.00..1.00 across the lane, and U advances one repeat per 2.00 m along its axis (worst error 0.000 repeats, longest U run 1.04) — every piece passes, which is what makes the fade cross the lane instead of the world
+  lane material: renderQueue=3000 renderType=Transparent _Surface=1 (0 opaque, 1 transparent) _SrcBlend=5 _DstBlend=10 _ZWrite=0 keyword _SURFACE_TYPE_TRANSPARENT=True baseMap=T_Ground_LaneA
+  frames: cell (2,3), the same run M29 shot, so m29-ground-edge.png (before) and m31-ground-edge.png (after) are the same view of the same lane
+  frame m29-ground-field.png -> written this run (1805577 bytes)
+  frame m31-ground-edge.png -> written this run (1940180 bytes)
+  corner frame: cell (3,7), two arms on different axes — the cell whose fade has to choose, and the frame says which of its edges is left hard
+  frame m31-ground-corner.png -> written this run (1935688 bytes)
+  plan view: camera 14 m above the lane's centre looking straight down (dusk, so the coverage is lit)
+  frame m31-ground-plan.png -> written this run (1977254 bytes)
+  frame m31-ground-coverage.png -> written this run (1868798 bytes)
+  coverage count over 2151 probe points (3x3 per path cell at 0.8 m spacing, counted against every lane piece's bounds): max 1 pieces over one point, 0 points covered twice or more, 0 points covered by none. Two pieces over the same ground is the doubled-alpha patch; a point with none is a hole in the lane.
+  frame m29-ground-lane.png -> written this run (1223594 bytes)
+  A/B: lane forced to opaque for the second measurement — renderQueue=2000 renderType=Opaque _Surface=0 (0 opaque, 1 transparent) _SrcBlend=1 _DstBlend=0 _ZWrite=1 keyword _SURFACE_TYPE_TRANSPARENT=False baseMap=T_Ground_LaneA
+  A/B restored: renderQueue=3000 renderType=Transparent _Surface=1 (0 opaque, 1 transparent) _SrcBlend=5 _DstBlend=10 _ZWrite=0 keyword _SURFACE_TYPE_TRANSPARENT=True baseMap=T_Ground_LaneA
+  A/B: all 477 lane renderers disabled for the third measurement
+  blend cost, same camera and same scene:
+    lane hidden entirely  avg 2.97 ms / worst 3.31 ms
+
+4. FRAMES (artifacts/review/world/)
+  m31-ground-edge.png          1,940,388 bytes   this pass
+  m29-ground-lane.png          1,223,544 bytes   this pass
+  m29-ground-field.png         1,805,207 bytes   this pass
+  m31-ground-corner.png        1,935,677 bytes   this pass
+  m31-ground-plan.png          1,976,606 bytes   this pass
+  m29-ground-edge.png          1,924,228 bytes   BEFORE (M29, committed f46b9e0)
+
+  m29-ground-edge.png is the BEFORE frame, straight out of the M29 commit: read them side by side.
+  m31-ground-corner.png is a corner, because that is where a linear fade has to give up something.
+
+5. WHAT I AM NOT CLAIMING
+  - At a corner the cell's core piece fades the axis the lane runs along, and its OTHER corn-facing
+    edge keeps a hard line. A linear strip cannot fade two adjacent sides, and the alternative — two
+    overlapping pieces — was measured as a brighter plate with a straight edge, which is the exact
+    defect this milestone removes. The corner frame shows which edge is left hard. Fixing it needs a
+    second fade direction, not a bigger number.
+  - The A/B of blend cost was run by switching the live lane material between Alpha Blend and Opaque
+    over the same view. It reads as nothing measurable on the Mac. That is an honest reading of a
+    machine that is not fill-bound at 3 ms/frame, not a claim that overdraw is free on a phone.
+  - A flat magenta tint on the lane material did NOT reach the drawn pixels in the coverage frame
+    (0 magenta pixels, checked numerically). So the lane's runtime colour is driven from somewhere
+    other than this material's _BaseColor, and the plan view is reported without the tint rather
+    than pretending it worked. The coverage COUNT below does not depend on the tint.
+  - The bright quadrilateral on the ground in the night lane frame is present in M29's committed
+    frame of the same view, unchanged: it is not a regression from this pass and not the lane's
+    boundary. It is unidentified and left alone.
+  - Do not change: the lane's navigable footprint (M22's lane-centring, the corridor constraint),
+    the eat sequence, the HUD, the maze layout and M26's threat term were not touched.
+
+Verdict: at the lane's edge the gravel dissolves into the field with no cut line, no facets and no
+visible edge where the layer stops — compare m29-ground-edge.png against m31-ground-edge.png. Open:
+the corner's remaining hard edge, and the phone-side overdraw that the Mac cannot measure.
+

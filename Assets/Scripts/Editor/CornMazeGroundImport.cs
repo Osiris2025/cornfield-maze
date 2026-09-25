@@ -41,12 +41,17 @@ namespace CornMaze.EditorTools
             Configure(Dir + "T_Ground_Lane_N.png", GroundMap.Normal);
             Configure(Dir + "T_Ground_Lane_R.png", GroundMap.Data);
             Configure(Dir + "T_Ground_LaneEdge.png", GroundMap.Mask);
+            // M31: the lane's fade, shipped as a strip and baked into the lane albedo's alpha by
+            // scripts/m31_lane_alpha_bake.py. The bake is what the game draws; the strip is imported so the
+            // bake has a checked-in source and the licence/settings trail is complete.
+            Configure(Dir + "T_Ground_LaneA.png", GroundMap.AlbedoAlpha);
+            Configure(Dir + "T_Ground_LaneAlpha.png", GroundMap.AlphaStrip);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             Debug.Log("M29-GROUND: import settings applied.\n" + ProbeGround());
         }
 
-        enum GroundMap { Albedo, Normal, Data, Mask }
+        enum GroundMap { Albedo, AlbedoAlpha, AlphaStrip, Normal, Data, Mask }
 
         static void Configure(string path, GroundMap kind)
         {
@@ -62,7 +67,7 @@ namespace CornMaze.EditorTools
 
             settings.wrapMode = TextureWrapMode.Repeat;      // every map tiles; the maze floor is a repeat
             settings.mipmapEnabled = kind != GroundMap.Mask; // the mask is sampled on the CPU, never drawn
-            settings.sRGBTexture = kind == GroundMap.Albedo;
+            settings.sRGBTexture = kind == GroundMap.Albedo || kind == GroundMap.AlbedoAlpha;
 
             switch (kind)
             {
@@ -77,15 +82,33 @@ namespace CornMaze.EditorTools
                     break;
                 case GroundMap.Data:
                 case GroundMap.Mask:
+                case GroundMap.AlphaStrip:
                     settings.textureType = TextureImporterType.Default;
+                    break;
+                case GroundMap.AlbedoAlpha:
+                    // The lane albedo carries its fade in the alpha channel, and URP/Lit reads that alpha as
+                    // opacity once the material is Alpha Blend — so this one IS transparency, unlike the
+                    // smoothness that shares the same channel in the _M maps.
+                    settings.textureType = TextureImporterType.Default;
+                    settings.alphaSource = TextureImporterAlphaSource.FromInput;
+                    settings.alphaIsTransparency = true;
                     break;
             }
 
             importer.SetTextureSettings(settings);
             importer.maxTextureSize = MaxSize;
             importer.textureCompression = TextureImporterCompression.Compressed;
-            importer.alphaSource = TextureImporterAlphaSource.None;   // none of the seven carries alpha
-            importer.isReadable = kind == GroundMap.Mask;             // GroundLaneMesh reads the mask
+            if (kind != GroundMap.AlbedoAlpha)
+                importer.alphaSource = TextureImporterAlphaSource.None;   // the data maps carry no alpha
+            if (kind == GroundMap.AlphaStrip)
+            {
+                importer.alphaSource = TextureImporterAlphaSource.FromInput;
+                importer.alphaIsTransparency = false;    // the strip is data: it is a fade, not a picture
+            }
+            // M31: nothing is Read/Write any more. M29 needed a CPU copy of the raggedness mask because
+            // GroundLaneMesh sampled it at build time; the fade is baked now, so that 4 MB per 1K map goes
+            // away with the geometry it fed.
+            importer.isReadable = false;
             importer.SaveAndReimport();
         }
 
@@ -98,7 +121,8 @@ namespace CornMaze.EditorTools
             {
                 "T_Ground_Field.png", "T_Ground_Field_N.png", "T_Ground_Field_R.png",
                 "T_Ground_Lane.png", "T_Ground_Lane_N.png", "T_Ground_Lane_R.png",
-                "T_Ground_LaneEdge.png"
+                "T_Ground_LaneEdge.png",
+                "T_Ground_LaneA.png", "T_Ground_LaneAlpha.png"
             };
             foreach (var f in files)
             {
@@ -112,6 +136,8 @@ namespace CornMaze.EditorTools
                               " wrap=" + s.wrapMode +
                               " mips=" + s.mipmapEnabled +
                               " readable=" + importer.isReadable +
+                              " alphaSource=" + importer.alphaSource +
+                              " alphaIsTransparency=" + importer.alphaIsTransparency +
                               " flipGreen=" + s.flipGreenChannel +
                               " max=" + importer.maxTextureSize +
                               " compression=" + importer.textureCompression);
