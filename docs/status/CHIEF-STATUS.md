@@ -81,6 +81,11 @@ M26              -audiotest re-run: threat 0.160->0.400, RMS 2.40x, every line P
 5. Carried from last night: the §25.6 **device listen pass** (needs the phone); locked docs still say "Crumb
    Beast" (`docs/DECISIONS.md`, the FSD, `docs/reference/INDEX.md` — Ernie applies); the 60 fps phone floor is
    unmeasured; `capture.sh` needs one instance only (see below).
+6. **New this pass: FSD §25.8 landed mid-pass** (`ac92e31`, "first person by default, and the chaser becomes
+   a scarecrow"). M25b predates it and was judged on M25's third-person frames. It is relevant to the moon:
+   a first-person view sees far more sky than the boom camera, so the moon will be much easier to see than
+   §2 describes. *Recommend:* judge the moon again after §25.8 lands rather than re-aiming M25b for a camera
+   that is about to change.
 
 ## 5. Decisions made this pass
 
