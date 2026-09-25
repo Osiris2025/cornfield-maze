@@ -51,6 +51,14 @@ while true; do
   if [ -f "$BLOCKED" ]; then
     REASON="$(head -c 400 "$BLOCKED" 2>/dev/null)"
     log "BLOCKED marker: $REASON"
+    # A marker is used for two different things: asking for a human, and recording that the ask was
+    # ANSWERED. Only the first one may ring Todd's phone -- he got woken up by "needs you: CLEARED" once,
+    # which is a false alarm, and a false alarm costs the real ones their weight.
+    if printf '%s' "$REASON" | grep -qiE '^[[:space:]]*CLEARED|is DECIDED|not blocked'; then
+      log "  (cleared marker, not a request -- no alert sent)"
+      mv "$BLOCKED" "${BLOCKED}.sent" 2>/dev/null
+      exit 0
+    fi
     tell "Corn Field Maze needs you: $REASON"
     mv "$BLOCKED" "${BLOCKED}.sent" 2>/dev/null
     exit 0
