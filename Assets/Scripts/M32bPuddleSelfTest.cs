@@ -366,6 +366,8 @@ public class M32bPuddleSelfTest : MonoBehaviour
                     probe.size.x.ToString("0") + " x " + probe.size.z.ToString("0") + " m, refreshed now that " +
                     "the sky is at night")));
         ProbeReadBack(probe);
+        Emit(ReflectionProbes.CaptureReport);
+        Emit(PathMudWetness.DebugReport());
 
         player.SetEyeHeightForTest(1.15f);
         var backCell = maze.NearestPathCell(puddlePos - laneAxis * 6f);
@@ -719,11 +721,17 @@ public class M32bPuddleSelfTest : MonoBehaviour
         // answers two questions: is the highlight the fix removes real, and does the reflection probe's capture
         // contain any sky at all to reflect?
         Materials.UnmakeMatteForTest(laneMat);
+        // THE CONTROL HAS TO BE ABLE TO HOLD ITS STATE. `PathMudWetness` rewrites the lane's `_Smoothness` every
+        // frame (capped at 0.20), so a "mirror lane" set here was overwritten before the capture — which is why
+        // pass 7 read +0.00 and called it evidence. That was the writer's fault, not the environment's. Detach the
+        // writer for this one capture and re-register it immediately after.
+        PathMudWetness.RegisterGravel(null);
         var laneGloss = laneMat.GetTexture("_MetallicGlossMap") as Texture2D;
         Materials.BindReflection(laneMat, null, 1f);
         yield return ShootInto(player, aimPoint, nm[6], fr, 6);
         Materials.BindReflection(laneMat, laneGloss, Materials.PreM32LaneSmoothness);
         Materials.MakeMatte(laneMat);
+        PathMudWetness.RegisterGravel(laneMat);
 
         if (fr[0] == null || fr[2] == null || fr[5] == null || _capW == 0)
         {
@@ -817,10 +825,12 @@ public class M32bPuddleSelfTest : MonoBehaviour
                  " px; with both back on AND the lane at mirror smoothness it means " + lm6.ToString("0.00") +
                  " over " + lCnt[6] + " px (" + (lm6 - lm0).ToString("+0.00;-0.00") + "). " +
                  (lm6 - lm0 > 6f
-                     ? "The highlight is real and the fix removes it."
-                     : "A mirror lane with environment reflections on top of a reflection probe still does not " +
-                       "brighten, so the probe's capture holds no sky — the same conclusion as the water's -0.01, " +
-                       "now tested on the one surface certain to use it."));
+                     ? "The environment DOES reach the lane: with the mirror state finally able to survive the " +
+                       "capture, a mirror lane with environment reflections on brightens — so an earlier +0.00 was " +
+                       "PathMudWetness overwriting the mirror state, never proof of an empty environment. The fix " +
+                       "removes a real highlight."
+                     : "Even with the writer detached and the lane at mirror smoothness, the environment adds " +
+                       "nothing to it — the environment map is not reaching the surfaces."));
         }
         if (fr[1] != null)
         {

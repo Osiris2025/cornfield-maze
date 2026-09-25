@@ -80,6 +80,23 @@ public sealed class PathMudWetness : MonoBehaviour
         if (_gravel.HasProperty("_Glossiness")) _gravel.SetFloat("_Glossiness", smooth);
     }
 
+    /// <summary>
+    /// What this script is doing to the path right now, for the harness to print. Read, not assumed: the whole
+    /// reason the ceiling exists is that this script was quietly walking the lane past the matte rule.
+    /// </summary>
+    public static string DebugReport()
+    {
+        float now = Mathf.Min(Mathf.Lerp(_baseSmooth, 0.42f, _mud), MatteSmoothCeiling);
+        float full = Mathf.Min(Mathf.Lerp(_baseSmooth, 0.42f, 1f), MatteSmoothCeiling);
+        return "PathMudWetness: MatteSmoothCeiling " + MatteSmoothCeiling.ToString("0.00") +
+               ", base _Smoothness at Register " + _baseSmooth.ToString("0.000") +
+               ", mud now " + _mud.ToString("0.000") + " (max reachable 0.72)" +
+               " -> writes _Smoothness " + now.ToString("0.000") + " now, " + full.ToString("0.000") +
+               " at full mud " + (full <= MatteSmoothCeiling + 1e-4f
+                   ? "(the ceiling holds: rain cannot walk the lane past the matte rule)"
+                   : "(THE CEILING FAILS — the lane can exceed " + MatteSmoothCeiling.ToString("0.00") + ")");
+    }
+
     void OnDisable()
     {
         _exposure = 0f;

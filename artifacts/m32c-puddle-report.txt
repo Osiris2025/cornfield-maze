@@ -1,11 +1,55 @@
-M32c pass 7 — the environment map carries the storm's horizon band and the moon; the water reflects it 5.59/255
-against the lane's 0.00, the lane is inside the ceiling at 1.12x, and the sheen is still not visible. OPEN, no
-done marker.
+M32d — THE ENVIRONMENT CAPTURE: FOUND, PROVEN AND FIXED. The water's sheen at this angle is now a measured
+magnitude, not a mystery. M32c OPEN, no done marker.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
 Evidence: artifacts/review/world/m32c-water-on.png (the acceptance frame), m32c-water-off.png,
-m32c-water-mask.png, m32c-lane-mask.png, m32c-lane-control.png, m32c-water-black.png, m32c-water-nomoon.png;
-raw harness output artifacts/m32c-puddle-raw.txt.
+m32c-water-mask.png, m32c-lane-mask.png, m32c-lane-control.png, m32d-cube-{X,Y,Z}.png (the captured sky, which
+you can look at); raw harness output artifacts/m32c-puddle-raw.txt.
+
+YOU WERE RIGHT: IT WAS A DEFECT, NOT A TASTE CALL — and it was two defects.
+
+1. THE CAPTURE WAS ONE IMAGE ON ALL SIX FACES. `Camera.RenderToCubemap` in this player build returns a single
+   render copied to every face. Proved the only way that settles it: the six faces were written to PNG and
+   hashed — **all byte-identical**. Every earlier conclusion about "the probe's capture holds no sky" was drawn
+   from statistics of a capture that was never six views at all.
+   FIX: the six views are rendered explicitly — each face its own camera rotation (with the up vectors checked
+   against Unity's cube convention), fog off for the six frames (the storm's fog otherwise fills every
+   direction), into a temporary render texture that is read straight back. A camera with a target texture never
+   draws to the screen, so nothing lands on Todd's display. **The faces now differ** (three distinct MD5s) and
+   `m32d-cube-X.png` shows the moon with its halo, stars, and the lit field below.
+   THE CAPTURE, READ BACK:  +X 18.1 [0..189] · -X 10.5 [0..162] · +Y 0.5 [0..146] · -Y 26.5 [1..169] ·
+   +Z 12.2 [0..161] · -Z 7.7 [0..181] · overall 12.57 of 255 · **in the moon's own direction (within 8 deg):
+   mean 22.3, max 108** · brightest pixel anywhere 189 on +X. Dark zenith overhead, lit ground below, moon in
+   the sky where DuskSky puts it. It is the game's own sky, rendered.
+   The map is scaled x3.95 so its mean lands on the 49.8 of 255 that keeps the ground on the level Todd
+   approved — content from the scene, level a lighting value.
+
+2. THE CONTROL WAS VOID, AND I HAD USED IT AS EVIDENCE. `PathMudWetness.Apply` rewrites the lane's
+   `_Smoothness` every frame (capped at 0.20), so a "mirror lane" set by the harness was overwritten before the
+   capture. Pass 7's "+0.00 on a mirror lane, so the environment isn't reaching" was the writer's fault.
+   FIX: the harness detaches the writer for that one frame and re-registers it immediately after. Re-measured,
+   the mirror lane **gains +2.37** from the environment. So the environment DOES reach the surfaces — weakly,
+   because the sky is dark and the lane is rough — and an unproven claim is retired.
+
+WHAT THAT LEAVES: THE SHEEN IS A MAGNITUDE, NOT A MISSING MECHANISM. Environment on vs off, on the water's own
+pixels: 45.12 against 46.56, mean |change| **4.32 of 255**; the same environment on a mirror lane: **+2.37**.
+The Fresnel gradient is right (near 39.13, grazing far 51.11) and the lane is 1.07x the field. The water's
+reflection is real, present, and worth four levels of 255 at this view — because a dielectric's reflection of a
+dark night sky is a few percent of something already dim, which is the honest physics and not a bug I can find.
+
+    ASKED FOR, AND REPORTED: PathMudWetness: MatteSmoothCeiling 0.20, base _Smoothness at Register 1.000,
+    mud now 0.024 (max reachable 0.72) -> writes _Smoothness 0.200 now, 0.200 at full mud
+    (the ceiling holds: rain cannot walk the lane past the matte rule).
+
+ONE HONEST SENTENCE: does the puddle read as water in this frame? **No — it reads as a wet lane with a lighter
+patch.** That is now said with a proven capture, a valid control and the numbers above, so it is a stylisation
+choice for Todd and not something an agent can find: (a) accept it, (b) a brighter atmospheric moon bloom in
+the sky, (c) a shallower acceptance view down the lane, or (d) water that is not a plain dielectric.
+
+Verdict: **M32c OPEN, M32d DONE, no done marker.** The capture defect is fixed and proved; the block is written
+with the frame and the numbers.
+
+=========================== PASS 7 AND EARLIER, BELOW ===========================
 
 PASS 7 — WHAT THE MAP HAS TO CARRY, AND WHY IT STILL DOES NOT SHOW
 

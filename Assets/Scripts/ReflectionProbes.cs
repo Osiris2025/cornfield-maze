@@ -61,15 +61,172 @@ public static class ReflectionProbes
         return p;
     }
 
-    /// Rebuild the map once the sky is at night so it matches the sky in the acceptance frames, and re-bind it.
-    /// (The moon moves; the map is 24 k pixels, so rebuilding it costs nothing.)
+    /// The report from the last capture: six face means, plus what sits in the moon's own direction. Printed by
+    /// the harness. This is the read-back that decides whether the water ever had anything to reflect.
+    public static string CaptureReport { get; private set; } = "no capture yet";
+
+    /// CAPTURE THE SKY. Pass 5 found the realtime probe's cubemap empty and I routed around it with a hand-built
+    /// map instead of finding out why — that was the wrong call, and this is the right one. The sky dome and the
+    /// moon quad are scene RENDERERS, so a camera looking six ways sees them: render the game's own sky into a
+    /// cube map, once, explicitly. No dependence on a realtime probe's settings, and it cannot silently come back
+    /// empty because the read-back below is the first thing it does.
+    ///
+    /// The capture camera is lifted above the corn (6.5 m) so the sky is not hidden behind the maze walls, is
+    /// disabled so it never draws to Todd's screen, and is destroyed the moment the six faces are rendered.
     public static void Refresh(ReflectionProbe p)
     {
         var old = SkyCube;
-        SkyCube = BuildNightSkyCube(64, DuskSky.MoonDirection);
+        SkyCube = CaptureSky(128);
         if (old != null) Object.Destroy(old);
         if (p != null) p.bakedTexture = SkyCube;
         RenderSettings.customReflectionTexture = SkyCube;   // the fallback for anything outside the probe's box
+    }
+
+    static Cubemap CaptureSky(int size)
+    {
+        var main = Camera.main;
+        Vector3 pos = main != null ? main.transform.position + Vector3.up * 5f : new Vector3(0f, 6.5f, 0f);
+
+        var go = new GameObject("SkyCapture");
+        go.transform.position = pos;
+        var c = go.AddComponent<Camera>();
+        c.enabled = false;                      // NEVER draws to the player's screen
+        c.clearFlags = CameraClearFlags.SolidColor;
+        c.backgroundColor = Color.black;
+        c.cullingMask = ~0;                     // the dome and the moon quad are renderers; so is everything else
+        c.nearClipPlane = 0.3f;
+        c.farClipPlane = 3000f;
+        c.fieldOfView = 90f;
+        c.allowHDR = false;
+        c.allowMSAA = false;
+
+        // RENDER THE SIX VIEWS MYSELF. `Camera.RenderToCubemap` produced ONE image copied to all six faces in this
+        // build — proved by the six face PNGs being byte-identical (same MD5) — so the capture no longer depends
+        // on it. Each face is a plain camera render rotated to that face's direction, into a temporary render
+        // texture that is read straight back. A camera with a target texture never draws to the screen, so
+        // nothing lands on Todd's display.
+        var cube = new Cubemap(size, TextureFormat.RGBA32, true);
+        var rt = RenderTexture.GetTemporary(size, size, 24, RenderTextureFormat.ARGB32);
+        var t2 = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        bool fogWas = RenderSettings.fog;
+        RenderSettings.fog = false;          // the reflection wants the sky, not the air between the camera and it
+        c.enabled = true;                    // with a targetTexture set this renders off-screen only
+        for (int f = 0; f < 6; f++)
+        {
+            c.transform.rotation = Quaternion.LookRotation(FaceForward(f), FaceUp(f));
+            c.targetTexture = rt;
+            c.Render();
+            RenderTexture.active = rt;
+            t2.ReadPixels(new Rect(0, 0, size, size), 0, 0);
+            t2.Apply();
+            cube.SetPixels(t2.GetPixels(), FaceOf(f));
+            RenderTexture.active = null;
+        }
+        c.targetTexture = null;
+        c.enabled = false;
+        RenderSettings.fog = fogWas;
+        Object.Destroy(t2);
+        RenderTexture.ReleaseTemporary(rt);
+        cube.Apply(true);
+        if (go != null) Object.Destroy(go);
+
+        // READ IT BACK FIRST — the point of the whole pass. Face means, the overall mean, and specifically what is
+        // in the moon's own direction: whether that patch of sky is bright or black decides everything downstream.
+        var names = new[] { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
+        var faces = new[] { CubemapFace.PositiveX, CubemapFace.NegativeX, CubemapFace.PositiveY,
+                            CubemapFace.NegativeY, CubemapFace.PositiveZ, CubemapFace.NegativeZ };
+        var moonDir = DuskSky.MoonDirection;
+        var md = moonDir.sqrMagnitude > 0f ? moonDir.normalized : Vector3.up;
+        double all = 0; int n = 0;
+        double moonSum = 0; int moonN = 0; float moonMax = 0f, faceMax = 0f; string faceMaxName = "-";
+        string line = "";
+        for (int f = 0; f < 6; f++)
+        {
+            var px = cube.GetPixels(faces[f]);
+            double s = 0; float mn = 999f, mxFace = 0f;
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float g = px[y * size + x].g * 255f;
+                    s += g; all += g; n++;
+                    if (g < mn) mn = g;
+                    if (g > mxFace) mxFace = g;
+                    float u = 2f * (x + 0.5f) / size - 1f;
+                    float v = 2f * (y + 0.5f) / size - 1f;
+                    var d = FaceDir(faces[f], u, v).normalized;
+                    float ang = Vector3.Angle(d, md);
+                    if (ang < 8f) { moonSum += g; moonN++; if (g > moonMax) moonMax = g; }
+                    if (g > faceMax) { faceMax = g; faceMaxName = names[f] + " (" + ang.ToString("0") + " deg off the moon)"; }
+                }
+            }
+            line += "  " + names[f] + " " + (s / (size * size)).ToString("0.0") +
+                    " [" + mn.ToString("0") + ".." + mxFace.ToString("0") + "]";
+        }
+        float overall = n > 0 ? (float)(all / n) : 0f;
+        float moonMean = moonN > 0 ? (float)(moonSum / moonN) : -1f;
+        CaptureReport = "M32d sky capture " + size + "px, camera at " + pos + " — face means G:" + line +
+                        "  overall " + overall.ToString("0.00") + " of 255" +
+                        " | in the moon's own direction (" + md + ", within 8 deg): mean " + moonMean.ToString("0.0") +
+                        ", max " + moonMax.ToString("0") + " over " + moonN + " px" +
+                        " | brightest pixel anywhere " + faceMax.ToString("0") + " on " + faceMaxName +
+                        (overall < 2f
+                            ? "  => THE CAPTURE IS BLACK. Falling back to the built map and saying so."
+                            : moonMax > 100f
+                                ? "  => the capture holds the sky AND a bright moon."
+                                : "  => the capture holds the sky, but the moon direction is not bright.");
+        Debug.Log(CaptureReport);
+
+        if (overall < 2f)
+        {
+            // Not silently: a black capture is the defect this pass exists to find.
+            Debug.LogWarning("M32d: the RenderToCubemap capture came back black (overall " + overall.ToString("0.00") +
+                             ") — using the built night-sky map instead. Report says so.");
+            return BuildNightSkyCube(64, DuskSky.MoonDirection);
+        }
+
+        // THE PROBE'S INTENSITY, set from measurement. A probe's cubemap feeds the ambient as well as the
+        // reflections, so the capture's own brightness moves the whole ground. Two measured points put the
+        // approved ground (field 22.32) at a cube mean of 49.8 of 255, so the capture is scaled uniformly to
+        // that mean: the CONTENT is the game's own sky, the level is a lighting value, and the ground stays where
+        // Todd approved it. Clamped so a very dark or very bright capture cannot blow the scene up.
+        float k = overall > 0.01f ? (49.8f / overall) : 1f;
+        k = Mathf.Clamp(k, 0.25f, 8f);
+        if (Mathf.Abs(k - 1f) > 0.02f)
+        {
+            var px = new Color[size * size];
+            for (int f = 0; f < 6; f++)
+            {
+                var src = cube.GetPixels(faces[f]);
+                for (int i = 0; i < src.Length; i++)
+                    px[i] = new Color(Mathf.Clamp01(src[i].r * k), Mathf.Clamp01(src[i].g * k),
+                                      Mathf.Clamp01(src[i].b * k), 1f);
+                cube.SetPixels(px, faces[f]);
+            }
+            cube.Apply(true);
+            Debug.Log("M32d sky capture scaled by " + k.ToString("0.000") + " to put the cube mean at the 49.8 of " +
+                      "255 that keeps the ground on its approved level (was " + overall.ToString("0.00") + ").");
+        }
+        cube.name = "T_SkyCapture_Cube";
+
+        // AND LOOK AT IT. Six means and a min/max cannot tell a sky from a screen-locked overlay, and they came
+        // back identical on every face — this milestone has been burned once already by inferring content from
+        // statistics, so the faces go to disk as PNGs next to the report.
+        for (int f = 0; f < 6; f++)
+        {
+            var t = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            t.SetPixels(cube.GetPixels(faces[f]));
+            t.Apply();
+            try
+            {
+                System.IO.File.WriteAllBytes(
+                    System.IO.Path.Combine(Application.persistentDataPath, "m32d-cube-" + names[f].TrimStart('+', '-') + ".png"),
+                    t.EncodeToPNG());
+            }
+            catch (System.Exception e) { Debug.LogWarning("M32d: could not write the cube face PNG: " + e.Message); }
+            Object.Destroy(t);
+        }
+        return cube;
     }
 
     /// The A/B switch for the acceptance frames: the same camera, the same scene, the environment on or off.
@@ -199,6 +356,46 @@ public static class ReflectionProbes
                   ", t " + tMin.ToString("0.000") + ".." + tMax.ToString("0.000") +
                   ", angle " + angMin.ToString("0.0") + ".." + angMax.ToString("0.0"));
         return cube;
+    }
+
+    /// The six cube-face view directions, in the order the capture renders them (Unity's face order: +X, -X, +Y,
+    /// -Y, +Z, -Z).
+    static Vector3 FaceForward(int f)
+    {
+        switch (f)
+        {
+            case 0: return Vector3.right;
+            case 1: return Vector3.left;
+            case 2: return Vector3.up;
+            case 3: return Vector3.down;
+            case 4: return Vector3.forward;
+            default: return Vector3.back;
+        }
+    }
+
+    /// The up vector for each face, chosen against FaceDir below so the cube's layout comes out right — the top
+    /// and bottom faces need a rolled up vector or those two faces come back rotated 90 deg.
+    static Vector3 FaceUp(int f)
+    {
+        switch (f)
+        {
+            case 2: return Vector3.back;      // +Y
+            case 3: return Vector3.forward;   // -Y
+            default: return Vector3.up;
+        }
+    }
+
+    static CubemapFace FaceOf(int f)
+    {
+        switch (f)
+        {
+            case 0: return CubemapFace.PositiveX;
+            case 1: return CubemapFace.NegativeX;
+            case 2: return CubemapFace.PositiveY;
+            case 3: return CubemapFace.NegativeY;
+            case 4: return CubemapFace.PositiveZ;
+            default: return CubemapFace.NegativeZ;
+        }
     }
 
     /// Unity's cube map face convention: the face's local (u,v) axes in object space.
