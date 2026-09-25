@@ -210,42 +210,41 @@ public class M32bPuddleSelfTest : MonoBehaviour
         // the puddle's centre — inside a decal that is 2.6 m long. The earlier version placed the player by
         // solving for the mirror point exactly, and the game moved them (they were standing in corn), so the
         // shot framed corn instead of water. The neighbouring cell centre of a straight run is standable.
-        // Stand on the LANE, 3.11 m from the water's centre: at an eye height of 1.655 m that is exactly the
-        // distance at which the moon (28 deg) reflects onto the middle of the puddle — the mirror distance is
-        // fixed by the light, not chosen. Which DIRECTION is the lane cannot be extrapolated from the decal's
-        // axis (three attempts did that and stood the player in corn), so ask the ground: try both ways along
-        // the decal's long axis and both ways across it, and take the first that lands on the lane material.
+        // Stand on the LANE, at the mirror distance (3.12 m at 28 deg and an eye height of 1.655 m). The maze
+        // is asked which cell that is: start at the puddle's own cell, step along each of the four directions
+        // while the next cell is path, and take the lane cell whose distance is closest to the mirror
+        // distance. Three earlier attempts extrapolated the stand from the decal's axis or raycast the world
+        // for the lane material, and all three stood the player in corn — the maze already knows where the
+        // lane is, so ask it instead of guessing from geometry.
         float moonElDeg = Mathf.Asin(Mathf.Clamp(DuskSky.MoonDirection.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
         float standDist = EyeHeight / Mathf.Tan(Mathf.Max(5f, moonElDeg) * Mathf.Deg2Rad);
-        Vector3[] dirs = { puddleLong, -puddleLong, puddleWide, -puddleWide };
-        Vector3 stand = puddlePos - puddleFwd * standDist;
-        string onWhat = "nothing below";
-        foreach (var d in dirs)
+        Vector2Int cell = maze.NearestPathCell(puddlePos);
+        Vector2Int bestCell = cell;
+        float bestScore = float.MaxValue;
+        int stepsTaken = 0;
+        Vector2Int[] four = { new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1) };
+        foreach (var d in four)
         {
-            var cand = puddlePos + d.normalized * standDist;
-            var probe = new Vector3(cand.x, groundY + 4f, cand.z);
-            if (Physics.Raycast(probe, Vector3.down, out var hit, 8f))
+            var c = cell;
+            for (int k = 1; k <= 3; k++)
             {
-                var mr = hit.collider.GetComponent<MeshRenderer>();
-                var bm = mr != null && mr.sharedMaterial != null && mr.sharedMaterial.HasProperty("_BaseMap")
-                    ? mr.sharedMaterial.GetTexture("_BaseMap") : null;
-                string bn = bm != null ? bm.name : "no base map";
-                if (bn.Contains("Lane"))
-                {
-                    stand = new Vector3(cand.x, groundY, cand.z);
-                    onWhat = "the lane material " + bn + " (probe " + dirs.Length + " directions, took " + bn + ")";
-                    break;
-                }
-                onWhat = "a surface whose base map is " + bn + " — not the lane";
+                var n = new Vector2Int(c.x + d.x, c.y + d.y);
+                if (!maze.IsPath(n.x, n.y)) break;          // the run ends: no lane to stand on this way
+                c = n;
+                float score = Mathf.Abs(Vector3.Distance(maze.CellToWorld(c.x, c.y), puddlePos) - standDist);
+                if (score < bestScore) { bestScore = score; bestCell = c; stepsTaken = k; }
             }
         }
-        player.transform.position = new Vector3(stand.x, groundY, stand.z);
+        Vector3 stand = maze.CellToWorld(bestCell.x, bestCell.y);
+        stand.y = groundY;
+        player.transform.position = stand;
         for (int i = 0; i < 4; i++) yield return null;
         Emit("stand: " + F(player.transform.position) + " — " + Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") +
-             " m from the puddle's centre, on " + onWhat + ". The distance is " + standDist.ToString("0.00") +
-             " m because that is where a 28 deg moon reflects onto the water at an eye height of " +
-             EyeHeight.ToString("0.00") + " m; the game can push a player out of corn, so the harness checks " +
-             "where it ended up rather than trusting the spot it asked for");
+             " m from the puddle's centre, on maze cell (" + bestCell.x + "," + bestCell.y + "), " + stepsTaken +
+             " step(s) along the lane from the puddle's cell (" + cell.x + "," + cell.y + "). The distance is " +
+             standDist.ToString("0.00") + " m because that is where a " + moonElDeg.ToString("0") +
+             " deg moon reflects onto the water at an eye height of " + EyeHeight.ToString("0.00") +
+             " m, and the cell is a path cell, so the stand is on the lane by construction, not by geometry");
         Vector3 eye = player.transform.position + Vector3.up * EyeHeight;
         Vector3 mirror = eye + down * s;
 
@@ -534,13 +533,17 @@ public class M32bPuddleSelfTest : MonoBehaviour
         {
             float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
             bool any = false;
+            int rejected = 0;
             foreach (var c in _puddleCorners)
             {
                 Vector3 s = cam.WorldToScreenPoint(c);
-                if (s.z <= 0f) continue;                 // behind the camera: not in this shot
+                // A corner within half a metre of the camera plane projects to absurd coordinates (the last
+                // pass got -5975 px from one) and poisons the min/max. Reject those and clamp the rest to the
+                // screen, so the rect means "the part of the decal that is actually in this frame".
+                if (s.z <= 0.5f) { rejected++; continue; }
                 any = true;
-                minX = Mathf.Min(minX, s.x); maxX = Mathf.Max(maxX, s.x);
-                minY = Mathf.Min(minY, s.y); maxY = Mathf.Max(maxY, s.y);
+                minX = Mathf.Min(minX, Mathf.Clamp(s.x, 0f, w - 1f)); maxX = Mathf.Max(maxX, Mathf.Clamp(s.x, 0f, w - 1f));
+                minY = Mathf.Min(minY, Mathf.Clamp(s.y, 0f, h - 1f)); maxY = Mathf.Max(maxY, Mathf.Clamp(s.y, 0f, h - 1f));
             }
             if (any)
             {
@@ -556,7 +559,8 @@ public class M32bPuddleSelfTest : MonoBehaviour
                     }
                 }
                 Emit("  puddle in frame: rect " + Mathf.RoundToInt(minX) + "," + Mathf.RoundToInt(minY) + " to " +
-                     Mathf.RoundToInt(maxX) + "," + Mathf.RoundToInt(maxY) + " = " + inWaterN + " px of the band; " +
+                     Mathf.RoundToInt(maxX) + "," + Mathf.RoundToInt(maxY) + " = " + inWaterN + " px of the band (" +
+                     rejected + " corner(s) rejected as too close to the camera); " +
                      "bright(>140) inside the water " + inWater + " (" +
                      (inWaterN > 0 ? (100f * inWater / inWaterN).ToString("0.0") : "0") + " %), outside it " +
                      outWater + " of " + outWaterN + " (" +

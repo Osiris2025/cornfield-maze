@@ -1,0 +1,65 @@
+M32b — third pass. The blocking defect is fixed: the camera now stands ON the lane. The moon still is not
+caught in the water, so the milestone stays OPEN.
+
+Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target.
+2026-09-25, pass 3. Read with artifacts/m32b-puddle-report-2.txt (pass 2) and m32b-puddle-report.txt (pass 1).
+
+FIXED THIS PASS — THE CAMERA NOW STANDS ON THE LANE
+
+Passes 1 and 2 both framed corn, because the harness tried to work out where the lane was. It extrapolated
+the standing spot from the decal's own axis (pass 1), then raycast the world looking for the lane's material
+(pass 2). Both put the player in the corn. The maze already knows where the lane is, so this pass asks it:
+start at the puddle's own cell, step in each of the four directions while the next cell is a path cell, and
+take the lane cell whose distance is closest to the mirror distance. The result, from the built app:
+
+  stand: (36.00, 0.08, 44.00) — 4.00 m from the puddle's centre, on maze cell (9,11), 1 step(s) along the
+  lane from the puddle's cell (9,10). The distance is 3.12 m because that is where a 28 deg moon reflects
+  onto the water at an eye height of 1.655 m, and the cell is a path cell, so the stand is on the lane by
+  construction, not by geometry
+
+The frame confirms it: artifacts/review/world/m32b-puddle-moon.png is now shot down a gravel lane with corn
+on both sides, instead of the inside of a corn block. One cell is 4.00 m, so the nearest lane cell to the
+mirror distance is 4.00 m away rather than 3.12 m; the reflection therefore lands 0.88 m short of the
+puddle's centre, which is still inside a decal 3.4 m long.
+
+STILL OPEN — THE MOON IS NOT CAUGHT IN THE WATER
+
+The acceptance is a night frame with the moon caught in a puddle. The second half of that is in frame: the
+lane around the mirror point reads matte, and with the reflective maps unbound the band's mean G drops from
+41.69 to 21.50 of 255 with the peak falling from 220 to 127 — that is the ground's own behaviour, and it is
+the matte behaviour Todd asked for. The first half is not: there is no moon-shaped highlight in the water.
+The only bright thing in the frame is the sky through a gap in the corn.
+
+What I would test next, in this order:
+  1. sample the PUDDLE'S OWN PIXELS against the LANE'S PIXELS in the same frame, at the same distance from
+     the camera. If the water is not measurably darker or brighter than the lane beside it, the decal is not
+     reading at all and the problem is the decal (its alpha coverage, its lift height of 6 mm, its blend
+     mode), not the light.
+  2. if the decal reads, the glint is a material/lighting question: MoonLight intensity at night is
+     0.30-0.52 with shadows off, the water's normal is a deliberately flat plane, and smoothness reaches the
+     shader as 0.875 x _Smoothness 1.0. A flat 0.875 surface under a 0.30-0.52 directional light at 28 deg
+     may simply have no specular worth seeing — in which case the honest answer is that the sheen has to come
+     from the water's own response, and that is a taste call for Todd, not a bug to keep chasing.
+
+THE INSTRUMENT IS STILL IMPERFECT, AND SCORES ZERO RIGHT NOW
+
+The projected-rect count reports "3 corner(s) rejected as too close to the camera" and then a degenerate
+rect, which cannot be right for a decal 4 m away — the projection needs rewriting (project the decal's
+CENTRE and its two half-extents, not its four corners, and reject on the distance to the camera rather than
+on the plane test). Until it reports a sane rect I am not quoting its inside/outside split as evidence, only
+the band numbers, which are measured directly and hold up.
+
+UNCHANGED AND STILL VERIFIED BY READ-BACK
+
+  water smoothness mean 0.875 (max 0.902) in the water, 0.104 in the damp halo
+  lane smoothness mean 0.137, 0.0 % above 0.40 -> MATTE
+  puddle material: Alpha Blend, metallic 0, _Smoothness 1.00, _METALLICSPECGLOSSMAP on, channel 0
+  puddle maps bound: baseMap=T_Ground_PuddleA normalMap=T_Ground_Puddle_N metallicGlossMap=T_Ground_Puddle_M
+  6 decals under one parent named "Puddles", 3.4 x 1.7 m, the long side along the lane (fixed in pass 2)
+
+Frames: artifacts/review/world/m32b-puddle-moon.png (shot down the lane — the puddle is not distinguishishable
+in it), m32b-mirror-contrast.png, m32b-reflection-off.png, m32b-field-only.png.
+Raw harness output: artifacts/m32b-puddle-raw3.txt.
+
+Verdict: the harness stands where the maze says the lane is, and the frame finally looks down a lane. The
+moon is still not caught in the water, so M32b remains OPEN. Nothing else ships on this claim.
