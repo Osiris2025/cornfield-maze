@@ -17,6 +17,7 @@ public sealed class StormWeather : MonoBehaviour
     Transform _follow;
     Light _sun;
     Light _lightning;
+    float _storm;
     Material _skyInstance;
     ParticleSystem _rain;
     AudioSource _thunder;
@@ -148,7 +149,7 @@ public sealed class StormWeather : MonoBehaviour
         GustPush = storm * (0.45f + 0.80f * gust);
 
         Flash = _flash;
-        ApplySky(storm);
+        _storm = storm;
         DriveRain(storm);
         DriveWindAudio(storm, gust);
 
@@ -167,31 +168,62 @@ public sealed class StormWeather : MonoBehaviour
         return u * u * (3f - 2f * u);
     }
 
+    /// <summary>
+    /// M25: the sky is applied in LateUpdate so it always runs AFTER DuskSky.Update has published this
+    /// frame's dusk->night palette. Two components writing the same light from Update is a race, and the
+    /// loser is whichever one Unity happens to run second.
+    /// </summary>
+    void LateUpdate()
+    {
+        ApplySky(_storm);
+    }
+
     void ApplySky(float storm)
     {
         float punch = _flash;
-        var fog = Color.Lerp(_fogCalm, _fogStorm, storm);
+
+        // M25 (§25.5): the calm sky is no longer a constant. DuskSky ramps dusk -> night, so the storm
+        // blends away from whatever the sky is RIGHT NOW. Without this, the storm would drag the sky
+        // back to the dusk amber it captured at scene load and the moonrise would never arrive.
+        bool dusk = DuskSky.Instance != null;
+        Color fogCalm = dusk ? DuskSky.FogColor : _fogCalm;
+        Color skyCalm = dusk ? DuskSky.AmbientSky : _skyCalm;
+        Color eqCalm = dusk ? DuskSky.AmbientEquator : _eqCalm;
+        Color gndCalm = dusk ? DuskSky.AmbientGround : _gndCalm;
+
+        var fog = Color.Lerp(fogCalm, _fogStorm, storm);
         fog = Color.Lerp(fog, new Color(0.78f, 0.84f, 0.95f), punch * 0.55f);
         RenderSettings.fogColor = fog;
         RenderSettings.fogDensity = Mathf.Lerp(_fogDensCalm, _fogDensStorm, storm);
 
-        _ambSkyNow = Color.Lerp(_skyCalm, _skyStorm, storm);
-        _ambEqNow = Color.Lerp(_eqCalm, _eqStorm, storm);
-        _ambGndNow = Color.Lerp(_gndCalm, _gndStorm, storm);
+        _ambSkyNow = Color.Lerp(skyCalm, _skyStorm, storm);
+        _ambEqNow = Color.Lerp(eqCalm, _eqStorm, storm);
+        _ambGndNow = Color.Lerp(gndCalm, _gndStorm, storm);
         RenderSettings.ambientSkyColor = Color.Lerp(_ambSkyNow, new Color(0.72f, 0.80f, 1f), punch);
         RenderSettings.ambientEquatorColor = Color.Lerp(_ambEqNow, new Color(0.55f, 0.62f, 0.78f), punch * 0.7f);
         RenderSettings.ambientGroundColor = Color.Lerp(_ambGndNow, new Color(0.28f, 0.30f, 0.36f), punch * 0.35f);
 
         if (_sun != null)
         {
-            _sun.color = Color.Lerp(_sunCalm, _sunStorm, storm);
-            float dim = Mathf.Lerp(_sunIntCalm, 0.16f, storm);
+            bool duskOwnsSun = DuskSky.Instance != null;
+            Color sunCalm = duskOwnsSun ? DuskSky.SunColor : _sunCalm;
+            float sunIntCalm = duskOwnsSun ? DuskSky.SunIntensity : _sunIntCalm;
+
+            _sun.color = Color.Lerp(sunCalm, _sunStorm, storm);
+            float dim = Mathf.Lerp(sunIntCalm, 0.16f, storm);
             _sun.intensity = dim + punch * 0.15f;
-            var rot = Quaternion.Slerp(
-                Quaternion.Euler(38f, 155f, 0f),
-                Quaternion.Euler(12f, 168f, 0f),
-                storm);
-            _sun.transform.rotation = rot;
+
+            // M25: when DuskSky is present it owns the sun's DIRECTION (dusk has the sun below the
+            // horizon; the old fixed 38° elevation would light the field like noon). The storm keeps
+            // the colour and intensity.
+            if (!duskOwnsSun)
+            {
+                var rot = Quaternion.Slerp(
+                    Quaternion.Euler(38f, 155f, 0f),
+                    Quaternion.Euler(12f, 168f, 0f),
+                    storm);
+                _sun.transform.rotation = rot;
+            }
         }
 
         if (RenderSettings.skybox != null)

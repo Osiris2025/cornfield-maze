@@ -87,6 +87,9 @@ public sealed class NightSky : MonoBehaviour
         Vector3 toward = NextPathDir();
         float storm = StormWeather.Intensity;
         float vis = StarVisibility(storm);
+        // M25 (§25.5): no stars at dusk. The stars fade in as the sky darkens, layer on layer with the
+        // storm — the dusk phase is the reason this sky has a beginning at all.
+        vis *= DuskSky.Instance != null ? DuskSky.StarGate : 1f;
         vis *= 1f - StormWeather.Flash * 0.72f;
 
         if (_mat != null)

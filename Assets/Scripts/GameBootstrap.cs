@@ -44,6 +44,9 @@ public sealed class GameBootstrap : MonoBehaviour
         StormWeather.Install(_player.transform);
         PathMudWetness.Install();
         NightSky.Install(_player.transform, gold.transform, maze);
+        // M25 (§25.5): the dusk -> night ramp. Installed AFTER StormWeather so the storm grabs the Sun
+        // light first (DuskSky adds its own moon light and would otherwise be found as "the" light).
+        DuskSky.Install(_player.transform, maze);
 
         // M21 (§25.1): the front end owns the first moments, and everything above is already running —
         // the sky, the storm and the field's rustle — so the title screen is neither silent nor static.
