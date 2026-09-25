@@ -152,6 +152,9 @@ public static class MazeWorldBuilder
             }
         }
 
+        // M32b: puddles go in after the lanes exist, on straight runs, under one parent named "Puddles".
+        PuddleDecals.Build(root.transform, maze, Materials.GroundPuddle());
+
         SetupAtmosphere();
     }
 

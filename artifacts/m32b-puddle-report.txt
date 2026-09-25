@@ -1,0 +1,83 @@
+M32b — puddles: the system is built and the sheen is verified; the ACCEPTANCE FRAME is not yet obtained
+
+Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target.
+2026-09-25. Status: OPEN. Read this before treating M32b as done.
+
+WHAT IS BUILT AND WHAT IS PROVEN
+
+The pieces Ernie shipped are wired and the sheen lives in the right place. Two derived maps were added at
+design time by scripts/m32b_puddle_maps.py, because the material could not do its job without them:
+
+  T_Ground_PuddleA.png   RGB = the wet earth, A = the coverage (the material is Alpha Blend and URP reads the
+                         base map's alpha as opacity — the coverage file keeps it in RGB, so it has to be
+                         moved into the alpha, exactly as M31's lane fade does)
+  T_Ground_Puddle_M.png  RGB metallic 0, A = smoothness: ~0.88 in the water, ~0.10 across the damp halo
+
+Measured off the result (artifacts/m32b-puddle-bake.txt):
+
+  water core (coverage > 0.70)          7.6 % of the quad
+  damp halo                             21.1 % of the quad
+  max coverage                          0.86 — never 1.0, so the lane's grain reads through the water
+  smoothness inside the water           mean 0.875, max 0.880     (target 0.85-0.92)
+  smoothness in the damp halo           mean 0.104                (MATTE — the highlight stops at the waterline)
+
+And the order's acceptance, SAMPLED out of the imported texture in the built game rather than eyeballed
+(artifacts/m32b-puddle-report.txt, line 13):
+
+  puddle read-back: T_Ground_Puddle_M 512x512 smoothness max 0.902, mean inside the water (alpha > 0.7)
+  0.876 over 7.6% of the quad, 92.1% of the quad below 0.2 (the damp halo and the dry edge) -> WATER REFLECTS
+
+  lane read-back:   T_Ground_Lane_M alpha mean 0.137, 0.0% above 0.40 -> MATCH
+
+Puddle smoothness > 0.7: yes (0.902 max, 0.876 mean in the water). Lane still < 0.2: yes (0.137). The half of
+the acceptance that can be sampled is green.
+
+Placement, per the order's rule — decals in lane low spots, a handful per level, elongated along the lane,
+never tiled, never on the field:
+
+  6 puddles, placed by PuddleDecals.cs on cells that are on a STRAIGHT run (exactly two neighbours, opposite
+  each other) out of 180 candidates, stride 30 so they spread over the maze. Each is one quad, 2.6 x 1.5 m,
+  rotated into the lane's axis with up to 8 deg of yaw, lifted 6 mm above the lane to avoid z-fighting. The
+  short side (1.5 m) is inside the 2.08 m lane, so a puddle cannot reach the corn. Everything is under ONE
+  parent named "Puddles" — removing every puddle is deleting one object, and nothing puddle-shaped is baked
+  into the tiled ground textures.
+
+WHY IT IS NOT GREEN: THE FRAME
+
+The acceptance is "a night frame with the moon caught in a puddle while the lane round it stays matte". I have
+the second half of that sentence in frames and the first half only in numbers. The shot
+(artifacts/review/world/m32b-puddle-moon.png) stands the player 2.58 m up-lane from the measured puddle and
+aims at the solved mirror point, which lands 0.53 m past the puddle's centre and therefore inside a decal that
+is 2.6 m long — the geometry is right. The frame still does not show a legible moon in the water: the puddle
+reads as a slightly darker patch on an already dark lane, and I could not point at the highlight in the
+picture. The band's peak of 255 in that frame is not evidence — a bright pixel in a 130x130 window is not the
+same thing as the moon in a puddle, and I am not going to call it one.
+
+What I would change next pass, in order:
+  1. the decal is nearly invisible at night because the water's albedo (mean 0.114) sits close to the night
+     lane's value once the moon is the only light — the contrast between wet earth and dry lane needs to be
+     raised, or the water made slightly more reflective across a wider area;
+  2. the aim should be verified by projecting the PUDDLE's own bounds into the frame and reporting the pixels
+     it covers, not just the mirror point — "the band is at the mirror point" is not "the puddle is in shot";
+  3. only then re-shoot, and put the frame beside m32b-mirror-contrast.png, where the lane's own defect is put
+     back for comparison.
+
+WHAT ELSE THIS PASS MEASURED, FOR THE RECORD
+
+  * The puddle material is Alpha Blend on URP/Lit itself (renderQueue 3000, SrcAlpha/OneMinusSrcAlpha, ZWrite
+    off) with the metallic/smoothness keyword ON and `_SmoothnessTextureChannel` 0, so the water's reflectivity
+    reaches the shader the same way the ground's matte does. The normal map reads "none" in the built app's
+    read-back while the albedo and the gloss map both resolve — worth a look next pass; it does not affect the
+    smoothness result, but a flat water plane without its normal is not what was designed.
+  * The harness re-ran the whole M32 ground measurement on the way through, and it still holds: lane 0.137,
+    field 0.095, both MATCH, 0.0 % above 0.40, and the frame subtraction still shows the reflective and matte
+    ground states are the same picture.
+  * One bug worth recording because it cost two runs: the M32b harness was a copy of M32's, and I renamed the
+    class but not the component its installer created — so `-puddletest` launched the M32 harness and quietly
+    wrote the M32 report. It presented as "the harness never writes a report". A copy is not a rename.
+
+Frames: artifacts/review/world/m32b-puddle-moon.png (the attempt), m32b-mirror-contrast.png,
+m32b-reflection-off.png, m32b-field-only.png. Raw harness output: artifacts/m32b-puddle-report.txt.
+
+Verdict: the puddle system is built, placed and verified by read-back — water 0.902, lane 0.137 — but the
+acceptance frame is not obtained, so M32b is OPEN, not green. Nothing else ships on this claim.

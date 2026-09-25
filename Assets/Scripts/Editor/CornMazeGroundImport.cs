@@ -45,6 +45,15 @@ namespace CornMaze.EditorTools
             Configure(Dir + "T_Ground_Lane_R.png", GroundMap.Data);
             Configure(Dir + "T_Ground_Lane_M.png", GroundMap.SmoothnessMap);
             Configure(Dir + "T_Ground_LaneEdge.png", GroundMap.Mask);
+            // M32b: the puddle decal. Its albedo carries the coverage in the alpha (derived from
+            // T_Ground_PuddleAlpha by scripts/m32b_puddle_maps.py — the material is Alpha Blend and URP reads
+            // the base map's alpha as opacity), its normal is the near-flat water plane, and its
+            // metallic/smoothness map is where the sheen lives: 0.88 in the water, 0.10 across the damp halo.
+            Configure(Dir + "T_Ground_PuddleA.png", GroundMap.AlbedoAlpha);
+            Configure(Dir + "T_Ground_Puddle.png", GroundMap.Albedo);
+            Configure(Dir + "T_Ground_PuddleAlpha.png", GroundMap.Data);
+            Configure(Dir + "T_Ground_Puddle_N.png", GroundMap.Normal);
+            Configure(Dir + "T_Ground_Puddle_M.png", GroundMap.SmoothnessMap);
             // M31: the lane's fade, shipped as a strip and baked into the lane albedo's alpha by
             // scripts/m31_lane_alpha_bake.py. The bake is what the game draws; the strip is imported so the
             // bake has a checked-in source and the licence/settings trail is complete.

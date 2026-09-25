@@ -70,6 +70,28 @@ public static class Materials
     }
 
     /// <summary>
+    /// M32b (Todd: "maybe there should be a sheen in puddles, but not over all"): the one surface in the maze
+    /// allowed to reflect.
+    ///
+    /// Alpha Blend, because this one IS transparency — the coverage lives in the derived albedo's alpha
+    /// (`T_Ground_PuddleA`: RGB = the wet earth, A = coverage, max 0.86 so the lane's grain still reads
+    /// faintly through the water) and URP reads the base map's alpha as opacity.
+    ///
+    /// The sheen is the material, not the light. `T_Ground_Puddle_M` is RGB metallic 0 with **A = smoothness**:
+    /// ~0.88 inside the water, and ~0.10 across the damp halo, so the ring around the waterline stays matte
+    /// and the highlight cannot bleed past the water into the lane. The normal map is the near-flat water plane
+    /// with its silt lip — flat on purpose, because still water is a mirror and the highlight wants to be a
+    /// clean shape rather than a speckled one.
+    /// </summary>
+    public static Material GroundPuddle()
+    {
+        var mat = Ground("Ground/T_Ground_PuddleA", "Ground/T_Ground_Puddle_N",
+                         Color.white, 0.10f, "Ground/T_Ground_Puddle_M");
+        MakeAlphaBlend(mat);
+        return mat;
+    }
+
+    /// <summary>
     /// Turns a URP/Lit material into a fading one. These are URP's own property names and keywords, which is
     /// why the stock shader can do this: `_SrcBlend`/`_DstBlend` are the pass's blend factors, `_Surface`
     /// and `_SURFACE_TYPE_TRANSPARENT` are what URP's Lit reads to drop ZWrite and switch to forward
