@@ -18,6 +18,30 @@ public sealed class MobileControls : MonoBehaviour
     /// </summary>
     public bool ThrowPressed { get; private set; }
 
+    /// <summary>
+    /// M27 (§25.8): the camera mode is the player's choice on the phone too, so the touch UI carries a
+    /// VIEW button beside the movement thumb. Read by the controller exactly like ThrowPressed.
+    /// </summary>
+    public bool ViewTogglePressed { get; private set; }
+
+    /// <summary>The button's own label and rect, for the M27 report: evidence that the phone control
+    /// exists and what it says, without a phone in hand to touch it.</summary>
+    public string ViewButtonForTest => _viewBtn == null
+        ? "(no VIEW button)"
+        : (_viewLabel != null ? _viewLabel.text : "(no label)") + " at " +
+          _viewBtn.anchoredPosition.x.ToString("0") + "," + _viewBtn.anchoredPosition.y.ToString("0") +
+          " size " + _viewBtn.sizeDelta.x.ToString("0") + "x" + _viewBtn.sizeDelta.y.ToString("0");
+
+    /// <summary>M27: keeps the button's label showing the mode that is actually in force.</summary>
+    public void ShowViewMode(bool firstPerson)
+    {
+        if (_viewLabel != null)
+        {
+            string want = firstPerson ? "VIEW 1ST" : "VIEW 3RD";
+            if (_viewLabel.text != want) _viewLabel.text = want;
+        }
+    }
+
     /// <summary>True when the cob control has a job — a cob in range, or one in hand.</summary>
     public bool ThrowVisible
     {
@@ -107,6 +131,9 @@ public sealed class MobileControls : MonoBehaviour
     Image _throwImage;
     int _throwFinger = -1;
     RectTransform _restartBtn;
+    RectTransform _viewBtn;
+    UnityEngine.UI.Text _viewLabel;
+    int _viewFinger = -1;
     Image _runImage;
     int _moveFinger = -1;
     int _lookFinger = -1;
@@ -173,6 +200,11 @@ public sealed class MobileControls : MonoBehaviour
         _throwLabel = _throwBtn.Find("Label") != null ? _throwBtn.Find("Label").GetComponent<UnityEngine.UI.Text>() : null;
         _throwBtn.gameObject.SetActive(false);
 
+        // M27 (§25.8): the camera mode, as a control rather than a settings-screen trip.
+        _viewBtn = NewImage("View", _root, circle, new Color(0.12f, 0.12f, 0.12f, 0.55f), 96f);
+        Label(_viewBtn, "VIEW 1ST", font, 18);
+        _viewLabel = _viewBtn.Find("Label") != null ? _viewBtn.Find("Label").GetComponent<UnityEngine.UI.Text>() : null;
+
         _restartBtn = NewImage("Restart", _root, SoftDiscSprite(64), new Color(0.18f, 0.14f, 0.05f, 0.82f), new Vector2(280f, 88f));
         _restartBtn.anchorMin = _restartBtn.anchorMax = _restartBtn.pivot = new Vector2(0.5f, 0.28f);
         _restartBtn.anchoredPosition = Vector2.zero;
@@ -186,6 +218,7 @@ public sealed class MobileControls : MonoBehaviour
     {
         RestartPressed = false;
         ThrowPressed = false;
+        ViewTogglePressed = false;
         LookDelta = Vector2.zero;
 
         if (!ShouldShow || Suppressed)
@@ -193,6 +226,7 @@ public sealed class MobileControls : MonoBehaviour
             Move = Vector2.zero;
             Running = false;
             _throwFinger = -1;
+            _viewFinger = -1;
             if (_root != null) _root.gameObject.SetActive(false);
             return;
         }
@@ -249,6 +283,16 @@ public sealed class MobileControls : MonoBehaviour
             _throwBtn.anchoredPosition = new Vector2(-(right + 78f), bottom + 86f + 152f);
             _throwBtn.sizeDelta = Vector2.one * 132f;
         }
+
+        // M27: VIEW sits in the top-right corner, out of both thumbs' way — it is pressed once a session,
+        // not every few seconds, and it must never be under the look drag.
+        if (_viewBtn != null)
+        {
+            float top = (Screen.height - safe.yMax + 24f) / sf;
+            _viewBtn.anchorMin = _viewBtn.anchorMax = _viewBtn.pivot = new Vector2(1f, 1f);
+            _viewBtn.anchoredPosition = new Vector2(-(right + 54f), -(top + 54f));
+            _viewBtn.sizeDelta = Vector2.one * 96f;
+        }
     }
 
     void ReadTouches()
@@ -272,6 +316,15 @@ public sealed class MobileControls : MonoBehaviour
                 {
                     _runFinger = touch.fingerId;
                     runHeld = true;
+                    continue;
+                }
+
+                // M27: fires on PRESS, not on release — a mode switch must not depend on a clean lift, and
+                // it is checked before the look split so a press on it never also starts a look drag.
+                if (_viewBtn != null && Inside(_viewBtn, pos))
+                {
+                    ViewTogglePressed = true;
+                    _viewFinger = touch.fingerId;
                     continue;
                 }
 
@@ -334,6 +387,10 @@ public sealed class MobileControls : MonoBehaviour
                     if (touch.phase == TouchPhase.Ended && Inside(_throwBtn, pos)) ThrowPressed = true;
                     _throwFinger = -1;
                 }
+            }
+            else if (touch.fingerId == _viewFinger)
+            {
+                if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled) _viewFinger = -1;
             }
             else if (touch.fingerId == _runFinger)
             {

@@ -1,0 +1,20 @@
+M27 first person — measured on the built Mac app, 2026-09-25 12:02:23Z
+the camera mode at startup: firstPerson=True — §25.8 says first person is the default
+the cookie measures 1.799 m from his own renderer bounds; the first-person eye sits at 1.655 m above his feet (0.92 of it)
+in first person the cookie is NOT drawn in front of his own camera: 4 of 4 renderers are ShadowsOnly (his shadow stays, §25.2's table)
+first person rig: eye is 1.655 m above the player's feet; distance from the player 1.655 m — there is no boom between the two
+near clip in first person: 0.060 m
+dough meter with the dissolve at 0.45: visible=True, fill 118 of 214 pt, label "DOUGH 55%  softening"
+frame m27-fp-lane.png -> written (1133634 bytes)
+corner frame: cell (3,7), nearest corn geometry 1.792 m from the eye, against a near clip of 0.060 m — the crop is outside the near plane, so it renders rather than being cut through. The frame is the check on whether it reads that way.
+frame m27-fp-corner.png -> written (1441313 bytes)
+toggle exercised: the V key and the phone's VIEW button both call ToggleFirstPerson() — firstPerson True -> False, switches 0 -> 1
+third person rig restored: camera 3.09 m from the player (boom 5.2 m, pulled in when the corn is in the way), camera 2.24 m up, near clip 0.120 m
+in third person the cookie is drawn again: 4 renderers On, 0 ShadowsOnly
+frame m27-tp-toggle.png -> written (1589470 bytes)
+phone control: VIEW 1ST at -104,-87 size 96x96 — building the touch UI on this Mac review surface, which is the only way to show it without a phone
+feel contract (§25.2) unchanged: dead zone 0.12 ramped to full by 0.30, look on the whole right side above x=0.46 of the screen, look clamp -87 deg (up) to 48 deg (down)
+M27 did not touch the corridor constraint, the rain dissolve, the eat sequence, the cob throw, M26's threat term or the maze layout
+dough meter now: visible=True, fill 123 of 214 pt, label "DOUGH 57%  softening"
+frame time in first person over 861 frames after a 90-frame warm-up: avg 3.49 ms, p95 4.58 ms, worst 17.90 ms
+the phone is the 60 fps target and no device is attached; this is the Mac build.

@@ -9,6 +9,23 @@ public sealed class GameHud : MonoBehaviour
     bool _ended;
     bool _held;   // M21: the front end holds the hint until the player leaves the introduction (§25.1)
 
+    // ---- M27 (§25.8) §5's dough meter -------------------------------------------------------
+    GameObject _doughRoot;
+    Image _doughFill;
+    Text _doughLabel;
+    FarmWalkerController _player;
+
+    /// <summary>The walker, found once and cached — and re-found if the run restarts, which destroys and
+    /// respawns him.</summary>
+    FarmWalkerController Player
+    {
+        get
+        {
+            if (_player == null) _player = Object.FindFirstObjectByType<FarmWalkerController>();
+            return _player;
+        }
+    }
+
     public static GameHud Create()
     {
         var go = new GameObject("HUD");
@@ -38,6 +55,7 @@ public sealed class GameHud : MonoBehaviour
             _hint.text =
                 "You are a gingerbread cookie. Find the pot of gold in the corn maze.\n" +
                 "Stay on the gravel paths. Left stick walks the lanes. Drag the right side to look. Hold RUN to sprint.\n" +
+                "VIEW switches between first person and third person.\n" +
                 "When the sky darkens, look straight up — a faint star arrow overhead points along the next correct turn.\n" +
                 "Watch out for the Husk. It hunts the lanes and it cannot corner at speed — keep moving and turn hard.";
         }
@@ -45,7 +63,7 @@ public sealed class GameHud : MonoBehaviour
         {
             _hint.text =
                 "You are a gingerbread cookie. Find the pot of gold in the corn maze.\n" +
-                "Stay on the gravel paths. WASD / arrows follow the lanes.  Mouse  look    Shift  run    Esc  cursor\n" +
+                "Stay on the gravel paths. WASD / arrows follow the lanes.  Mouse  look    V  view    Shift  run    Esc  cursor\n" +
 #if UNITY_EDITOR
                 "Editor: Game tab → Maximize On Play, then Play.  Built Mac app: F11 / Cmd+F (or the green button) for fullscreen.\n" +
 #else
@@ -54,6 +72,8 @@ public sealed class GameHud : MonoBehaviour
                 "When the sky darkens, look straight up — a faint star arrow overhead points along the next correct turn.\n" +
                 "Watch out for the Husk — it hunts the lanes and cannot corner at speed. R restarts.";
         }
+
+        BuildDoughMeter(font);
 
         _win = MakeText("Win", Vector2.zero, new Vector2(1400, 280), 56, TextAnchor.MiddleCenter, font);
         _win.color = new Color(1f, 0.86f, 0.25f);
@@ -64,7 +84,72 @@ public sealed class GameHud : MonoBehaviour
         // the hint it could not reach yet is retired here instead (§25.1: it must not show behind the
         // title screen, and its 24 s must not be spent there).
         if (_held && _hint != null) _hint.gameObject.SetActive(false);
+        if (_held && _doughRoot != null) _doughRoot.SetActive(false);
     }
+
+    /// <summary>
+    /// §5's dough meter — the only health UI, at §19's "top-left, 220 pt wide". It is a convenience in
+    /// third person and a necessity in first: §5's health model is the cookie's BODY, and once his eyes
+    /// are the camera the player cannot see it (M27). It reads DoughIntegrity and nothing else, so there
+    /// is still exactly one health model.
+    /// </summary>
+    void BuildDoughMeter(Font font)
+    {
+        _doughRoot = new GameObject("DoughMeter", typeof(RectTransform));
+        _doughRoot.transform.SetParent(transform, false);
+        var rootRect = _doughRoot.GetComponent<RectTransform>();
+        rootRect.anchorMin = rootRect.anchorMax = new Vector2(0f, 1f);
+        rootRect.pivot = new Vector2(0f, 1f);
+        rootRect.anchoredPosition = new Vector2(26f, -26f);
+        rootRect.sizeDelta = new Vector2(220f, 22f);
+
+        MakeImage("Back", _doughRoot.transform, new Vector2(0f, 1f), new Vector2(0f, 1f),
+                  Vector2.zero, new Vector2(220f, 22f), new Color(0f, 0f, 0f, 0.55f));
+        _doughFill = MakeImage("Fill", _doughRoot.transform, new Vector2(0f, 1f), new Vector2(0f, 0.5f),
+                               new Vector2(3f, -11f), new Vector2(214f, 16f), DoughColour(1f));
+        _doughLabel = MakeText("DoughLabel", new Vector2(0, 0), new Vector2(520, 30), 22, TextAnchor.UpperLeft, font);
+        var labelRect = _doughLabel.rectTransform;
+        labelRect.SetParent(_doughRoot.transform, false);
+        labelRect.anchorMin = labelRect.anchorMax = new Vector2(0f, 1f);
+        labelRect.pivot = new Vector2(0f, 1f);
+        labelRect.anchoredPosition = new Vector2(0f, -26f);
+        labelRect.sizeDelta = new Vector2(520f, 30f);
+        _doughLabel.text = "DOUGH 100%  whole";
+    }
+
+    static Image MakeImage(string name, Transform parent, Vector2 anchor, Vector2 pivot, Vector2 offset,
+                           Vector2 size, Color colour)
+    {
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = anchor;
+        rect.pivot = pivot;
+        rect.anchoredPosition = offset;
+        rect.sizeDelta = size;
+        var image = go.AddComponent<Image>();
+        image.color = colour;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    /// <summary>§5's three states as colours: warm dough while whole, floury pale while softening, dark
+    /// and baked once it crumbles. The state word is in the label too, so the read is not colour-only.</summary>
+    static Color DoughColour(float integrity01)
+    {
+        string state = FarmWalkerController.DoughStateFor(integrity01);
+        if (state == "whole") return new Color(0.90f, 0.66f, 0.34f, 0.95f);
+        if (state == "softening") return new Color(0.95f, 0.88f, 0.72f, 0.95f);
+        return new Color(0.62f, 0.24f, 0.14f, 0.95f);
+    }
+
+    /// <summary>The metre in the report is the width of this bar in pixels at the reference resolution —
+    /// 214 pt, i.e. the whole meter on one line of the HUD, readable at a glance mid-run.</summary>
+    public const float DoughBarPoints = 214f;
+
+    public float DoughFillPoints => _doughFill != null ? _doughFill.rectTransform.sizeDelta.x : 0f;
+    public string DoughLabelForTest => _doughLabel != null ? _doughLabel.text : "(none)";
+    public bool DoughMeterVisible => _doughRoot != null && _doughRoot.activeSelf;
 
     Text MakeText(string name, Vector2 anchored, Vector2 size, int fontSize, TextAnchor align, Font font)
     {
@@ -98,13 +183,15 @@ public sealed class GameHud : MonoBehaviour
     {
         _held = true;
         if (_hint != null) _hint.gameObject.SetActive(false);
+        if (_doughRoot != null) _doughRoot.SetActive(false);
     }
 
-    /// <summary>The run has started — show the hint and start its clock.</summary>
+    /// <summary>The run has started — show the hint and the dough meter, and start the hint's clock.</summary>
     public void Begin()
     {
         _held = false;
         _hintTimer = 24f;
+        if (_doughRoot != null) _doughRoot.SetActive(true);
         if (_hint == null) return;
         var c = _hint.color;
         c.a = 1f;
@@ -114,6 +201,7 @@ public sealed class GameHud : MonoBehaviour
 
     void Update()
     {
+        UpdateDoughMeter();
         if (_held || _ended || _hint == null || !_hint.gameObject.activeSelf) return;
         _hintTimer -= Time.deltaTime;
         if (_hintTimer < 3f)
@@ -124,6 +212,28 @@ public sealed class GameHud : MonoBehaviour
         }
         if (_hintTimer <= 0f)
             _hint.gameObject.SetActive(false);
+    }
+
+    void UpdateDoughMeter()
+    {
+        if (_doughFill == null) return;
+        var player = Player;
+        float integrity = player != null ? Mathf.Clamp01(player.DoughIntegrity / 100f) : 1f;
+        var rect = _doughFill.rectTransform;
+        var size = rect.sizeDelta;
+        float want = DoughBarPoints * integrity;
+        if (Mathf.Abs(size.x - want) > 0.5f)
+        {
+            size.x = want;
+            rect.sizeDelta = size;
+        }
+        _doughFill.color = DoughColour(integrity);
+        if (_doughLabel != null)
+        {
+            string state = FarmWalkerController.DoughStateFor(integrity);
+            string text = "DOUGH " + Mathf.RoundToInt(integrity * 100f) + "%  " + state;
+            if (_doughLabel.text != text) _doughLabel.text = text;
+        }
     }
 
     public void ShowWin()

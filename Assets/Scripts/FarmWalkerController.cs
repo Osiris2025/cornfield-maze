@@ -39,6 +39,76 @@ public sealed class FarmWalkerController : MonoBehaviour
     /// <summary>The follow camera, exposed read-only for diagnostics (the M20 field self-test samples it).</summary>
     public Camera Camera => _camera;
 
+    // ---- M27 (§25.8): the camera mode ---------------------------------------------------------
+    /// <summary>
+    /// First person is the shipping default (§25.8, Todd 2026-09-25). The look drag turns the BODY and
+    /// pitches the head, and there is no boom between the two. Third person is kept as a player choice —
+    /// V on the Mac, the VIEW button on the phone — and it is §25.2's rig, unchanged.
+    /// </summary>
+    public bool FirstPerson { get; private set; } = true;
+
+    public const float FirstPersonNearClip = 0.06f;
+    public const float ThirdPersonNearClip = 0.12f;
+
+    /// <summary>Eye height above the walker's feet, measured off the cookie's own renderer bounds when
+    /// the model is built rather than assumed: a gingerbread man's eyes sit near the top of his head,
+    /// not at the 1.62 m of a person.</summary>
+    public float FirstPersonEyeHeight { get; private set; } = 1.62f;
+
+    /// <summary>The cookie's own height in metres, from his renderer bounds. Reported so the eye height
+    /// above it can be audited instead of believed.</summary>
+    public float ModelHeight { get; private set; }
+
+    /// <summary>How many times the mode has been switched. The M27 self-test reports this so the toggle
+    /// can be shown to be exercised rather than merely compiled in.</summary>
+    public int ModeSwitches { get; private set; }
+
+    /// <summary>§5: DoughIntegrity = 100 x (1 - dissolve). The HUD meter reads this and nothing else, so
+    /// there is still exactly one health model.</summary>
+    public float DoughIntegrity => 100f * (1f - _dissolve);
+
+    /// <summary>§5's three visual states, from the integrity fraction.</summary>
+    public static string DoughStateFor(float integrity01)
+    {
+        float pct = integrity01 * 100f;
+        if (pct > 66f) return "whole";
+        if (pct >= 33f) return "softening";
+        return "crumbling";
+    }
+
+    public string DoughState => DoughStateFor(1f - _dissolve);
+
+    /// <summary>The camera mode, selectable at runtime by key or by touch (§25.8).</summary>
+    public void SetFirstPerson(bool on)
+    {
+        if (FirstPerson == on) return;
+        FirstPerson = on;
+        ApplyModelVisibility();
+        if (_camera != null)
+            _camera.nearClipPlane = on ? FirstPersonNearClip : ThirdPersonNearClip;
+        if (MobileControls.Instance != null)
+            MobileControls.Instance.ShowViewMode(on);
+        ModeSwitches++;
+    }
+
+    public void ToggleFirstPerson() => SetFirstPerson(!FirstPerson);
+
+    /// <summary>
+    /// In first person the cookie must not be drawn in front of his own camera — if he is, the head fills
+    /// the screen. ShadowsOnly rather than off: §25.2's table keeps him in the shadows, and his body is
+    /// still the health model (§5). He comes back in full for the death shot, because the fail has to be
+    /// watchable, and in the front end, which has its own camera.
+    /// </summary>
+    void ApplyModelVisibility()
+    {
+        if (_modelRenderers == null) return;
+        bool hide = FirstPerson && !_eating && !_caught;
+        var mode = hide ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
+                        : UnityEngine.Rendering.ShadowCastingMode.On;
+        foreach (var r in _modelRenderers)
+            if (r != null) r.shadowCastingMode = mode;
+    }
+
     /// <summary>Seconds of full-storm rain to reach near-full dissolve (atmospheric, not instant).</summary>
     public const float DissolveRainSeconds = 210f;
 
@@ -89,6 +159,10 @@ public sealed class FarmWalkerController : MonoBehaviour
     Vector3[] _jointSwingAxis;
     Vector3[] _jointYawAxis;
     Transform _crumb;
+    /// <summary>M27: the cookie's own renderers, so first person can stop drawing him in front of his
+    /// own camera without switching him off entirely (his shadow stays).</summary>
+    Renderer[] _modelRenderers;
+    float _modelStartScaleY = 1f;
 
     public float DissolveAmount => _dissolve;
     public bool IsCaught => _caught;
@@ -114,6 +188,26 @@ public sealed class FarmWalkerController : MonoBehaviour
         player._yaw = facingYaw;
         player._maze = maze;
         player._model = GingerbreadMesh.Build(root.transform, out var rig, out var mats, out var icing);
+        // M27 (§25.8): the renderers are kept, not the model switched off, so first person can drop him to
+        // shadow-only and the death shot can bring him back. His height and therefore the eye height come
+        // off the model that was actually built.
+        player._modelRenderers = player._model.GetComponentsInChildren<Renderer>(true);
+        player._modelStartScaleY = Mathf.Max(0.001f, player._model.localScale.y);
+        bool anyBounds = false;
+        var bounds = new Bounds(root.transform.position, Vector3.zero);
+        foreach (var r in player._modelRenderers)
+        {
+            if (r == null) continue;
+            if (!anyBounds) { bounds = r.bounds; anyBounds = true; }
+            else bounds.Encapsulate(r.bounds);
+        }
+        if (anyBounds)
+        {
+            player.ModelHeight = bounds.max.y - root.transform.position.y;
+            // Eyes just under the top of the head. A gingerbread man is mostly head, so 0.92 of his own
+            // height rather than a person's 0.94 — and it is measured, not assumed.
+            player.FirstPersonEyeHeight = Mathf.Max(0.5f, player.ModelHeight * 0.92f);
+        }
         player._cookieMats = mats;
         player._icingFlags = icing;
         player._cookieBaseCols = new List<Color>(mats.Count);
@@ -131,6 +225,10 @@ public sealed class FarmWalkerController : MonoBehaviour
         player._shinR = rig.ShinR;
         player.CaptureJointRestPose();
         player.CreateCamera();
+        // M27: first person is the default, so the model has to start hidden. SetFirstPerson only fires on a
+        // CHANGE, so without this call the very first frame draws the cookie's head across his own camera —
+        // which is exactly what the M27 run measured before it was fixed (0 of 4 renderers ShadowsOnly).
+        player.ApplyModelVisibility();
         return player;
     }
 
@@ -141,7 +239,7 @@ public sealed class FarmWalkerController : MonoBehaviour
 
         var camGo = new GameObject("FollowCamera");
         _camera = camGo.AddComponent<Camera>();
-        _camera.nearClipPlane = 0.12f;
+        _camera.nearClipPlane = FirstPerson ? FirstPersonNearClip : ThirdPersonNearClip;
         _camera.farClipPlane = 180f;
         _camera.fieldOfView = 62f;
         camGo.tag = "MainCamera";
@@ -173,6 +271,11 @@ public sealed class FarmWalkerController : MonoBehaviour
         if (_caught || _won) return;
         _caught = true;
         _eating = true;
+        // M27 (§25.8): the fail has to be watchable, and in first person the cookie is not drawn in front of
+        // his own camera. The camera returns to §25.2's rig for the death shot only — the eat sequence
+        // itself (the drag, the shrink, the crumb) is untouched, and this is recorded in the M27 report.
+        SetFirstPerson(false);
+        ApplyModelVisibility();
         if (_body != null) _body.enabled = false;
         StartCoroutine(EatSequence(beastMouth));
     }
@@ -246,6 +349,16 @@ public sealed class FarmWalkerController : MonoBehaviour
     public float YawForTest => _yaw;
     public float PitchForTest => _pitch;
 
+    /// <summary>M27 (test only): the dough meter has to be shown with something in it in a capture run —
+    /// the rain dissolve takes DissolveRainSeconds to do anything visible. Sets the rain clock with it,
+    /// because UpdateDissolveFromRain pulls _dissolve back toward that clock every frame.</summary>
+    public void SetDissolveForTest(float amount)
+    {
+        _dissolve = Mathf.Clamp01(amount);
+        _rainExposure = _dissolve * DissolveRainSeconds;
+        ApplyDissolve(_dissolve);
+    }
+
     /// <summary>M25b (test only): correct the look by the measured residual, to converge on the target.</summary>
     public void NudgeLookForTest(float deltaYaw, float deltaPitch)
     {
@@ -281,6 +394,12 @@ public sealed class FarmWalkerController : MonoBehaviour
             _yaw += look.x * sens;
             _pitch = Mathf.Clamp(_pitch - look.y * sens * invert, MinPitch, MaxPitch);
         }
+
+        // M27 (§25.8): the camera mode is a player choice — V on the Mac, the VIEW button on the phone.
+        // Read here, above the frozen/won/caught returns, so the mode can be picked in the front end too.
+        if (Input.GetKeyDown(KeyCode.V)
+            || (MobileControls.Instance != null && MobileControls.Instance.ViewTogglePressed))
+            ToggleFirstPerson();
 
         if (_won || _caught)
         {
@@ -318,7 +437,15 @@ public sealed class FarmWalkerController : MonoBehaviour
         speed *= Mathf.Lerp(1f, 0.82f, Mathf.Clamp01((_dissolve - 0.55f) / 0.45f));
 
         var move = CorridorMove(hx, hz);
-        if (move.sqrMagnitude > 0.01f)
+        if (FirstPerson)
+        {
+            // §25.8: in first person the look drag turns the BODY. The walk direction is already taken
+            // relative to _yaw (CorridorMove), so the cookie faces where the player is looking and the two
+            // cannot disagree — which is the third-person rig's whole failure mode.
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.Euler(0f, _yaw, 0f),
+                                                           TurnSpeed * 60f * Time.deltaTime);
+        }
+        else if (move.sqrMagnitude > 0.01f)
         {
             _travel = move;
             var target = Quaternion.LookRotation(move, Vector3.up);
@@ -447,6 +574,23 @@ public sealed class FarmWalkerController : MonoBehaviour
         float lean = StormWeather.GustPush * 1.6f;
         float roll = Mathf.Sin(Time.time * 1.35f) * lean;
         float nod = Mathf.Sin(Time.time * 0.82f + 0.7f) * lean * 0.35f;
+
+        if (FirstPerson)
+        {
+            // §25.8: at the cookie's eyes. The look turns the body and pitches the head; there is no boom
+            // and no LookAt, because at the eyes those two would fight each other. The storm lean is halved
+            // — at the eyes a 4.5 deg roll reads as nausea, not as weather. The eye rides the model's scale
+            // so the eaten sequence still ends inside the beast's mouth rather than 1.6 m above a crumb.
+            float scale = _model != null ? Mathf.Clamp(_model.localScale.y / _modelStartScaleY, 0.05f, 1f) : 1f;
+            var eye = transform.position + Vector3.up * (FirstPersonEyeHeight * scale);
+            var look = Quaternion.Euler(_pitch + nod * 0.5f, _yaw, roll * 0.5f);
+            _camRig.position = eye;
+            _camRig.rotation = look;
+            _camera.transform.position = eye;
+            _camera.transform.rotation = look;
+            return;
+        }
+
         _camRig.rotation = Quaternion.Euler(_pitch + nod, _yaw, roll);
 
         float boom = Mathf.Lerp(CameraDistance, CameraDistance * 0.62f, lookUp);
