@@ -384,6 +384,10 @@ public class M32bPuddleSelfTest : MonoBehaviour
                  : ("present, realtime/scripted via scripting, enabled=" + probe.enabled + ", box " +
                     probe.size.x.ToString("0") + " x " + probe.size.z.ToString("0") + " m, refreshed now that " +
                     "the sky is at night")));
+        var puddleRootGo = GameObject.Find("Puddles");
+        Emit("M32f glint variant: " + PuddleDecals.AddGlint(puddleRootGo != null ? puddleRootGo.transform : null, moonHoriz) +
+             " additive glint quads spawned on the puddle prefab, OFF by default (PuddleDecals.GlintEnabled = " +
+             PuddleDecals.GlintEnabled + ") — the switch that removes it is one line");
         ProbeReadBack(probe);
         Emit(ReflectionProbes.CaptureReport);
         Emit(PathMudWetness.DebugReport());
@@ -695,13 +699,27 @@ public class M32bPuddleSelfTest : MonoBehaviour
              ", keyword _SPECULARHIGHLIGHTS_OFF=" + puddleMat.IsKeywordEnabled("_SPECULARHIGHLIGHTS_OFF") +
              ", _Smoothness=" + (puddleMat.HasProperty("_Smoothness") ? puddleMat.GetFloat("_Smoothness").ToString("0.00") : "n/a") +
              ", glossMap=" + (gloss != null ? gloss.name : "none") +
-             ", _METALLICSPECGLOSSMAP=" + puddleMat.IsKeywordEnabled("_METALLICSPECGLOSSMAP"));
+             ", _METALLICSPECGLOSSMAP=" + puddleMat.IsKeywordEnabled("_METALLICSPECGLOSSMAP") +
+             ", _SmoothnessTextureChannel=" + (puddleMat.HasProperty("_SmoothnessTextureChannel")
+                 ? puddleMat.GetFloat("_SmoothnessTextureChannel").ToString("0")
+                 : "n/a") + " (0 = metallic alpha)" +
+             ", the smoothness the shader sees " + ((puddleMat.HasProperty("_Smoothness") ? puddleMat.GetFloat("_Smoothness") : 0f) *
+                 (gloss != null ? Mathf.Max(0f, AlphaMean(gloss)) : 1f)).ToString("0.000") +
+             " (scalar x the gloss map's WHOLE-MAP alpha — that mean is halo-dominated at 0.16; the alpha INSIDE the " +
+             "water is the number that matters and the M32b read-back has it at 0.876, so the water core is smooth " +
+             "and only the halo is matte)" +
+             ", albedo=" + (puddleMat.GetTexture("_BaseMap") != null ? puddleMat.GetTexture("_BaseMap").name : "none") +
+             ", albedo alpha (coverage) mean " + (puddleMat.GetTexture("_BaseMap") != null
+                 ? AlphaMean(puddleMat.GetTexture("_BaseMap") as Texture2D).ToString("0.000") : "n/a") +
+             " — so the albedo's alpha is COVERAGE and the smoothness rides in the _M map's alpha, the two are not " +
+             "the same map" +
+             ", blend: " + Materials.DescribeBlend(puddleMat));
         // And then make it so, explicitly, because the water is the one surface in this game allowed to reflect.
         Materials.UnmakeMatteForTest(puddleMat);
 
         var fr = new Color32[7][];
         string[] nm = { "m32c-water-on.png", "m32c-water-off.png", "m32c-water-mask.png",
-                        "m32c-water-nomoon.png", "m32c-water-black.png", "m32c-lane-mask.png",
+                        "m32f-glint-on.png", "m32c-water-black.png", "m32c-lane-mask.png",
                         "m32c-lane-control.png" };
 
         ReflectionProbes.SetEnabledForTest(probe, true);
@@ -719,9 +737,15 @@ public class M32bPuddleSelfTest : MonoBehaviour
 
         if (moon != null)
         {
-            moon.intensity = 0f;
+            // The moon-light ablation that used to hold frame 3 proved nothing (DuskSky rewrites
+            // `_moonLight.intensity` every frame — filed VOID in pass 3), so frame 3 is the GLINT VARIANT now: same
+            // camera, same puddle, same moon light, one switch apart from frame 0. That is the pair Todd picks
+            // between, and it must differ by exactly one thing.
+            PuddleDecals.SetGlintForTest(true);
+            for (int i = 0; i < 4; i++) yield return null;
             yield return ShootInto(player, aimPoint, nm[3], fr, 3);
-            moon.intensity = moonI;
+            PuddleDecals.SetGlintForTest(false);
+            for (int i = 0; i < 4; i++) yield return null;
         }
         puddleMat.SetColor("_BaseColor", Color.black);
         Materials.BindReflection(puddleMat, null, 0f);
@@ -868,12 +892,16 @@ public class M32bPuddleSelfTest : MonoBehaviour
         if (fr[3] != null)
         {
             float wm3 = wCnt[3] > 0 ? (float)(wSum[3] / wCnt[3]) : 0f;
-            float lm3 = lN > 0 ? (float)(lSum[3] / lN) : 0f;
-            Emit("ABLATION, on the water's own pixels — moon light extinguished: water " + wm3.ToString("0.00") +
-                 " against " + wm0.ToString("0.00") + " (" + (wm3 - wm0).ToString("+0.00;-0.00") + "), lane " +
-                 lm3.ToString("0.00") + " against " + lm0.ToString("0.00") + " (" + (lm3 - lm0).ToString("+0.00;-0.00") +
-                 "). If the water barely moves while the lane collapses, the water's brightness is not the moon " +
-                 "light — and if both collapse, it is.");
+            int brightOn = 0; double diff = 0; int dn = 0;
+            for (int i = 0; i < W * H; i++)
+                if (water[i]) { if (fr[3][i].g > 140) brightOn++; diff += fr[3][i].g - fr[0][i].g; dn++; }
+            Emit("THE GLINT VARIANT, on the water's own pixels — same camera, same puddle, same moon light, one " +
+                 "switch apart: water " + wm3.ToString("0.00") + " against the shipped frame's " + wm0.ToString("0.00") +
+                 " (" + (wm3 - wm0).ToString("+0.00;-0.00") + "); mean change on the water " +
+                 (dn > 0 ? (diff / dn).ToString("+0.00;-0.00") : "n/a") + " of 255; water px brighter than 140: glint " +
+                 "ON " + brightOn + ", shipped " + waterBright + ". Additive and shaped, so it lifts the water and " +
+                 "nothing else, and it reads at ANY angle — which is exactly what a dielectric cannot do here. It is " +
+                 "OFF in the build; PuddleDecals.GlintEnabled is the switch.");
         }
         if (fr[4] != null)
         {
@@ -885,8 +913,9 @@ public class M32bPuddleSelfTest : MonoBehaviour
         if (tList.Count > 0)
         {
             tList.Sort();
-            float median = tList[tList.Count / 2];
-            int nNear = 0, nFar = 0; double sNear = 0, sFar = 0;
+            float tMin = tList[0], tMax = tList[tList.Count - 1];
+            const int NB = 6;
+            int[] bn = new int[NB]; double[] bs = new double[NB]; double[] bd = new double[NB]; int[] bdn = new int[NB];
             for (int y = 0; y < H; y++)
                 for (int x = 0; x < W; x++)
                 {
@@ -895,13 +924,28 @@ public class M32bPuddleSelfTest : MonoBehaviour
                     var ray = cam.ScreenPointToRay(new Vector3(x, y, 0f));
                     if (ray.direction.y > -1e-4f) continue;
                     float t = (_groundY - ray.origin.y) / ray.direction.y;
-                    if (t <= median) { nNear++; sNear += fr[0][i].g; } else { nFar++; sFar += fr[0][i].g; }
+                    int b = Mathf.Clamp((int)((t - tMin) / Mathf.Max(1e-3f, tMax - tMin) * NB), 0, NB - 1);
+                    bn[b]++; bs[b] += fr[0][i].g;
+                    if (fr[1] != null) { bd[b] += fr[0][i].g - fr[1][i].g; bdn[b]++; }
                 }
-            Emit("THE FRESNEL GRADIENT, on the water: the near half of the puddle (under " + median.ToString("0.0") +
-                 " m) means " + (nNear > 0 ? (sNear / nNear).ToString("0.00") : "n/a") + " over " + nNear +
-                 " px; the far half (the grazing end, toward the horizon) means " +
-                 (nFar > 0 ? (sFar / nFar).ToString("0.00") : "n/a") + " over " + nFar +
-                 " px. A dielectric reflecting the sky is brighter at the grazing end than under the camera.");
+            var gb = new System.Text.StringBuilder();
+            gb.Append("THE DISTANCE GRADIENT ACROSS THE PUDDLE (near edge -> far edge, " + tMin.ToString("0.0") + " to " +
+                      tMax.ToString("0.0") + " m past the eye), shipped frame: ");
+            for (int b = 0; b < NB; b++) gb.Append((bn[b] > 0 ? (bs[b] / bn[b]).ToString("0.0") : "n/a") + (b < NB - 1 ? " -> " : ""));
+            gb.Append(" of 255. A dielectric reflecting the sky RISES toward the horizon; a flat run means the " +
+                      "environment is arriving as ambient — view-independent, and therefore not a reflection.");
+            Emit(gb.ToString());
+            if (fr[1] != null)
+            {
+                var db = new System.Text.StringBuilder();
+                db.Append("THE SAME GRADIENT FOR THE ENVIRONMENT'S OWN CONTRIBUTION (frame ON minus frame OFF, same " +
+                          "camera): ");
+                for (int b = 0; b < NB; b++)
+                    db.Append((bdn[b] > 0 ? (bd[b] / bdn[b]).ToString("+0.0;-0.0") : "n/a") + (b < NB - 1 ? " -> " : ""));
+                db.Append(" of 255. THIS is the reflection test: if the environment's own contribution is flat across " +
+                          "the puddle, it is ambient light and no amount of it will ever read as a sheen.");
+                Emit(db.ToString());
+            }
         }
 
         puddleMat.SetColor("_BaseColor", puddleCol);
@@ -967,6 +1011,22 @@ public class M32bPuddleSelfTest : MonoBehaviour
              (100f * over / n).ToString("0.0") + "% above 0.40 — URP uses alpha * _Smoothness(" + scale.ToString("0.00") +
              ") = " + used.ToString("0.000") + "; the source art carries " + source.ToString("0.000") + " -> " +
              (ok ? "MATCH" : "MISMATCH (tolerance " + ReadBackTolerance.ToString("0.00") + ")"));
+    }
+
+    /// The mean of a texture's alpha channel. Used twice in the M32f read-back — the gloss map's alpha is the
+    /// smoothness data and the albedo's alpha is coverage, and the report has to prove which carries which rather
+    /// than assert it. Returns -1 when the texture is not Read/Write enabled, so a missing read is visible.
+    static float AlphaMean(Texture2D t)
+    {
+        if (t == null) return -1f;
+        try
+        {
+            var px = t.GetPixels();
+            double s = 0;
+            for (int i = 0; i < px.Length; i++) s += px[i].a;
+            return (float)(s / Mathf.Max(1, px.Length));
+        }
+        catch { return -1f; }
     }
 
     IEnumerator Sample(string file, FarmWalkerController player, Vector3 aimPoint, Vector3 mirror, string label)

@@ -1,10 +1,52 @@
-M32e — SHOT AT THE PLAYER'S OWN VIEW (eye 1.66 m, puddle 8.09 m down the lane). The lane no longer glows; the
-puddle still does not read as water, and the reason is now narrow enough to name. M32c OPEN, no done marker.
+M32f — the environment's contribution to the water is DARKENING and deepens with distance; it never rises. Every
+switch reads back correct. That is a transparent-pass defect, not a look choice, and the glint fallback is built
+but does not yet light up. M32c OPEN, no done marker.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
-Evidence: **artifacts/review/world/m32e-gameplay-view.png (THE frame — the view a player actually has, 1.27 MB)**,
-m32c-water-probe-off.png (same camera, environment off), m32c-water-mask.png, m32c-lane-mask.png,
-m32d-cube-{X,Y,Z}.png (the captured sky, which you can look at); raw harness output artifacts/m32c-puddle-raw.txt.
+Evidence: artifacts/review/world/m32e-gameplay-view.png (the player's own view — the frame that matters),
+m32f-glint-on.png (the glint variant, same camera, one switch apart), m32c-water-{on,off,mask}.png,
+m32c-lane-mask.png, m32d-cube-X.png (the captured sky); raw harness output artifacts/m32c-puddle-raw.txt.
+
+1) THE WATER MATERIAL, READ BACK AT RUNTIME (not what I set — what it holds):
+
+    _EnvironmentReflections=1.00   keyword _ENVIRONMENTREFLECTIONS_OFF=False
+    _SpecularHighlights=1.00       keyword _SPECULARHIGHLIGHTS_OFF=False
+    _Smoothness=1.00               glossMap=T_Ground_Puddle_M   _METALLICSPECGLOSSMAP=True
+    _SmoothnessTextureChannel=0 (metallic alpha)   blend: renderType=Transparent _Surface=1 _SrcBlend=5 _DstBlend=10 _ZWrite=0
+    -> so the smoothness rides in the _M map's alpha and NOT in the albedo: the albedo (T_Ground_PuddleA) carries
+       the COVERAGE and the _M carries the smoothness. `_Smoothness` is 1.00, so URP uses the map's alpha as-is.
+       (The whole _M map's alpha mean is 0.162 — halo-dominated; the alpha INSIDE the water is 0.876, so the water
+       core is smooth and only the ring around it is matte. The albedo's alpha could not be read at runtime — that
+       texture is not Read/Write enabled — so its coverage number rests on the builder that wrote it.)
+
+2) THE DISTANCE GRADIENT, which is the test that decides it. Six buckets across the puddle, near edge -> far edge,
+   6.0 m to 10.3 m past the eye, on the water's own pixels:
+
+    shipped frame:                     25.3 -> 23.5 -> 24.9 -> 25.8 -> 22.1 -> 25.2   of 255   (FLAT)
+    the environment's OWN contribution
+    (frame ON minus frame OFF):        -1.4 -> -13.7 -> -8.3 -> -8.1 -> -28.0 -> -14.8  of 255
+
+   A dielectric's reflection MUST rise toward the horizon. The shipped frame is flat; more than that, the
+   environment's own contribution is NEGATIVE everywhere and DEEPENS with distance. So the environment reaches the
+   water as ambient light — view-independent by definition, and therefore not a reflection — and it makes the water
+   slightly darker rather than brighter. That is the opposite of a sheen, and the keywords are all correct, so the
+   remaining cause is structural: the puddle is an ALPHA-BLEND (transparent) surface, and URP does not hand a
+   transparent surface the probe's specular cube the way it does an opaque one. The one-line test that settles it
+   is to force the puddle opaque for a single frame and re-read this same gradient.
+
+3) THE GLINT FALLBACK IS BUILT AND DOES NOT YET LIGHT UP. Four additive glint quads are spawned on the puddle
+   prefab (the puddle's own rut mesh, a procedural soft moon streak, `_SrcBlend=SrcAlpha _DstBlend=One`,
+   `_EmissionMap` + `_EMISSION`), switched by one line: `PuddleDecals.GlintEnabled`. Measured at the same camera:
+   water 24.60 against the shipped 24.57 (**+0.03 of 255**), water pixels brighter than 140: **0 with the glint ON,
+   0 without**. So it is not subtle, it is absent — a defect in the variant, not a taste result. Two candidates,
+   named rather than guessed at in prose: the emissive term may not be reaching the shader variant at runtime, or
+   the additive quad is being drawn under the water decal by transparent sorting. Both are one instrumentation pass
+   each. I am NOT handing Todd a frame that does not differ from the shipped one and calling it a choice.
+
+    FOR THE RECORD: shader name found OK and 4 quads spawned and activated; the run before the _EmissionMap fix
+    measured +0.02, this one +0.03 — i.e. the map was not the whole story.
+
+=========================== M32e AND EARLIER, BELOW ===========================
 
 THE POSE IS THE PLAYER'S NOW. Every earlier acceptance frame was shot from a flattened pose I invented in pass 1
 (eye 1.15 m, 6 m back, aimed 18 m down the lane) or from the mirror point — the one angle where the moon's glint

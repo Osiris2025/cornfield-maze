@@ -288,6 +288,66 @@ public static class Materials
         }
     }
 
+    /// <summary>
+    /// M32f — THE FALLBACK, BUILT SO TODD HAS A CHOICE RATHER THAN AN ARGUMENT. A transparent surface in URP is
+    /// hard to get a probe's cube onto (the environment arrives on the water as ambient, which is view-independent
+    /// and therefore not a reflection), so this is the other way to get a sheen: a controlled, NON-DIELECTRIC
+    /// glint — the standard game cheat. Additive, shaped, and independent of Fresnel, so it reads at any angle.
+    /// Subtle on purpose: a hint of moon in water, not a mirror. It is a child of the puddle quad and OFF by
+    /// default, so removing it is one switch (`PuddleDecals.GlintEnabled`).
+    /// </summary>
+    public static Material Glint()
+    {
+        // URP/Lit rather than URP/Unlit on purpose: Lit is compiled into this build (the ground uses it) and Unlit
+        // may be stripped, which is the trap `CornMaze/StarUnlit` already fell into once.
+        var mat = Lit(new Color(0.74f, 0.80f, 1.00f, 1f), 0.02f, 0f);
+        var glintTex = MakeGlintTex(128);
+        if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", glintTex);
+        // `_EmissionMap` TOO, not just the colour. URP/Lit's emissive term is `_EmissionMap * _EmissionColor`, so a
+        // colour with no map on the emissive slot is the same class of bug as `alphaSource=None`: wired on paper,
+        // absent in the shader. The run before this one proved it — the glint moved the water +0.02 of 255.
+        if (mat.HasProperty("_EmissionMap")) mat.SetTexture("_EmissionMap", glintTex);
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(0f, 0f, 0f, 1f));  // lit part ~0
+        if (mat.HasProperty("_EmissionColor"))
+        {
+            mat.SetColor("_EmissionColor", new Color(0.42f, 0.47f, 0.62f, 1f));   // SUBTLE: 42 % of moonlight
+            mat.EnableKeyword("_EMISSION");
+            mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+        }
+        mat.SetOverrideTag("RenderType", "Transparent");
+        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
+        if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);
+        if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);  // ADD
+        if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
+        if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 0f);
+        mat.DisableKeyword("_ALPHATEST_ON");
+        mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        return mat;
+    }
+
+    /// <summary>A soft moon streak for the glint: bright core, long falloff down the puddle's rut axis, nothing
+    /// outside. Procedural like everything else in this project — no third-party asset, nothing to license.</summary>
+    static Texture2D MakeGlintTex(int n)
+    {
+        var t = new Texture2D(n, n, TextureFormat.RGBA32, false);
+        var px = new Color[n * n];
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float u = (x + 0.5f) / n * 2f - 1f;      // across the lane
+                float v = (y + 0.5f) / n * 2f - 1f;      // down the rut
+                float wide = Mathf.Clamp01(1f - Mathf.Sqrt(u * u * 7.0f + v * v * 0.50f));
+                float core = Mathf.Clamp01(1f - Mathf.Sqrt(u * u * 16f + v * v * 1.10f));
+                float a = wide * wide * wide * 0.55f + core * core * 0.60f;
+                px[y * n + x] = new Color(1f, 1f, 1f, Mathf.Clamp01(a));
+            }
+        t.SetPixels(px);
+        t.Apply();
+        return t;
+    }
+
     public static Material Pebble(Color color)
     {
         return Lit(color, 0.06f, 0.02f);

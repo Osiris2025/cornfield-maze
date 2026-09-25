@@ -32,6 +32,43 @@ public static class PuddleDecals
     const float YawJitter = 8f;       // degrees
     const int SeedOffset = 4177;      // the puddle build's own seed (scripts/puddle_build.py)
 
+    /// <summary>
+    /// M32f — the glint variant, spawned as an additive child of every puddle quad and left OFF. The puddle's own
+    /// mesh is reused (it already carries the decal's rut axis in its V), so the streak lies along the water the
+    /// same way the decal does. `GlintEnabled` is the shipping switch: false until Todd says otherwise.
+    /// </summary>
+    public static bool GlintEnabled = false;
+
+    public static int AddGlint(Transform puddlesRoot, Vector3 moonHoriz)
+    {
+        if (puddlesRoot == null) return 0;
+        var mat = Materials.Glint();
+        int n = 0;
+        foreach (Transform p in puddlesRoot)
+        {
+            var mf = p.GetComponent<MeshFilter>();
+            if (mf == null || mf.sharedMesh == null) continue;
+            var go = new GameObject("Glint");
+            go.transform.SetParent(p, false);
+            go.transform.localPosition = new Vector3(0f, 0.015f, 0f);   // above the water, no z-fight
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = new Vector3(0.46f, 1f, 0.30f);    // inside the water core, not the halo
+            go.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
+            go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+            go.SetActive(GlintEnabled);
+            n++;
+        }
+        return n;
+    }
+
+    /// <summary>The one switch, driven by the harness so both variants can be framed from the same camera.</summary>
+    public static void SetGlintForTest(bool on)
+    {
+        GlintEnabled = on;
+        foreach (var r in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (r != null && r.gameObject.name == "Glint") r.gameObject.SetActive(on);
+    }
+
     public static GameObject Build(Transform root, MazeData maze, Material mat)
     {
         var parent = new GameObject("Puddles");
