@@ -62,6 +62,35 @@ Tileability is measured, not asserted. The builder reports the wrap discontinuit
 normal neighbouring-column step (1.0 = seamless): field **0.94× / 1.07×**, lane **1.10× / 1.07×**. All
 blend masks are periodic by construction, and all six sources are already seamless.
 
+## Second batch — Poly Haven's own library, at 2K (variant `dry`)
+
+The six sets above were Todd's drop and are 1K leaf litter. Poly Haven publishes **862 texture sets,
+several at 8K**, so `scripts/ground_fetch_polyhaven.py` pulls the ones that actually read as a
+harvested October cornfield instead of a forest floor — six more sets, all CC0, same publisher, same
+licence as above (no new obligation). Downloads land in `downloads/ground_textures_ph/` with a
+`manifest.json` holding every file's size and sha256:
+
+| set | role | mean linear luminance |
+| --- | --- | --- |
+| `withered_grass` | field base — a full carpet of dead straw | 0.59 |
+| `dry_mud_field_001` | bare earth showing through the grass | 0.35 |
+| `dry_decay_leaves` | sparse fallen leaf litter | 0.33 |
+| `gravel_road` | lane base — the compacted crown of a track | 0.37 |
+| `rocky_gravel` | loose stones worn up through it | 0.29 |
+| `stony_dirt_path` | ruts and dark dirt | 0.22 |
+
+The luminance column is not decoration: it is how the base of each blend was chosen. A blend is mostly
+its base, so the base has to be the register you want. `withered_grass` at 0.59 is the pale straw
+carpet a cut field has; the first attempt had bare earth as the base and the result read as a dusty
+road with a hint of grass, which the preview caught.
+
+Both variants ship the same seven filenames, so switching between them changes no code and no scene
+reference — only pixels:
+
+    GROUND_SHIP=dry /Applications/Blender.app/Contents/MacOS/Blender -b -noaudio --python scripts/ground_build.py
+
+`SHIP` in the script names the shipping variant; every other variant writes only previews.
+
 ## The grade
 
 The photographs are sunny autumn. Faithful-to-source ground under a Halloween dusk sky is wrong twice
