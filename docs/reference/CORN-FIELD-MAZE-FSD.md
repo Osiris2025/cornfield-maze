@@ -832,8 +832,16 @@ already exist.
 
 ### 25.2 Movement — the decision first, then the contract
 
-> **RESOLVED 2026-09-24 (Todd): (b) — third-person, polished to mobile convention.** The cookie stays
-> on screen, and his body *is* the health model (§5). "NORMAL 3D, FPS movements" is therefore read in
+> **REVISED 2026-09-25 (Todd). First-person is the default; third-person is kept as a player choice.**
+> Todd, 2026-09-25: *"3rd person with any kind of lookaround is unworkable, needs to be first person,
+> maybe allow choice between third and first person."* So (a) is the shipping default and (b) becomes a
+> toggle the player can select (M27). The 2026-09-24 decision is kept below, unedited, as the record of
+> how the call was made — the reason given for it then (*"§5's health model is the cookie's integrity
+> and in (a) the player never sees what they are protecting"*) is now answered by the HUD's dough meter
+> rather than by the camera, and by the fact that the threat is audible before it is visible (§25.6).
+>
+> **RESOLVED 2026-09-24 (Todd): (b) — third-person, polished to mobile convention.** The cookie stayed
+> on screen, and his body *is* the health model (§5). "NORMAL 3D, FPS movements" was therefore read in
 > its loose sense: analog move, free look, a camera that never fights the player. The comparison below
 > is kept as the record of the decision:
 >
@@ -844,8 +852,8 @@ already exist.
 > | Combat | the cane's 1.6 m arc (§9) happens off-screen; the swing is unreadable | the arc is readable, which is what makes 3-hit kills fair |
 > | Feel | genuine dread and a real horror read — you cannot see what is behind you, which is exactly what §25.4's threats want | expected by every player of a phone game; the "normal" in Todd's sentence |
 >
-> **Decision (Todd, 2026-09-24): (b).** The one concrete reason stands: §5's whole health model is the
-> cookie's integrity, and in (a) the player never sees the thing they are protecting.
+> **Decision (Todd, 2026-09-24): (b). Superseded 2026-09-25 — see the revision at the top of this
+> section: (a) is now the default and (b) is a toggle.**
 
 Whichever way it goes, the **feel contract** below is what "acceptable and expected for Unity and
 iPhone" means, and it is measured, not asserted:
@@ -1003,3 +1011,36 @@ item was built against it — the field, the sky, the cob and the boom fix all a
 
 **Unchanged by this section:** §8's fairness law, the M20 corn block swap, the cookie gate (M0/G1,
 open since 2026-09-17) and every rule in §21. §25 adds constraints to the enemies; it removes none.
+
+### 25.8 The two calls of 2026-09-25 — the camera, and what is chasing you
+
+**M27 — first-person, with third-person kept as a choice.** Owner **Furrow**.
+Todd, 2026-09-25: *"3rd person with any kind of lookaround is unworkable, needs to be first person,
+maybe allow choice between third and first person."* So the camera defaults to the cookie's eyes,
+look drives the body, and the boom becomes a **toggle** (a key on the Mac, a control on the phone)
+that reinstates §25.2's third-person rig with its 5.2 m boom and its collision. §25.2's feel contract
+numbers (dead zone 0.12→0.30, sprint, the 60 fps floor) are unchanged and now govern the first-person
+rig. The corridor constraint, the rain dissolve and the eat sequence are untouched.
+*Tooling:* Todd offered Unity's own **Starter Assets – Character Controllers (URP)** (Asset Store
+196526, Unity Technologies, **free**). It is first-party, not a third-party pack, and it is built for
+exactly this harder case — so it is not against the house rule that exists to keep third-party
+dependencies out; it is Unity's own. Importing an Asset Store package needs his Unity account signed
+in, though, so the in-house rig lands first (it is a camera change on a controller that already
+works) and the package is wired in a later pass if he imports it.
+
+**M28 — the chaser becomes a scarecrow: scary and hungry, not a sphere blob.** Owner **Dough**.
+Todd, 2026-09-25: *"'Husk' is silly looking.. we need scary, hungry scarecrow chasing gingy."*
+He is right, and it is not a matter of taste: `Husk.cs:129-175` builds the creature out of **spheres**
+— a blue-grey 1.15-scale body sphere, a belly, a mouth sphere with two tooth cubes, **googly white
+eye spheres with black pupils**, crumb balls and feet. That is a cartoon mascot, and at distance in
+the frame it reads as a thin dark pole.
+The replacement is a **scarecrow**: a rough cross of weathered timber, a burlap sack head with a
+stitched mouth, hollow sockets that hold a faint glow at night, a body of dry husks and straw bursting
+out of a tattered coat, sleeves ending in straw rather than hands, and a head that tilts wrong. Taller
+than the cookie (~2.2 m) so it breaks the corn line as a silhouette. Built from primitives and
+procedural materials like everything else (§17) — no third-party model, so no licence question.
+Animation: the lurching walk is the tell (§25.4), not a smooth glide.
+Evidence: a frame of the scarecrow at a lane's end, moonlit; its **silhouette read** at 12 m at night
+— identifiable as a scarecrow from shape alone; and the lurch's timing measured against its speed.
+The **name** is not part of this milestone. "The Husk" fits a scarecrow made of corn husks better than
+it fitted the old blob, so it stays unless Todd says otherwise.
