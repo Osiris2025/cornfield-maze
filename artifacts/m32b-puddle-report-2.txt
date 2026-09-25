@@ -1,0 +1,58 @@
+M32b — second pass. A real placement bug found and fixed; the acceptance FRAME is still not obtained.
+
+Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target.
+2026-09-25, pass 2. Status: STILL OPEN. Read with artifacts/m32b-puddle-report.txt (pass 1).
+
+WHAT THIS PASS FIXED
+
+1. THE PUDDLES WERE LAID ACROSS THE LANE. `PuddleDecals` rotates each decal into the lane's axis, and the
+   mesh puts its LONG side on local X. The rotation said "east-west lane -> 90 deg", which turned the long
+   side onto Z: every east-west puddle lay ACROSS the lane — 3.4 m of water across a 2.08 m lane, running
+   into the corn on both sides. Now east-west gets 0 and north-south gets 90, so the long side follows the
+   lane in both cases. This is the defect the first pass shipped and did not see.
+
+2. THE "MISSING NORMAL MAP" WAS MY READ-BACK'S FAULT, NOT THE MATERIAL'S. The first report said the built
+   app reads the puddle's normal map as "none". It asked for `_NormalMap`; URP/Lit's property is `_BumpMap`.
+   The map was never missing. The read-back now asks for the property the shader actually has, and it reads:
+   baseMap=T_Ground_PuddleA normalMap=T_Ground_Puddle_N metallicGlossMap=T_Ground_Puddle_M
+   smoothnessChannel=0 _Smoothness=1.00 keyword _METALLICSPECGLOSSMAP=True. Nothing is unbound.
+
+3. THE MIRROR DISTANCE IS NOW DERIVED FROM THE MOON, NOT GUESSED. At an eye height of 1.655 m and the moon
+   at 28 deg the reflection lands 3.12 m from the water's centre — that is arithmetic, not a choice. The
+   harness computes it from the live moon direction instead of the 2.5 m it used before.
+
+4. THE INSTRUMENT NOW MEASURES THE PICTURE. Each frame projects the decal's own quad and counts bright
+   pixels (G > 140, i.e. over 0.55 of full) INSIDE the waterline and in the rest of the band, so "the moon is
+   caught in a puddle" and "the lane round it stays matte" stop being eyeball claims.
+
+WHAT IS STILL BROKEN, PLAINLY
+
+- The frame is still not the acceptance frame. The harness keeps standing the player off the lane. It now
+  probes four candidate directions with a downward ray and takes the one whose surface is the lane material;
+  the probe reports "a surface whose base map is no base map", so the maze's colliders are not the renderers
+  carrying the lane's `_BaseMap` and the test never matches. It falls back to a computed spot, which is in
+  corn. Next pass: ask the MAZE for the lane cell (MazeData already knows which cells are path) instead of
+  raycasting the world for a material.
+- The projected decal rect is still unreliable: corners near the camera plane project to absurd coordinates
+  (this pass: -5975 px) and poison the min/max. It needs a clamp and a rejection distance, not just a
+  z > 0 test.
+- The band's numbers this pass, for the record: with the reflective maps bound the band's mean G is 40.74 of
+  255 with a peak of 255; with them unbound it is 22.57 with a peak of 120. That 1.8x and that peak are the
+  GROUND's own highlight, not the puddle's — the lane is what Todd called a bug — and it is exactly why the
+  puddle's contribution has to be isolated by the projected rect before anything is claimed. I am not
+  claiming the puddle is visible in this frame, because it is not.
+
+WHAT STANDS FROM THE FIRST PASS (unchanged, still verified by read-back)
+
+  water core 7.6 % of the quad, damp halo 21.1 %, max coverage 0.86
+  smoothness inside the water mean 0.875 (max 0.902), in the halo 0.104 -> MATTE
+  puddle read-back: T_Ground_Puddle_M 512x512 smoothness max 0.902, mean 0.876 in the water -> WATER REFLECTS
+  lane read-back:   T_Ground_Lane_M alpha mean 0.137, 0.0 % above 0.40 -> MATCH
+  6 decals, one parent named "Puddles", 3.4 x 1.7 m, inside the 2.08 m lane
+
+Frames: artifacts/review/world/m32b-puddle-moon.png (the attempt — still corn, not water),
+m32b-mirror-contrast.png, m32b-reflection-off.png, m32b-field-only.png. Raw harness output:
+artifacts/m32b-puddle-raw2.txt.
+
+Verdict: the placement bug is fixed and the instrument is honest about what it has not shown. M32b remains
+OPEN on the acceptance frame. Nothing else ships on this claim.

@@ -22,8 +22,10 @@ using UnityEngine;
 public static class PuddleDecals
 {
     public const int PuddlesPerLevel = 6;
-    const float PuddleLong = 2.6f;    // along the lane
-    const float PuddleWide = 1.5f;    // across it — inside the 2.08 m lane, so it never reaches the field
+    // M32b second pass: 2.6 x 1.5 was too small to read as water at night from a 28 deg view. Widened to
+    // 3.4 x 1.7 — still inside the 2.08 m lane, still elongated along it, so the decal cannot reach the corn.
+    public const float PuddleLong = 3.4f;    // along the lane
+    public const float PuddleWide = 1.7f;    // across it — inside the 2.08 m lane, so it never reaches the field
     const float Lift = 0.006f;        // above the lane's own 0.03 m, so the decal does not z-fight it
     const float YawJitter = 8f;       // degrees
     const int SeedOffset = 4177;      // the puddle build's own seed (scripts/puddle_build.py)
@@ -60,7 +62,11 @@ public static class PuddleDecals
             go.transform.SetParent(parent.transform, false);
             go.transform.position = pos;
             float yaw = (float)(rng.NextDouble() * (YawJitter * 2.0) - YawJitter);
-            go.transform.rotation = Quaternion.Euler(0f, (alongX[i] ? 90f : 0f) + yaw, 0f);
+            // The decal's mesh puts its LONG axis on local X (GroundLaneMesh.Build takes the long side as its
+            // width and lays it on X). So an east-west lane needs NO rotation and a north-south lane needs 90:
+            // the first version had this inverted, which laid every east-west puddle across the lane — 3.4 m
+            // across a 2.08 m lane, sticking into the corn.
+            go.transform.rotation = Quaternion.Euler(0f, (alongX[i] ? 0f : 90f) + yaw, 0f);
             go.AddComponent<MeshFilter>().sharedMesh =
                 GroundLaneMesh.Build(PuddleLong, PuddleWide, pos, alongX[i]);
             go.AddComponent<MeshRenderer>().sharedMaterial = mat;

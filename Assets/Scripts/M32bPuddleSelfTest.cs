@@ -170,15 +170,28 @@ public class M32bPuddleSelfTest : MonoBehaviour
         var puddleRoot = GameObject.Find("Puddles");
         Vector3 puddlePos = Vector3.zero;
         Vector3 puddleFwd = Vector3.forward;
+        Vector3 puddleLong = Vector3.right, puddleWide = Vector3.forward;   // the decal's own axes, kept in scope
         int puddleCount = 0;
         if (puddleRoot != null)
         {
             puddleCount = puddleRoot.transform.childCount;
             var chosen = puddleRoot.transform.GetChild(puddleCount / 2);   // the middle one: deterministic
             puddlePos = chosen.position;
-            puddleFwd = chosen.forward;               // the lane's own axis (the decal is rotated into it)
+            // The lane's own axis is the decal's LONG axis, which the mesh puts on local X — so it is `right`,
+            // not `forward`. Reading `forward` here is what sent the "up-lane" stand across the lane and into
+            // the corn, which is why the first two attempts framed corn.
+            puddleFwd = chosen.right;
             var pr = chosen.GetComponent<MeshRenderer>();
             puddleMat = pr != null ? pr.sharedMaterial : null;
+            Vector3 cl = chosen.right, cw = chosen.forward;      // long axis, wide axis
+            puddleLong = cl; puddleWide = cw;
+            _puddleCorners = new[]
+            {
+                puddlePos + cl * (PuddleDecals.PuddleLong * 0.5f) + cw * (PuddleDecals.PuddleWide * 0.5f),
+                puddlePos + cl * (PuddleDecals.PuddleLong * 0.5f) - cw * (PuddleDecals.PuddleWide * 0.5f),
+                puddlePos - cl * (PuddleDecals.PuddleLong * 0.5f) + cw * (PuddleDecals.PuddleWide * 0.5f),
+                puddlePos - cl * (PuddleDecals.PuddleLong * 0.5f) - cw * (PuddleDecals.PuddleWide * 0.5f),
+            };
             Emit("puddles: " + puddleCount + " decals under one object named \"Puddles\" (deleting it is removing " +
                  "every puddle); measuring " + chosen.name + " at " + F(puddlePos) + ", yaw " +
                  chosen.eulerAngles.y.ToString("0") + " deg, scale " + chosen.lossyScale.ToString("0.0"));
@@ -197,13 +210,42 @@ public class M32bPuddleSelfTest : MonoBehaviour
         // the puddle's centre — inside a decal that is 2.6 m long. The earlier version placed the player by
         // solving for the mirror point exactly, and the game moved them (they were standing in corn), so the
         // shot framed corn instead of water. The neighbouring cell centre of a straight run is standable.
-        var stand = puddlePos - puddleFwd * (halfLane * 2f + 0.5f);
+        // Stand on the LANE, 3.11 m from the water's centre: at an eye height of 1.655 m that is exactly the
+        // distance at which the moon (28 deg) reflects onto the middle of the puddle — the mirror distance is
+        // fixed by the light, not chosen. Which DIRECTION is the lane cannot be extrapolated from the decal's
+        // axis (three attempts did that and stood the player in corn), so ask the ground: try both ways along
+        // the decal's long axis and both ways across it, and take the first that lands on the lane material.
+        float moonElDeg = Mathf.Asin(Mathf.Clamp(DuskSky.MoonDirection.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
+        float standDist = EyeHeight / Mathf.Tan(Mathf.Max(5f, moonElDeg) * Mathf.Deg2Rad);
+        Vector3[] dirs = { puddleLong, -puddleLong, puddleWide, -puddleWide };
+        Vector3 stand = puddlePos - puddleFwd * standDist;
+        string onWhat = "nothing below";
+        foreach (var d in dirs)
+        {
+            var cand = puddlePos + d.normalized * standDist;
+            var probe = new Vector3(cand.x, groundY + 4f, cand.z);
+            if (Physics.Raycast(probe, Vector3.down, out var hit, 8f))
+            {
+                var mr = hit.collider.GetComponent<MeshRenderer>();
+                var bm = mr != null && mr.sharedMaterial != null && mr.sharedMaterial.HasProperty("_BaseMap")
+                    ? mr.sharedMaterial.GetTexture("_BaseMap") : null;
+                string bn = bm != null ? bm.name : "no base map";
+                if (bn.Contains("Lane"))
+                {
+                    stand = new Vector3(cand.x, groundY, cand.z);
+                    onWhat = "the lane material " + bn + " (probe " + dirs.Length + " directions, took " + bn + ")";
+                    break;
+                }
+                onWhat = "a surface whose base map is " + bn + " — not the lane";
+            }
+        }
         player.transform.position = new Vector3(stand.x, groundY, stand.z);
         for (int i = 0; i < 4; i++) yield return null;
-        Emit("stand: " + F(player.transform.position) + " — " +
-             Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") + " m up-lane from the " +
-             "puddle's centre; the game can push a player out of corn, so the harness checks where it ended up " +
-             "rather than trusting the spot it asked for");
+        Emit("stand: " + F(player.transform.position) + " — " + Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") +
+             " m from the puddle's centre, on " + onWhat + ". The distance is " + standDist.ToString("0.00") +
+             " m because that is where a 28 deg moon reflects onto the water at an eye height of " +
+             EyeHeight.ToString("0.00") + " m; the game can push a player out of corn, so the harness checks " +
+             "where it ended up rather than trusting the spot it asked for");
         Vector3 eye = player.transform.position + Vector3.up * EyeHeight;
         Vector3 mirror = eye + down * s;
 
@@ -346,6 +388,9 @@ public class M32bPuddleSelfTest : MonoBehaviour
     float _bound = -1f, _unbound = -1f, _fieldOnly = -1f, _mirror = -1f, _puddle = -1f;
     int _boundPeak, _unboundPeak, _fieldOnlyPeak, _mirrorPeak, _puddlePeak;
     Material puddleMat;
+    // M32b: the decal's four corners in world space, so every frame can say whether the puddle is IN it and
+    // how much of the highlight falls inside the waterline rather than on the lane beside it.
+    Vector3[] _puddleCorners;
 
     /// <summary>
     /// M32b's acceptance, and the order is explicit that it is a sampled value and not an eyeballed one: the
@@ -363,7 +408,11 @@ public class M32bPuddleSelfTest : MonoBehaviour
         var albedo = mat.GetTexture("_BaseMap") as Texture2D;
         Emit("puddle material: " + Materials.DescribeBlend(mat));
         Emit("puddle maps: baseMap=" + (albedo != null ? albedo.name : "none") + " normalMap=" +
-             (mat.GetTexture("_NormalMap") != null ? mat.GetTexture("_NormalMap").name : "none") +
+             // URP/Lit's normal property is `_BumpMap`, not `_NormalMap`: the first version of this read-back
+             // asked for `_NormalMap`, found nothing, and I reported a missing normal map that was never
+             // missing. Read the property the shader actually has.
+             (mat.HasProperty("_BumpMap") && mat.GetTexture("_BumpMap") != null
+                 ? mat.GetTexture("_BumpMap").name : "NONE — _BumpMap is empty") +
              " metallicGlossMap=" + (tex != null ? tex.name : "none") + " smoothnessChannel=" +
              (mat.HasProperty("_SmoothnessTextureChannel") ? mat.GetFloat("_SmoothnessTextureChannel").ToString("0") : "?") +
              " _Smoothness=" + (mat.HasProperty("_Smoothness") ? mat.GetFloat("_Smoothness").ToString("0.00") : "?") +
@@ -476,6 +525,48 @@ public class M32bPuddleSelfTest : MonoBehaviour
             }
         }
         float mean = (float)(sum / Mathf.Max(1, n));
+
+        // M32b's acceptance is a picture, so measure the picture. The decal's own quad is projected into this
+        // frame and the bright pixels are counted inside the waterline and in the rest of the band: "the moon
+        // is caught in a puddle" becomes a number, and "the lane round it stays matte" becomes the same number
+        // outside it. A peak of 255 somewhere in a 130x130 window proves nothing on its own — this says where.
+        if (_puddleCorners != null)
+        {
+            float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
+            bool any = false;
+            foreach (var c in _puddleCorners)
+            {
+                Vector3 s = cam.WorldToScreenPoint(c);
+                if (s.z <= 0f) continue;                 // behind the camera: not in this shot
+                any = true;
+                minX = Mathf.Min(minX, s.x); maxX = Mathf.Max(maxX, s.x);
+                minY = Mathf.Min(minY, s.y); maxY = Mathf.Max(maxY, s.y);
+            }
+            if (any)
+            {
+                int inWater = 0, inWaterN = 0, outWater = 0, outWaterN = 0;
+                for (int y = Mathf.Max(0, cy - half); y <= Mathf.Min(h - 1, cy + half); y++)
+                {
+                    for (int x = Mathf.Max(0, cx - half); x <= Mathf.Min(w - 1, cx + half); x++)
+                    {
+                        bool inside = x >= minX && x <= maxX && y >= minY && y <= maxY;
+                        bool bright = px[y * w + x].g > 140;      // > 0.55 of 255: a highlight, not texture
+                        if (inside) { inWaterN++; if (bright) inWater++; }
+                        else { outWaterN++; if (bright) outWater++; }
+                    }
+                }
+                Emit("  puddle in frame: rect " + Mathf.RoundToInt(minX) + "," + Mathf.RoundToInt(minY) + " to " +
+                     Mathf.RoundToInt(maxX) + "," + Mathf.RoundToInt(maxY) + " = " + inWaterN + " px of the band; " +
+                     "bright(>140) inside the water " + inWater + " (" +
+                     (inWaterN > 0 ? (100f * inWater / inWaterN).ToString("0.0") : "0") + " %), outside it " +
+                     outWater + " of " + outWaterN + " (" +
+                     (outWaterN > 0 ? (100f * outWater / outWaterN).ToString("0.0") : "0") + " %)");
+            }
+            else
+            {
+                Emit("  puddle in frame: NO — the decal's quad is behind the camera in this shot");
+            }
+        }
 
         var path = Path.Combine(Application.persistentDataPath, file);
         File.WriteAllBytes(path, ImageConversion.EncodeToPNG(tex));

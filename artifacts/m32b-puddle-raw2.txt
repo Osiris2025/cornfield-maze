@@ -1,0 +1,38 @@
+M32 the ground catches the moonlight — measured on the built Mac app, 2026-09-25 14:24:13Z
+materials found: lane wears T_Ground_LaneA, field wears T_Ground_Field
+lane: baseMap=T_Ground_LaneA normalMap=T_Ground_Lane_N metallicGlossMap=T_Ground_Lane_M smoothnessChannel=0 _Smoothness=1.00 keyword _METALLICSPECGLOSSMAP=on keyword _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A=off
+field: baseMap=T_Ground_Field normalMap=T_Ground_Field_N metallicGlossMap=T_Ground_Field_M smoothnessChannel=0 _Smoothness=1.00 keyword _METALLICSPECGLOSSMAP=on keyword _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A=off
+read-back lane: T_Ground_Lane_M 1024x1024 alpha mean 0.137 p10 0.129 p90 0.145, 0.0% above 0.40 — URP uses alpha * _Smoothness(1.00) = 0.137; the source art carries 0.137 -> MATCH
+read-back field: T_Ground_Field_M 1024x1024 alpha mean 0.095 p10 0.090 p90 0.102, 0.0% above 0.40 — URP uses alpha * _Smoothness(1.00) = 0.095; the source art carries 0.095 -> MATCH
+husk: disabled 1 component(s) so the run cannot end mid-measurement — an earlier attempt died here and measured corn leaves
+view: firstPerson=True, model renderers still drawn=0 — in third person the player's own body sits on the mirror point
+moon: night after 40.2s, elevation 28.0 deg after 40.2s of play — at 2.6 deg, just after dusk, the reflection falls 36 m down the lane and is too glancing to read
+puddles: 6 decals under one object named "Puddles" (deleting it is removing every puddle); measuring Puddle at (36.00, 0.04, 40.00), yaw 92 deg, scale (1.0, 1.0, 1.0)
+puddle material: renderQueue=3000 renderType=Transparent _Surface=1 (0 opaque, 1 transparent) _SrcBlend=5 _DstBlend=10 _ZWrite=0 keyword _SURFACE_TYPE_TRANSPARENT=True baseMap=T_Ground_PuddleA
+puddle maps: baseMap=T_Ground_PuddleA normalMap=T_Ground_Puddle_N metallicGlossMap=T_Ground_Puddle_M smoothnessChannel=0 _Smoothness=1.00 keyword _METALLICSPECGLOSSMAP=True
+puddle read-back: T_Ground_Puddle_M 512x512 smoothness max 0.902, mean inside the water (alpha > 0.7) 0.876 over 7.6% of the quad, 92.1% of the quad below 0.2 (the damp halo and the dry edge) -> WATER REFLECTS
+stand: (36.12, 0.08, 43.11) — 3.12 m from the puddle's centre, on a surface whose base map is no base map — not the lane. The distance is 3.12 m because that is where a 28 deg moon reflects onto the water at an eye height of 1.66 m; the game can push a player out of corn, so the harness checks where it ended up rather than trusting the spot it asked for
+aim probe 0: aim elevation -28.0 deg (look state reports -27.2), mirror point projects to y=-565 of 820 — residual -975 px
+aim probe 1: aim elevation -20.0 deg (look state reports -19.1), mirror point projects to y=-320 of 820 — residual -730 px
+aim probe 2: aim elevation -12.0 deg (look state reports -11.0), mirror point projects to y=-140 of 820 — residual -550 px
+aim probe 3: aim elevation -4.0 deg (look state reports -3.0), mirror point projects to y=3 of 820 — residual -407 px
+aim probe 4: aim elevation 4.0 deg (look state reports 5.0), mirror point projects to y=123 of 820 — residual -287 px
+aim probe 5: aim elevation 12.0 deg (look state reports 13.0), mirror point projects to y=229 of 820 — residual -181 px
+aim probe 6: aim elevation 20.0 deg (look state reports 21.0), mirror point projects to y=327 of 820 — residual -83 px
+aim probe 7: aim elevation 28.0 deg (look state reports 28.9), mirror point projects to y=422 of 820 — residual 12 px
+aim: player moved to the lane and aimed down the reflected ray; mirror point (39.12, 0.08, 43.97) = 3.53 m ahead of an eye at 1.655 m. Camera sits 0.01 m from that eye — the rig owns the transform, so this is the check that the shot is where the harness thinks it is
+band: 130x130 px centred on the mirror point, which projects to 669,421 of 1300x820 (screen centre 650,410)
+  puddle in frame: rect 1628,-5975 to 17730,-384 = 0 px of the band; bright(>140) inside the water 0 (0 %), outside it 30 of 17161 (0.2 %)
+frame m32b-puddle-moon.png -> 2020071 bytes; band mean G over 17161 px = 40.74 of 255, peak 255   [PUDDLE MOON (water under the mirror point, so the band should be the moon caught in the puddle)] (camera 0.00 m from the aimed eye)
+A/B: MIRROR state reproduced, exactly what alphaSource=None produced — metallic map unbound and _Smoothness 1.0 on both materials, so URP reads smoothness 1.0 across the whole floor
+  puddle in frame: rect 1642,-6756 to 19716,-404 = 0 px of the band; bright(>140) inside the water 0 (0 %), outside it 34 of 17161 (0.2 %)
+frame m32b-mirror-contrast.png -> 2016718 bytes; band mean G over 17161 px = 40.59 of 255, peak 255   [MIRROR (the lane's defect put back, for contrast beside the puddle)] (camera 0.00 m from the aimed eye)
+A/B: both ground materials back to their pre-M32 state — lane _Smoothness=0.11, field _Smoothness=0.05, metallic map unbound on both
+  puddle in frame: rect 1654,-7790 to 22302,-421 = 0 px of the band; bright(>140) inside the water 0 (0 %), outside it 0 of 17161 (0.0 %)
+frame m32b-reflection-off.png -> 1514299 bytes; band mean G over 17161 px = 22.57 of 255, peak 120   [UNBOUND (pre-M32 constant)] (camera 0.00 m from the aimed eye)
+A/B: field rebound, lane left unbound — separates the two surfaces in the band
+  puddle in frame: rect 1666,-9032 to 25399,-437 = 0 px of the band; bright(>140) inside the water 0 (0 %), outside it 0 of 17161 (0.0 %)
+frame m32b-field-only.png -> 1511663 bytes; band mean G over 17161 px = 22.57 of 255, peak 119   [FIELD ONLY (lane unbound)] (camera 0.00 m from the aimed eye)
+restored to the shipping state: none / none
+VERDICT: the shipped ground is MATTE, and the frames and the numbers agree. Band mean luminance with the matte maps bound -1.00 of 255 against the mirror state's 40.59, and the brightest pixel in the band 0 against 255. The mirror row is not a straw man: it is what alphaSource=None actually produced — URP falls back to the white default for the missing alpha, so smoothness = 1.0 over the whole floor and dry dirt behaved like glass, which is what Todd saw. Against the pre-M32 constants the band reads 22.57 with peak 120: the maps still do real work after the ruling (the highlight that used to smear across the lane is gone, the surface keeps its texture), they just no longer reflect. Any bright peak on the lane or the field in the frame that ships is a defect — nothing on either surface is smooth enough to throw one. Reflectivity is the puddles' job, and that is M32b.
+VERDICT M32b: the band was measured with the mirror point on a PUDDLE — mean 40.74 of 255, peak 255 — and the puddle's imported smoothness map samples max 0.902 against the lane's 0.137. Water reflects (yes, target > 0.7); the lane round it does not (target < 0.2). 6 puddles in the level, all under one parent named "Puddles", so removing every puddle is deleting one object.
