@@ -1,10 +1,52 @@
-M32d — THE ENVIRONMENT CAPTURE: FOUND, PROVEN AND FIXED. The water's sheen at this angle is now a measured
-magnitude, not a mystery. M32c OPEN, no done marker.
+M32e — SHOT AT THE PLAYER'S OWN VIEW (eye 1.66 m, puddle 8.09 m down the lane). The lane no longer glows; the
+puddle still does not read as water, and the reason is now narrow enough to name. M32c OPEN, no done marker.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
-Evidence: artifacts/review/world/m32c-water-on.png (the acceptance frame), m32c-water-off.png,
-m32c-water-mask.png, m32c-lane-mask.png, m32c-lane-control.png, m32d-cube-{X,Y,Z}.png (the captured sky, which
-you can look at); raw harness output artifacts/m32c-puddle-raw.txt.
+Evidence: **artifacts/review/world/m32e-gameplay-view.png (THE frame — the view a player actually has, 1.27 MB)**,
+m32c-water-probe-off.png (same camera, environment off), m32c-water-mask.png, m32c-lane-mask.png,
+m32d-cube-{X,Y,Z}.png (the captured sky, which you can look at); raw harness output artifacts/m32c-puddle-raw.txt.
+
+THE POSE IS THE PLAYER'S NOW. Every earlier acceptance frame was shot from a flattened pose I invented in pass 1
+(eye 1.15 m, 6 m back, aimed 18 m down the lane) or from the mirror point — the one angle where the moon's glint
+can land on the puddle and also the worst angle for the sky, because measured against the water's normal it is
+62 deg, where Schlick gives a dielectric 8 %. The frame above is eye 1.66 m — the player's own eye height
+(`FirstPersonEyeHeight` 1.62 m, rig 1.655 m) — 8.09 m up the puddle's own lane from it, which is 79 deg off the
+normal: the same water reflects 35 % there, four times as much.
+(The stand is solved from the puddle's own lane axis, not the moon's azimuth: the azimuth stand snapped to a path
+cell 4 m off in another direction and the run came back byte-identical to the pass before it.)
+
+    WATER MASK 14,644 px of the frame (1.37 %) — the puddle is properly in frame for the first time
+    water, on the water's own pixels: 14,644 px, mean G 24.58 of 255, bright(>140) 0 (0.0 %)
+    lane,  on the lane's own pixels:   1,589 px, mean G 34.20     field: 5,113 px, mean G 21.93
+    ->  water/lane 0.72x (the water is DARKER than the lane),  lane/field 1.56x
+    ENVIRONMENT ON vs OFF on the water: 24.58 vs 34.38, mean |change| 9.95 of 255 — and it is a DARKENING
+    FRESNEL: near half (under 7.3 m) 24.49 over 7,322 px; far half 24.67 over 7,322 px — FLAT, not rising
+    toward the horizon the way a dielectric reflecting the sky must
+
+TWO THINGS AT THE PLAYER'S VIEW, ONE GOOD AND ONE NOT:
+
+- **THE LANE STOPS GLOWING — beat.** The frame shows a dark lane and lit corn; the lane is not the brightest
+  thing in the maze and it does not read as a pale ribbon. The numeric band moved with the crop, and I am
+  reporting both crops rather than picking the flattering one: around the puddle the lane measures 20.61 (1.07x
+  the field), and at the player's view the lane's near crop measures 34.20 against a field of 21.93 (1.56x).
+  The near lane is the brightest part of the lane — that is where `PathMudWetness`'s damp halo is not — and the
+  1.56x is real, not a sampling accident, but the corn is far brighter than either.
+- **THE WATER STILL DOES NOT READ AS WATER.** It is a slightly lighter, mottled patch on the lane in the frame.
+  One honest sentence: **no.** And the Fresnel line says why: at 79 deg off the normal the reflection must rise
+  toward the horizon across the puddle, and it is flat (24.49 vs 24.67). The environment's whole measurable
+  effect on the water is a 9.95-of-255 DARKENING, which is its ambient (the cube feeds the scene's ambient SH),
+  not its reflection. A mirror lane with the environment on gains +2.37. So the cube is reaching the materials
+  as light, and barely at all as a reflection.
+
+WHAT THAT MEANS: that is a mechanism gap, not a look choice, and it is the next thing I would chase —
+`Camera.RenderToCubemap`'s replacement cube is assigned to a Baked probe's `bakedTexture` and to
+`RenderSettings.customReflectionTexture` at RUNTIME, and under URP neither may re-upload to the pipeline's probe
+atlas after startup, which would leave `unity_SpecCube0` on whatever URP built at boot. I have not proved that;
+I have proved the cube is correct and that the surfaces are not reflecting it.
+
+=========================== M32d, BELOW ===========================
+
+M32d — THE ENVIRONMENT CAPTURE: FOUND, PROVEN AND FIXED.
 
 YOU WERE RIGHT: IT WAS A DEFECT, NOT A TASTE CALL — and it was two defects.
 

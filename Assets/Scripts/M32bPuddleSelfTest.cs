@@ -257,21 +257,40 @@ public class M32bPuddleSelfTest : MonoBehaviour
         // for the lane material, and all three stood the player in corn — the maze already knows where the
         // lane is, so ask it instead of guessing from geometry.
         float moonElDeg = Mathf.Asin(Mathf.Clamp(DuskSky.MoonDirection.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
-        float standDist = EyeHeight / Mathf.Tan(Mathf.Max(5f, moonElDeg) * Mathf.Deg2Rad);
-        Vector3 standCand = puddlePos - moonHoriz * standDist;
-        Vector2Int standCell = maze.NearestPathCell(standCand);
+        // M32e: SHOOT IT WHERE THE PLAYER STANDS, NOT AT THE MIRROR POINT. The mirror distance (1.655 m / tan 28 deg
+        // = 3.11 m) is the one angle where the moon's glint can land on the puddle — and it is also the worst angle
+        // for the sky. Measured against the water's normal it is 62 deg, where Schlick gives a dielectric 8 %, which
+        // is exactly why the water read 4.32 of 255. A player walking the lane sees the puddle 8 m off at 11.7 deg
+        // above the water plane (79 deg from the normal), where the same water reflects 35 % of the horizon band —
+        // four times as much. This is one camera angle: the gameplay view.
+        // M32e: THE STAND GOES UP THE PUDDLE'S OWN LANE. 8 m along the moon's azimuth snapped to a path cell 4 m off
+        // in another direction — and the run came back byte-identical to the pass before it, which is how the snap
+        // announced itself. `laneAxis` is this puddle's own lane direction, already solved above, so the stand is
+        // 8 m up the lane with the puddle lying down the lane ahead of it: the view a player actually meets. The
+        // maze's cell is 4 m, so each step back is one cell, and the first standable one wins.
+        Vector3 standCand = Vector3.zero;
+        Vector2Int standCell = new Vector2Int(-1, -1);
+        // Either direction along the lane works — what matters is the puddle lying 8 m down it AHEAD of the stand —
+        // so both signs are tried, farthest first, before falling back to the maze's nearest path cell.
+        for (int i = 0; i < 4 && standCell.x < 0; i++)
+        {
+            float d = i < 2 ? 8f : 4f;
+            float sign = (i % 2 == 0) ? -1f : 1f;
+            standCand = puddlePos + laneAxis * (d * sign);
+            var candCell = maze.WorldToCell(standCand);
+            if (maze.IsPath(candCell.x, candCell.y)) standCell = candCell;
+        }
+        if (standCell.x < 0) standCell = maze.NearestPathCell(standCand);
         Vector3 stand = maze.CellToWorld(standCell.x, standCell.y);
         stand.y = groundY;
         player.transform.position = stand;
         _stand = stand; _hasStand = true;
         for (int i = 0; i < 4; i++) yield return null;
         Emit("stand: " + F(player.transform.position) + " — " + Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") +
-             " m from the puddle's centre, on maze cell (" + standCell.x + "," + standCell.y + "). The target was " +
-             standDist.ToString("0.00") + " m on the moon's own azimuth (" + moonHoriz.x.ToString("0.00") + "," +
-             moonHoriz.z.ToString("0.00") + "), because that is where a " + moonElDeg.ToString("0") +
-             " deg moon reflects onto the water at an eye height of " + EyeHeight.ToString("0.00") +
-             " m; the spot is then snapped to the nearest PATH cell, so the stand is on the lane by the maze's " +
-             "own answer and never in the corn");
+             " m from the puddle's centre, on maze cell (" + standCell.x + "," + standCell.y + "). The target was 8.00 m UP THE " +
+             "PUDDLE'S OWN LANE (axis " + laneAxis.x.ToString("0.00") + "," + laneAxis.z.ToString("0.00") + ", chosen at the " +
+             "mirror distance 3.11 m / tan(" + moonElDeg.ToString("0") + " deg moon) and then moved out to the gameplay view), " +
+             "eye height " + EyeHeight.ToString("0.00") + " m, so the stand is on the lane by the maze's own answer and never in the corn");
         Vector3 eye = player.transform.position + Vector3.up * EyeHeight;
         Vector3 mirror = eye + down * s;
 
@@ -369,19 +388,21 @@ public class M32bPuddleSelfTest : MonoBehaviour
         Emit(ReflectionProbes.CaptureReport);
         Emit(PathMudWetness.DebugReport());
 
-        player.SetEyeHeightForTest(1.15f);
-        var backCell = maze.NearestPathCell(puddlePos - laneAxis * 6f);
-        Vector3 backPos = maze.CellToWorld(backCell.x, backCell.y);
-        backPos.y = groundY;
-        player.transform.position = backPos;
-        _stand = backPos; _hasStand = true;
+        // M32e: THE ACCEPTANCE PAIR IS SHOT AT THE GAMEPLAY VIEW, NOT AT A FLATTENED POSE OF MY OWN INVENTION. The
+        // stand solved above is 8 m up the puddle's own lane at the player's own eye height — how a player meets a
+        // puddle in this maze. The eye is no longer dropped to 1.15 m and the stand is no longer 6 m back snapped to
+        // whatever path cell the snap happened to find. The aim is a couple of degrees down the lane, so the puddle
+        // sits low in frame with the horizon band behind it: the flattest view a player actually has.
+        player.SetEyeHeightForTest(EyeHeight);
+        player.transform.position = _stand;
         for (int i = 0; i < 4; i++) yield return null;
-        Vector3 shallowAim = puddlePos + laneAxis * 18f;
-        shallowAim.y = backPos.y + 0.15f;      // a couple of degrees down: down the lane, not at the water
-        Emit("shallow shot: eye 1.15 m at " + F(player.transform.position) + " on maze cell (" + backCell.x + "," +
-             backCell.y + "), puddle " + Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") +
-             " m ahead and low in frame, aimed " + Vector3.Distance(player.transform.position, shallowAim).ToString("0") +
-             " m down the lane at a near-level pitch — the flattest view available of the water");
+        Vector3 shallowAim = puddlePos - laneAxis * 4f;   // the stand is puddlePos + 8*laneAxis, so the puddle is BACK
+        shallowAim.y = _stand.y + EyeHeight - 0.9f;       // ~4 deg down: puddle low in frame, horizon behind it
+        Emit("acceptance shot (M32e, the gameplay view): eye " + EyeHeight.ToString("0.00") + " m at " +
+             F(player.transform.position) + " on maze cell (" + standCell.x + "," + standCell.y + "), puddle " +
+             Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") +
+             " m ahead down the lane, aimed " + Vector3.Distance(player.transform.position, shallowAim).ToString("0") +
+             " m on down the lane — the view a player has, not a flattened pose");
         yield return Sample("m32c-water-probe-on.png", player, shallowAim, puddlePos,
                             "PROBE ON (sky reflection; water at a glancing angle, the flattest view there is)");
 
