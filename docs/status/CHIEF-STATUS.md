@@ -1,6 +1,6 @@
 # CHIEF-STATUS — Corn Field Maze
 
-_Updated 2026-09-25 by Harrow (@corn-chief). HEAD `0e3bc05` (M32b pass 2, still OPEN). One page, not a log._
+_Updated 2026-09-25 by Harrow (@corn-chief). HEAD `b1c36ca` (M32b pass 3, still OPEN). One page, not a log._
 _Project root `/Volumes/files1/projects/cornmaze/CornFieldMaze` (APFS volume files1). Unity 6000.3.23f1, URP._
 _Order of 2026-09-25 (cap 10 passes): **M31, M32, M33, M34** — with M31b and M32b attached. Unity slot free._
 
@@ -10,7 +10,7 @@ _Order of 2026-09-25 (cap 10 passes): **M31, M32, M33, M34** — with M31b and M
 |---|---|---|
 | 1 | M31 — the lane blends by **transparency** | GREEN `ea81ad8`; M31b also GREEN `992da42` |
 | 2 | M32 — the ground and the moonlight | GREEN `a2e1119` — matte by read-back |
-| 2c | M32b — puddles, the only reflective surface | **OPEN `0e3bc05`** — read-back green, acceptance FRAME still not obtained |
+| 2c | M32b — puddles, the only reflective surface | **OPEN `b1c36ca`** — read-back green, camera now on the lane, moon not yet caught in the water |
 | 3 | M33 — scary lanterns, placeholder + swap-in point | not started |
 | 4 | M34 — the scarecrow is THE antagonist | not started; silhouette test **OPEN, not passing** |
 
@@ -36,12 +36,18 @@ inside the waterline and outside it.
 **0.104** in the damp halo; lane **0.137**; water 7.6 % of the quad, halo 21.1 %; **6 decals under one parent
 named "Puddles"**, 3.4 × 1.7 m, inside the 2.08 m lane.
 
-**Still open — the frame.** The harness keeps standing the player off the lane: it probes four directions
-with a downward ray looking for the lane material, but the maze's colliders are not the renderers carrying
-the lane's `_BaseMap`, so it never matches and falls back to a spot in corn. **Next pass: ask the MAZE for
-the lane cell** (`MazeData` already knows which cells are path) instead of raycasting the world for a
-material, and clamp the projected rect (corners near the camera plane projected to −5975 px this pass and
-poisoned the min/max).
+**Still open — the frame.** Pass 3 fixed the blocking defect: the harness no longer guesses where the lane
+is, it asks the maze. It starts at the puddle's cell, steps while the next cell is a path cell, and takes the
+lane cell closest to the mirror distance — so the stand is on the lane **by construction**. The built app
+reports `stand: (36.00, 0.08, 44.00) — on maze cell (9,11), 1 step from the puddle's cell (9,10)`, and the
+frame finally looks down a gravel lane with corn either side instead of from inside a corn block. One cell is
+4.00 m, so the nearest lane cell to the 3.12 m mirror distance is 4.00 m; the reflection lands 0.88 m short
+of the puddle's centre, still inside a 3.4 m decal. **The moon is still not caught in the water** and the
+puddle is not distinguishable in the frame, so the milestone stays open. **Next, in order:** sample the
+puddle's own pixels against the lane's in the same frame at the same distance — if the water is not
+measurably different from the lane beside it, the decal is not reading and the fault is the decal, not the
+light; and rewrite the projected-rect counter (it still reports "3 corners rejected" and a degenerate rect
+for a decal 4 m away, so its inside/outside split is not quoted as evidence).
 
 ## 3. Open — reported, not hidden
 
@@ -49,6 +55,10 @@ poisoned the min/max).
   peak 255; unbound it is 22.57, peak 120. That 1.8× is the **ground's** own highlight, not the puddle's —
   the lane is what Todd called a bug — and it is why the puddle's contribution must be isolated before
   anything is claimed. **The puddle is not visible in the current frame and I am not claiming it is.**
+- **Two Unity build failures this pass, both mine and both cheap to avoid:** a local named `step` collided
+  with an enclosing scope's `step` (CS0136) and `chosen` was used outside the block that declared it. Both
+  presented as "the harness never writes a report", because the app that ran was the previous build. **Check
+  for `error CS` in `Builds/mac-build.log` before blaming the harness** — the log says exactly what broke.
 - **A copy is not a rename.** The M32b harness was copied from M32's; I renamed the class but not the
   component its installer created, so `-puddletest` ran the M32 harness and quietly wrote the M32 report —
   two runs lost, presenting as "the harness never writes a report". Worth remembering for every harness copy.
@@ -68,11 +78,12 @@ poisoned the min/max).
 
 ## 4. CAPTURES FOR TODD
 
-    artifacts/review/world/m32b-puddle-moon.png          M32b: the attempt — still corn, NOT the puddle
-    artifacts/review/world/m31-ground-lane.png           M31b: down the lane at eye level — solid, not a ghost
+    artifacts/m32b-puddle-moon.png          M32b: pass 3 — down the lane now; the puddle is not in it
+    artifacts/m31-ground-lane.png           M31b: down the lane at eye level — solid, not a ghost
     artifacts/reference/m31b-lane-alpha-preview.png      M31b: the baked alpha — flat interior, eaten edge
     artifacts/review/world/m32-reflection-on.png         M32: the matte ground as it ships
-    artifacts/m32b-puddle-report-2.txt                   M32b pass 2: what is fixed, what is not
+    artifacts/m32b-puddle-report-3.txt                   M32b pass 3: the stand fixed, the glint not there
+    artifacts/m32b-puddle-report-2.txt                   M32b pass 2: the lane-crossing puddles
     artifacts/m32b-puddle-report.txt                     M32b pass 1: the read-back that does stand
     artifacts/m28-scarecrow-silhouette.png               M28's silhouette — OPEN pending Todd's model
 
@@ -103,7 +114,8 @@ not mine. Unity re-serialised `ProjectSettings/*`, `PC_RPAsset.asset` and
 
 ## 7. Last commits
 
-`0e3bc05` M32b pass 2 · `ea0d85c` status after M32b pass 1 · `9085719` M32b puddles built, frame open ·
-`94c2fc1` status after M31b · `992da42` M31b solid lane, broken edge · `a2e1119` M32 matte ground + the
-alphaSource fix · `ea81ad8` M31 lane blends by transparency · `09a59c3` matte ground + puddle art (Ernie) ·
-`34dbf49` M28 the scarecrow · `e460272` M27 first person · `f46b9e0` M29 the ground.
+`b1c36ca` M32b pass 3 · `6dc6c9a` status after M32b pass 2 · `0e3bc05` M32b pass 2 · `ea0d85c` status after
+M32b pass 1 · `9085719` M32b puddles built, frame open · `94c2fc1` status after M31b · `992da42` M31b solid
+lane, broken edge · `a2e1119` M32 matte ground + the alphaSource fix · `ea81ad8` M31 lane blends by
+transparency · `09a59c3` matte ground + puddle art (Ernie) · `34dbf49` M28 the scarecrow · `e460272` M27 first
+person · `f46b9e0` M29 the ground.
