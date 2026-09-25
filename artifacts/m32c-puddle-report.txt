@@ -41,7 +41,29 @@ ONE HONEST SENTENCE: does either frame's puddle read as water? **No — the pudd
 three frames, and the glint variant is not yet bright enough to be visible.** I am not putting two frames side by
 side in the status page and calling it a choice when one of them is a copy of the other to within 0.15 of 255.
 
-=========================== M32f AND EARLIER, BELOW ===========================
+M32c CLOSED — 2026-09-25. Todd chose option 1: **accept the puddles as dark wet patches**, and the glint is not
+built. Close-out evidence, one run on the same camera:
+
+    the SHIPPED water, read back at runtime:
+      renderQueue=2000  renderType=Opaque  _Surface=0 (0 opaque, 1 transparent)  _SrcBlend=1  _DstBlend=0
+      _ZWrite=1  keyword _SURFACE_TYPE_TRANSPARENT=False  baseMap=T_Ground_PuddleA
+      glossMap=T_Ground_Puddle_M  _Smoothness=1.00  _EnvironmentReflections=1.00   (the sheen's data is still bound)
+    the shipped frame vs the frame Todd judged (buckets, of 255):
+      shipped:  25.3 -> 20.4 -> 25.9 -> 26.2 -> 21.5 -> 26.5
+      forced:   25.3 -> 20.4 -> 25.9 -> 26.1 -> 21.4 -> 26.5     <- five buckets at 0.0, one at -0.1
+
+So the water in `m32g-water-opaque.png` — the frame he was shown and accepted — IS the water that ships. Reverting
+is one line: `Materials.WaterOpaque = false` (restores the alpha blend, which keeps the damp halo; the accepted
+variant clips it at 0.45 so the coverage mask shapes the pool). `PuddleDecals.GlintEnabled` is false and the
+shipping path never spawns a glint — only the harness ever asked for one.
+
+HONEST SUMMARY OF THE WATER HALF: the puddle reads as a dark wet patch, not as water you can see the sky in, and
+the reason is understood rather than mysterious — a night sky this dark (capture mean 12.6 of 255, 22 in the moon's
+own direction) reflected at the angles this camera sees is not worth many pixels. Todd spent the effort elsewhere,
+which is the right call. The lane half of M32c is MET and was never in doubt after M32e: a dark lane with lit corn,
+not a pale ribbon.
+
+=========================== M32g AND EARLIER, BELOW ===========================
 
 1) THE WATER MATERIAL, READ BACK AT RUNTIME (not what I set — what it holds):
 

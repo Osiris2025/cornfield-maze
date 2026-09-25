@@ -131,9 +131,25 @@ public static class Materials
     {
         var mat = Ground("Ground/T_Ground_PuddleA", "Ground/T_Ground_Puddle_N",
                          Color.white, 0.10f, "Ground/T_Ground_Puddle_M");
+        // M32c CLOSE-OUT — Todd's call, 2026-09-25: "accept the puddles as dark wet patches". The frame he was
+        // shown and accepted is `artifacts/review/world/m32g-water-opaque.png`, and that frame was shot with the
+        // water OPAQUE and alpha-tested, so this is the shipping water — the look he judged is the look that
+        // ships. REVERTING IS ONE LINE: `WaterOpaque = false` restores the alpha blend below.
+        if (WaterOpaque)
+        {
+            MakeOpaqueWater(mat);
+            return mat;
+        }
         MakeAlphaBlend(mat);
         return mat;
     }
+
+    /// <summary>
+    /// M32c close-out — which water ships. `true` = the variant in the frame Todd accepted (opaque, alpha-tested so
+    /// the coverage mask still shapes the pool and the damp halo is clipped away); `false` = the pre-M32g alpha
+    /// blend, which keeps the halo. Both are one line apart and both are committed; the frame is the tie-breaker.
+    /// </summary>
+    public static bool WaterOpaque = true;
 
     /// <summary>
     /// Turns a URP/Lit material into a fading one. These are URP's own property names and keywords, which is
@@ -187,7 +203,7 @@ public static class Materials
     /// water core is 0.86 and survives, the damp halo at 0.1-0.2 is cut), so the pool stays a pool rather than
     /// becoming the decal's rectangle.
     /// </summary>
-    public static void MakeOpaqueWaterForTest(Material mat)
+    public static void MakeOpaqueWater(Material mat)
     {
         if (mat == null) return;
         MakeOpaque(mat);
@@ -195,6 +211,10 @@ public static class Materials
         if (mat.HasProperty("_AlphaCutoff")) mat.SetFloat("_AlphaCutoff", 0.45f);
         mat.EnableKeyword("_ALPHATEST_ON");
     }
+
+    /// <summary>Harness alias — the M32g test frame calls this name, and the frame it produced is the one Todd
+    /// accepted, so `MakeOpaqueWater` is now the shipping path (`WaterOpaque`).</summary>
+    public static void MakeOpaqueWaterForTest(Material mat) { MakeOpaqueWater(mat); }
 
     /// <summary>Reads the blend state back off a material, so the report can print what is actually set
     /// rather than what the builder intended.</summary>

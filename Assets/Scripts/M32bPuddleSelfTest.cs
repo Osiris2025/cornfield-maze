@@ -951,9 +951,9 @@ public class M32bPuddleSelfTest : MonoBehaviour
             };
             Emit("THE DISTANCE GRADIENT ACROSS THE PUDDLE, six buckets, near edge -> far edge, " + tMin.ToString("0.0") +
                  " to " + tMax.ToString("0.0") + " m past the eye, of 255. A reflection MUST rise toward the horizon.");
-            Emit("    shipped water (alpha-blend):  " + line(0, -1) + "   <- the frame Todd has");
-            Emit("    OPAQUE water, same camera:    " + line(4, -1) + "   <- TEST 1");
-            Emit("    the glint variant:            " + line(3, -1) + "   <- TEST 2");
+            Emit("    SHIPPED water (accepted variant): " + line(0, -1) + "   <- opaque + alpha-tested, the frame Todd judged");
+            Emit("    the harness forcing the same:     " + line(4, -1) + "   <- must now MATCH the line above: the shipped water IS that variant");
+            Emit("    the glint variant (NOT built):    " + line(3, -1) + "   <- Todd did not take it; the switch stays OFF");
             Emit("    environment's own share:      " + line(0, 1));
             Emit("    opaque MINUS blended:         " + line(4, 0) + "   <- if this rises near-to-far, the transparent pass was the fault");
             Emit("    glint MINUS shipped:          " + line(3, 0));
