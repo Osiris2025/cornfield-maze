@@ -38,7 +38,7 @@ import bpy
 import numpy as np
 
 REPO = "/Volumes/files1/projects/cornmaze/CornFieldMaze"
-OUT_DIR = os.path.join(REPO, "Assets", "Resources", "Ground")
+OUT_DIR = os.environ.get("GROUND_OUT", os.path.join(REPO, "Assets", "Resources", "Ground"))
 REF = os.path.join(REPO, "artifacts", "reference")
 
 # Which variant's textures ship into Assets/. Flip this line, re-run, and the other one is live.
@@ -50,6 +50,14 @@ VARIANTS = {
         "res": "1k", "size": 1024, "layout": "textures_subdir",
         "field": ["forest_floor", "forest_leaves_04", "brown_mud_leaves_01"],
         "lane": ["gravel_ground_01", "stony_dirt_path", "grass_path_2"],
+    },
+    "mixed": {
+        "src": "/Volumes/files1/projects/cornmaze/downloads/ground_textures_ph",
+        "res": "2k", "size": 2048, "layout": "flat",
+        # the dry field -- a cut cornfield is bare earth with dead weeds, not woodland litter
+        "field": ["withered_grass", "dry_mud_field_001", "dry_decay_leaves"],
+        # a lane with grain in it: dark dirt and loose stone rather than a smooth road crown
+        "lane": ["stony_dirt_path", "rocky_gravel", "gravel_road"],
     },
     "dry": {
         "src": "/Volumes/files1/projects/cornmaze/downloads/ground_textures_ph",  # outside the repo
@@ -215,7 +223,7 @@ def build(variant):
     m_grass = periodic_fbm(SIZE, 5, 3, 44)          # the creeping third
     ones = np.ones((SIZE, SIZE, 1), dtype=np.float32)
 
-    if variant == "dry":
+    if variant in ("dry", "mixed"):
         # grass carpet with bare earth showing through it, and a compacted lane wearing through to
         # loose stones and ruts underneath
         field_masks = [
@@ -274,7 +282,7 @@ def build(variant):
     # The dry variant is already the right register -- bare earth and dead grass, no leaf colour to
     # tame -- so it takes a lighter grade. Grading it as hard as the litter batch would flatten the
     # only thing that makes it read as a field.
-    if variant == "dry":
+    if variant in ("dry", "mixed"):
         l_alb_raw = np.clip(l_alb * 1.05, 0, 1)
         f_alb = grade(f_alb_raw, 0.80, 0.90, (1.00, 0.97, 0.92))
         l_alb = grade(l_alb_raw, 0.50, 1.06, (1.00, 0.99, 0.97))
