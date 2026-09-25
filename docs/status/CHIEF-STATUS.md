@@ -1,91 +1,94 @@
 # CHIEF-STATUS — Corn Field Maze
 
-_Updated 2026-09-25 by Harrow (@corn-chief). HEAD `ea81ad8` (M31). This file is the current page, not a log._
+_Updated 2026-09-25 by Harrow (@corn-chief). HEAD `7062531` (M32). This file is the current page, not a log._
 _Project root `/Volumes/files1/projects/cornmaze/CornFieldMaze` (APFS, files1). Unity 6000.3.23f1._
 _Order of 2026-09-25 (cap 10 passes): **M31, M32, M33, M34**. One writer at a time; Unity slot free at STATE-A._
 
-## 1. The new order, by number
+## 1. The order, by number
 
 | # | Milestone | State |
 |---|---|---|
 | 1 | M31 — the lane blends by **transparency**, not geometry | **GREEN** — `ea81ad8` |
-| 2 | M32 — the ground catches the moonlight | not started; `_M` maps are in the repo, unwired |
+| 2 | M32 — the ground catches the moonlight | **GREEN** — `7062531` |
 | 3 | M33 — scary lanterns, placeholder + swap-in point | not started |
 | 4 | M34 — the scarecrow is THE antagonist | not started; silhouette test **open, not passing** |
 
 Previous order, all green: M29 `f46b9e0`, M27 `e460272`, M28 `34dbf49`. Earlier queue untouched:
 M20 `7a6a93f`, M21 `ca83b66`, M22 `7518c78`, M23 `318b543`, M24 `4d2b253`, M25 `874d90f`,
-M25b `dc3b53a`, M26 `aa0f23a`. **The done marker still stands from the previous order; it is stale for
-this one and gets rewritten only when M31–M34 are all closed.**
+M25b `dc3b53a`, M26 `aa0f23a`. The done marker gets written only when all four are closed.
 
-## 2. M31 — what the lane is now
+## 2. M32 — the ground catches the moonlight
 
-M29 made the lane's margin ragged in **geometry**: boundary vertices pulled inwards on a derived mask.
-Todd's verdict was "bubbly and janky", and M29's own report named the cause — *"Blend method: geometry."*
-A margin that wanders 0.42 m is still a cut, just an irregular one.
+Todd's question was "can you use the PBR files for reflections off the moonlight?" — and until this pass the
+answer was no: one constant `_Smoothness` per ground material, roughness maps never reaching the shader, so
+the whole floor was uniformly matte. M29's report had that written down as a deferral.
 
-The lane is now a plain rectangle (a four-vertex quad, down from a 625-vertex grid) laid over the field,
-with lane-local UVs — **U along the lane, V across it**. The whole boundary is the alpha strip:
-`scripts/m31_lane_alpha_bake.py` bakes `T_Ground_LaneAlpha` into the lane albedo's alpha at design time,
-so the material stays stock URP/Lit set to Alpha Blend and the lane keeps the moon, its normal map and
-the `PathMudWetness` path. Measured off the texture: **half-width 0.84 m, plateau 1.20 m of the 2.08 m
-lane, alpha 0.000 exactly at the mesh's edge** — which is why there is no line where the layer stops.
+The sets ship roughness as a separate `_R` map and URP/Lit cannot take a standalone roughness texture, so the
+materials now wear URP's own **metallic/smoothness** map: `T_Ground_Field_M` / `T_Ground_Lane_M`, RGB
+metallic 0, **A = smoothness**, wired to `_MetallicGlossMap` with `_SmoothnessTextureChannel = 0` and
+`_Smoothness = 1`. The keyword is `_METALLICSPECGLOSSMAP` — taken from URP's own material upgrader, because a
+metallic map bound under a different keyword renders as if it were not there. Normal maps stay bound: they
+are what breaks the highlight into grain instead of a mirror blob.
 
-Two more fixes fell out of the frames: lane pieces now **abut** instead of overlapping (M29 ran
-connectors centre to centre, so every connector sat on two core pieces — two alpha layers read as a
-brighter plate with a straight edge, which my own night frame caught), and a cell's core piece now fades
-the axis whose edge **actually faces corn** instead of whichever axis happened to be longer. Coverage
-counted over 2151 probe points: **max 1 piece per point, 0 doubled, 0 holes.** Baking also deletes the
-CPU-readable mask copy M29 carried — the phone cost that milestone asked to remove.
+**Measured** (`artifacts/m32-reflection-report.txt`), same view, one variable: band mean luminance
+**49.70 → 64.67 of 255 (+30 %)** and band peak **158 → 255** with the maps bound versus the exact pre-M32
+constants. Attribution: the field's map accounts for almost all of the mean, the lane's map for the peak.
+The peak clips, so it is a floor, not a value.
+
+Getting an honest measurement cost three runs, and the reasons are in the report: writing the camera's
+transform drifts 76 m (the rig owns it); correcting the look state by the measured residual oscillates
+between both pitch clamps, because **the rig's pitch sign is inverted against the accessor that reports it** —
+so the aim is now a sign-free hill-climb, and it lands the mirror point with an 11 px residual. The Husk is
+disabled during the measurement, after one run died at "Caught by the Husk" and measured corn leaves.
 
 ## 3. Open — reported, not hidden
 
-- **A corner keeps one hard edge.** A linear strip cannot fade two adjacent sides, and the alternative
-  (two overlapping pieces) measured as the exact defect M31 removes. `m31-ground-corner.png` shows it.
-- **Blend cost is unmeasured on the phone.** On the Mac, switching the live material between Alpha Blend
-  and Opaque reads as nothing measurable — honest for a machine that is not fill-bound at 3 ms/frame.
-- **A magenta test tint did not reach the drawn pixels** (0 of 1,066,000, checked numerically): the
-  lane's runtime colour comes from somewhere other than that material's `_BaseColor`. Reported; the
-  coverage count does not depend on it.
-- **The bright quadrilateral in the night lane frame is pre-existing** — present and unchanged in M29's
-  committed frame of the same view. Not a regression, not the lane's boundary, unidentified.
-- **M28's silhouette test is OPEN, not passing.** The old page said it passed; Ernie's order overrides
-  that and I am not re-litigating it. M28's own frame collapses to a blocky body with two stubs. Todd's
-  model is the answer; the placeholder is the bar, not a claim. M34 owns this.
-- Carried: `CornMaze/StarUnlit` does not resolve in the player build (star twinkle inert); locked docs
-  still say "Crumb Beast" and FSD §17 still describes a noise ground and a sphere Husk — Ernie applies.
-  The 60 fps floor is a phone target and stays unmeasured. §25.6 device listen pass still needs the phone.
+- **The band peak clips at 255.** The true highlight is at least that bright. If it wants dialling back the
+  lever is the roughness numbers in the `_M` maps (lane mean 0.28, field 0.17), not the light.
+- **The field's sheen is broad** — in the ON frame the field around the lane is noticeably live, not just the
+  lane. It reads as a damp field at night to me; it is the first thing I would soften if Todd disagrees.
+- **Nothing here says what a phone does** with a second full-size map pair per ground material.
+- **M31's corner keeps one hard edge** (a linear strip cannot fade two adjacent sides); `m31-ground-corner.png`.
+- **M28's silhouette test is OPEN, not passing** — the old page claimed otherwise and Ernie's order overrides
+  it. Todd's model is the answer; the placeholder is the bar, not a claim. M34 owns this.
+- Carried: `CornMaze/StarUnlit` does not resolve in the player build; locked docs still say "Crumb Beast" and
+  FSD §17 still describes a noise ground and a sphere Husk (Ernie applies); the 60 fps floor is a phone target
+  and unmeasured; §25.6's device listen pass still needs the phone.
 
 ## 4. Questions for Todd (each with my recommendation)
 
-1. **The fade is wide — 0.84 m half-width of a 2.08 m lane.** Does the lane still read as *worn underfoot*
-   or as *suggested*? *Recommend: ship it and look at `m31-ground-edge.png`; if it wants more gravel the
-   lever is the strip's plateau, not the geometry.*
-2. **The lane is 87 % opaque at its centre** — the field reads through it. *Recommend: keep; that is what
-   killed the plate look.*
-3. **Next pass is M32.** *Recommend: yes — the `_M` maps are already committed and the lane is the most
-   reflective surface in the game; cheapest visible win left.*
+1. **Is the reflection too strong, right, or too weak?** Look at `m32-reflection-on.png` against
+   `m32-reflection-off.png`. *Recommend: ship it — the highlight breaks into grain across the stones rather
+   than reading as glass, and the field reads as damp rather than lacquered. If you want it softer, we change
+   the maps' roughness and nothing else.*
+2. **Next pass is M33 — scary lanterns.** *Recommend: yes, exactly as the order frames it: a procedural
+   placeholder in the §17 register, placed at junctions and dead ends, with the swap-in hook named for the
+   models you are sourcing. I will not wait for the models and will not import a third-party asset.*
+3. **M34 (the scarecrow as THE antagonist) needs your model to close its silhouette test.** *Recommend: I
+   build the factory hook and the escalation multiplier now, and leave the silhouette test marked open until
+   the model lands — his licence line gets recorded before it ships.*
 
 ## 5. Blockers
 
 None. `/tmp/corn-crew-blocked` not written; nothing in this list needed a human.
 Working-tree items left alone as ordered: deleted `Assets/GingerbreadMan.meta` and the four
-`Assets/Resources/PerformanceTestRun*.{json,meta}`. Unity re-serialised `ProjectSettings/*`,
+`Assets/Resources/PerformanceTestRun*.{json,meta}`; Ernie's ground-variant edits (`_R` maps, previews, the
+new `T_Ground_Puddle*` art) left uncommitted as not mine. Unity re-serialised `ProjectSettings/*`,
 `PC_RPAsset.asset` and `UniversalRenderPipelineGlobalSettings.asset` during builds.
 
 ## 6. CAPTURES FOR TODD
 
-    artifacts/review/world/m31-ground-edge.png      AFTER  — gravel dissolving into the field. Look here.
-    artifacts/review/world/m29-ground-edge.png      BEFORE — the plate with the faceted border (M29 commit)
-    artifacts/review/world/m31-ground-corner.png    where the fade has to give up something
-    artifacts/review/world/m29-ground-lane.png      the lane at night, re-shot (M29's view)
-    artifacts/review/world/m29-ground-field.png     the field floor, re-shot
-    artifacts/m31-lane-blend-report.txt             all M31 numbers + what I am not claiming
+    artifacts/review/world/m32-reflection-on.png    AFTER  — wet gravel under the moon, highlight in grain
+    artifacts/review/world/m32-reflection-off.png   BEFORE — the same lane flat and even. Compare these two.
+    artifacts/review/world/m32-reflection-fieldonly.png    the field's map alone, lane unbound
+    artifacts/review/world/m31-ground-edge.png      gravel dissolving into the field (M31)
+    artifacts/review/world/m29-ground-edge.png      the plate with the faceted border it replaced
+    artifacts/m32-reflection-report.txt             all M32 numbers + what I am not claiming
+    artifacts/m31-lane-blend-report.txt             all M31 numbers
     artifacts/review/world/m28-scarecrow-silhouette.png   M28's silhouette — OPEN pending Todd's model
-    artifacts/m28-scarecrow-report.txt              every M28 number, the M23 regression, the verdict
 
 ## 7. Last commits
 
-`ea81ad8` M31 lane blends by transparency · `4131fa7` order M31-M34 · `a890aff` roughness maps +
-ground variants (Ernie) · `cfe164e` lane alpha strip (Ernie) · `34dbf49` M28 the scarecrow ·
-`e460272` M27 first person · `f46b9e0` M29 the ground · `aa0f23a` M26 threat audio.
+`7062531` M32 the ground catches the moonlight · `8b2c368` status after M31 · `ea81ad8` M31 lane blends by
+transparency · `4131fa7` order M31-M34 · `a890aff` roughness maps + ground variants (Ernie) · `cfe164e` lane
+alpha strip (Ernie) · `34dbf49` M28 the scarecrow · `e460272` M27 first person · `f46b9e0` M29 the ground.
