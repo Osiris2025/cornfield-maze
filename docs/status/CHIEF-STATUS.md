@@ -1,97 +1,91 @@
 # CHIEF-STATUS — Corn Field Maze
 
-_Updated 2026-09-25 by Harrow (@corn-chief). HEAD `34dbf49` (M28). This file is the current page, not a log._
+_Updated 2026-09-25 by Harrow (@corn-chief). HEAD `ea81ad8` (M31). This file is the current page, not a log._
 _Project root `/Volumes/files1/projects/cornmaze/CornFieldMaze` (APFS, files1). Unity 6000.3.23f1._
-_One writer at a time; `build-mac.sh` guard intact; Unity slot free at STATE-A._
+_Order of 2026-09-25 (cap 10 passes): **M31, M32, M33, M34**. One writer at a time; Unity slot free at STATE-A._
 
-## 1. The order, by number — ALL THREE GREEN
+## 1. The new order, by number
 
 | # | Milestone | State |
 |---|---|---|
-| 1 | M29 — the ground | **GREEN** — `f46b9e0` |
-| 2 | M27 — first person, third person as a choice (§25.8) | **GREEN** — `e460272` |
-| 3 | M28 — the chaser becomes a scarecrow (§25.8) | **GREEN this pass** — `34dbf49` |
+| 1 | M31 — the lane blends by **transparency**, not geometry | **GREEN** — `ea81ad8` |
+| 2 | M32 — the ground catches the moonlight | not started; `_M` maps are in the repo, unwired |
+| 3 | M33 — scary lanterns, placeholder + swap-in point | not started |
+| 4 | M34 — the scarecrow is THE antagonist | not started; silhouette test **open, not passing** |
 
-Earlier queue still green: M20 `7a6a93f`, M21 `ca83b66`, M22 `7518c78`, M23 `318b543`, M24 `4d2b253`,
-M25 `874d90f`, M25b `dc3b53a`, M26 `aa0f23a`. **The done marker is written (3 lines).**
+Previous order, all green: M29 `f46b9e0`, M27 `e460272`, M28 `34dbf49`. Earlier queue untouched:
+M20 `7a6a93f`, M21 `ca83b66`, M22 `7518c78`, M23 `318b543`, M24 `4d2b253`, M25 `874d90f`,
+M25b `dc3b53a`, M26 `aa0f23a`. **The done marker still stands from the previous order; it is stale for
+this one and gets rewritten only when M31–M34 are all closed.**
 
-## 2. M28 — what the creature is now
+## 2. M31 — what the lane is now
 
-The sphere blob is gone. 60 primitives in the §17 register, no third-party model: a rough timber cross
-with the upright and crossbar showing where the coat does not cover them; a burlap sack head, loose and
-set on a wrong tilt that stays wrong; hollow sockets with no eyeballs and a faint glow in each, the only
-light on it; a stitched seam mouth (thirteen small dark stitches, not a grin); dry husks bursting out of
-a tattered coat, sleeves ending in straw, the hem torn. **2.31 m tall, 1.76 m across.**
+M29 made the lane's margin ragged in **geometry**: boundary vertices pulled inwards on a derived mask.
+Todd's verdict was "bubbly and janky", and M29's own report named the cause — *"Blend method: geometry."*
+A margin that wanders 0.42 m is still a cut, just an irregular one.
 
-**The walk is a lurch, not a glide.** One surge per 0.72 s, speed swinging 0.45x to 1.55x of MoveSpeed.
-A full sine averages exactly MoveSpeed, so the ground a thrown cob buys (§25.3) does not move — the tell,
-not a balance change. Measured on the built app: peak **3.64 m/s = exactly 1.55x** the base speed, one
-surge every **0.71 s** against the designed 0.72 s, mean 2.11 m/s over a 5 s window (the residual is the
-window cutting the first and last surge in half, plus one corner-repath frame). Speed, catch range and
-the 8 s reform are untouched.
+The lane is now a plain rectangle (a four-vertex quad, down from a 625-vertex grid) laid over the field,
+with lane-local UVs — **U along the lane, V across it**. The whole boundary is the alpha strip:
+`scripts/m31_lane_alpha_bake.py` bakes `T_Ground_LaneAlpha` into the lane albedo's alpha at design time,
+so the material stays stock URP/Lit set to Alpha Blend and the lane keeps the moon, its normal map and
+the `PathMudWetness` path. Measured off the texture: **half-width 0.84 m, plateau 1.20 m of the 2.08 m
+lane, alpha 0.000 exactly at the mesh's edge** — which is why there is no line where the layer stops.
 
-**The silhouette test passes.** `m28-scarecrow-silhouette.png`: 12 m out, night01=1.00, every renderer
-swapped to a flat black unlit material. The shape reads as a stake with a sack head and the crossbar out
-to both sides. It is not a sphere, not a person, not a blob.
+Two more fixes fell out of the frames: lane pieces now **abut** instead of overlapping (M29 ran
+connectors centre to centre, so every connector sat on two core pieces — two alpha layers read as a
+brighter plate with a straight edge, which my own night frame caught), and a cell's core piece now fades
+the axis whose edge **actually faces corn** instead of whichever axis happened to be longer. Coverage
+counted over 2151 probe points: **max 1 piece per point, 0 doubled, 0 holes.** Baking also deletes the
+CPU-readable mask copy M29 carried — the phone cost that milestone asked to remove.
 
-M23's cob harness re-run fresh against the new creature — `artifacts/m23-throw-report.txt`: range 7.104 m
-PASS, hit PASS (18 → 12), stagger 1.10 s, ground bought 2.585 m, scattered after three hits.
+## 3. Open — reported, not hidden
 
-Two things the report says plainly rather than hides:
-
-- **The crossbar (1.76 m) is wider than the hit volume (1.0 m across)** — a cob through a sleeve end
-  passes through. Widening the volume would move M23's measured 7.104 m, and M28 is a look change, so it
-  was not widened; it is written down.
-- **The order's "breaks the corn line" is not true at 2.2 m** — the corn stands 2.90-3.20 m. It breaks
-  the *lane* line (the cookie is 1.80 m). The silhouette frame is the honest answer, not the prose.
-
-## 3. In flight / carried over
-
-- **Ground variants on the branch, not mine to own:** `1978374`, `a890aff` (Ernie) — a dry straw register
-  and a mixed one, 2K, from more Poly Haven CC0 sets. Previews in `artifacts/reference/`. The maze still
-  wears the first set; switching is re-running `scripts/ground_build.py`, not a code change.
-- **Phone texture budget (M29)** — the 4 MB readable CPU copy of the lane-edge mask. Recommend the
-  design-time jitter bake rather than downscaling the art.
-- **§25.6 device listen pass** — needs the phone; the Mac mix is measured (`artifacts/m26-threat-listen.wav`).
-- **Carried, unchanged:** `CornMaze/StarUnlit` does not resolve in the player build so the star twinkle is
-  inert; locked docs still say "Crumb Beast" (`docs/DECISIONS.md`, the FSD, `…/INDEX.md` — Ernie applies);
-  the 60 fps floor is a phone target and unmeasured (Mac build this pass: 2.35 ms avg / 4.34 ms worst).
-- **Locked-doc drift Ernie owns:** FSD §17 still describes a noise ground that no longer exists (M29) and
-  a sphere Husk that no longer exists (M28).
+- **A corner keeps one hard edge.** A linear strip cannot fade two adjacent sides, and the alternative
+  (two overlapping pieces) measured as the exact defect M31 removes. `m31-ground-corner.png` shows it.
+- **Blend cost is unmeasured on the phone.** On the Mac, switching the live material between Alpha Blend
+  and Opaque reads as nothing measurable — honest for a machine that is not fill-bound at 3 ms/frame.
+- **A magenta test tint did not reach the drawn pixels** (0 of 1,066,000, checked numerically): the
+  lane's runtime colour comes from somewhere other than that material's `_BaseColor`. Reported; the
+  coverage count does not depend on it.
+- **The bright quadrilateral in the night lane frame is pre-existing** — present and unchanged in M29's
+  committed frame of the same view. Not a regression, not the lane's boundary, unidentified.
+- **M28's silhouette test is OPEN, not passing.** The old page said it passed; Ernie's order overrides
+  that and I am not re-litigating it. M28's own frame collapses to a blocky body with two stubs. Todd's
+  model is the answer; the placeholder is the bar, not a claim. M34 owns this.
+- Carried: `CornMaze/StarUnlit` does not resolve in the player build (star twinkle inert); locked docs
+  still say "Crumb Beast" and FSD §17 still describes a noise ground and a sphere Husk — Ernie applies.
+  The 60 fps floor is a phone target and stays unmeasured. §25.6 device listen pass still needs the phone.
 
 ## 4. Questions for Todd (each with my recommendation)
 
-1. **Is the scarecrow scary enough, or too clean?** `m28-scarecrow-lane.png` and `-close.png`.
-   *Recommend: ship it — the tilt and the empty glowing sockets do the work, and let M26's sound carry the
-   threat. If you want more, the cheap lever is more straw and a bigger head, not a new model.*
-2. **Which ground ships — leaf litter (now) or the dry straw register?** `m29-ground-*.png` against
-   `artifacts/reference/ground-preview-dry.png`. *Recommend: leaf litter for a night hunt; dry straw reads
-   near-white under the moon and fights the dough meter and the gold.*
-3. **The moon from first person.** §25.8 says the moon was built for a camera that no longer exists; first
-   person sees far more sky and there is no look-up frame yet. *Recommend: one first-person look-up frame
-   next pass before anything is re-aimed.*
+1. **The fade is wide — 0.84 m half-width of a 2.08 m lane.** Does the lane still read as *worn underfoot*
+   or as *suggested*? *Recommend: ship it and look at `m31-ground-edge.png`; if it wants more gravel the
+   lever is the strip's plateau, not the geometry.*
+2. **The lane is 87 % opaque at its centre** — the field reads through it. *Recommend: keep; that is what
+   killed the plate look.*
+3. **Next pass is M32.** *Recommend: yes — the `_M` maps are already committed and the lane is the most
+   reflective surface in the game; cheapest visible win left.*
 
 ## 5. Blockers
 
-None. Nothing in this list needed a human; the blocked marker was never written.
+None. `/tmp/corn-crew-blocked` not written; nothing in this list needed a human.
 Working-tree items left alone as ordered: deleted `Assets/GingerbreadMan.meta` and the four
 `Assets/Resources/PerformanceTestRun*.{json,meta}`. Unity re-serialised `ProjectSettings/*`,
-`PC_RPAsset.asset` and `Assets/Settings/UniversalRenderPipelineGlobalSettings.asset` during builds.
+`PC_RPAsset.asset` and `UniversalRenderPipelineGlobalSettings.asset` during builds.
 
 ## 6. CAPTURES FOR TODD
 
-    artifacts/review/world/m28-scarecrow-silhouette.png  THE ACCEPTANCE TEST — 12 m, night, flat black
-    artifacts/review/world/m28-scarecrow-lane.png        the scarecrow at a lane's end, dusk
-    artifacts/review/world/m28-scarecrow-close.png       the head: glowing sockets, stitched seam, tilt
-    artifacts/review/world/m27-fp-lane.png               first person in a lane, dough meter top-left
-    artifacts/review/world/m27-fp-corner.png             first person at the turn — where FP breaks
-    artifacts/review/world/m27-tp-toggle.png             third person after the toggle
-    artifacts/review/world/m29-ground-lane.png           the lane: ragged margin, photographic gravel
-    artifacts/review/world/m29-ground-edge.png           the lane margin, close up
-    artifacts/m28-scarecrow-report.txt                   every M28 number, the regression, the verdict
+    artifacts/review/world/m31-ground-edge.png      AFTER  — gravel dissolving into the field. Look here.
+    artifacts/review/world/m29-ground-edge.png      BEFORE — the plate with the faceted border (M29 commit)
+    artifacts/review/world/m31-ground-corner.png    where the fade has to give up something
+    artifacts/review/world/m29-ground-lane.png      the lane at night, re-shot (M29's view)
+    artifacts/review/world/m29-ground-field.png     the field floor, re-shot
+    artifacts/m31-lane-blend-report.txt             all M31 numbers + what I am not claiming
+    artifacts/review/world/m28-scarecrow-silhouette.png   M28's silhouette — OPEN pending Todd's model
+    artifacts/m28-scarecrow-report.txt              every M28 number, the M23 regression, the verdict
 
 ## 7. Last commits
 
-`34dbf49` M28 the scarecrow · `a890aff`, `1978374` ground variants (Ernie) · `e460272` M27 first person ·
-`f30ea16` M29 status · `f46b9e0` M29 the ground · `551c437` M25b status · `dc3b53a` M25b the moon ·
-`aa0f23a` M26 threat audio · `318b543` M23 cob throw · `4d2b253` M24 the Husk · `874d90f` M25 dusk/moonrise.
+`ea81ad8` M31 lane blends by transparency · `4131fa7` order M31-M34 · `a890aff` roughness maps +
+ground variants (Ernie) · `cfe164e` lane alpha strip (Ernie) · `34dbf49` M28 the scarecrow ·
+`e460272` M27 first person · `f46b9e0` M29 the ground · `aa0f23a` M26 threat audio.
