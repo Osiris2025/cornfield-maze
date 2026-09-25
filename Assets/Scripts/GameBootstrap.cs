@@ -48,6 +48,13 @@ public sealed class GameBootstrap : MonoBehaviour
         // light first (DuskSky adds its own moon light and would otherwise be found as "the" light).
         DuskSky.Install(_player.transform, maze);
 
+        // M23 (§25.3): the cobs lying in the lanes, and the player's hands. The hands ride on the
+        // player and read the same touch surface the controller does; the cob control is theirs to
+        // show. Seed is derived from the maze so the same maze always lays the same cobs.
+        var cobRoot = new GameObject("Cobs");
+        CornCob.PlantLanes(maze, cobRoot.transform, maze.Width * 31 + maze.Height * 7 + maze.StartCell.x);
+        CobHands.Install(_player, MobileControls.Instance, cobRoot.transform);
+
         // M21 (§25.1): the front end owns the first moments, and everything above is already running —
         // the sky, the storm and the field's rustle — so the title screen is neither silent nor static.
         // Only the body is held, the HUD is held, and the Husk waits for the player to start.

@@ -10,6 +10,24 @@ public sealed class MobileControls : MonoBehaviour
     public bool Running { get; private set; }
     public bool RestartPressed { get; private set; }
 
+    // ---- M23 (§25.3) the cob control --------------------------------------------------------
+    /// <summary>
+    /// One control for the whole cob interaction, and it only exists when it has something to do:
+    /// it reads PICK UP while a cob is in range, THROW while one is held, and is hidden otherwise.
+    /// It fires on RELEASE (§25.3 "thrown on release"), so dragging off the button aborts the throw.
+    /// </summary>
+    public bool ThrowPressed { get; private set; }
+
+    /// <summary>True when the cob control has a job — a cob in range, or one in hand.</summary>
+    public bool ThrowVisible
+    {
+        get
+        {
+            var hands = CobHands.Instance;
+            return hands != null && (hands.Held != null || hands.InRange != null);
+        }
+    }
+
     // ---- M22 (§25.2) the feel contract ------------------------------------------------------
     /// <summary>Stick dead zone: below this the stick reads as centred. Narrow lanes make a
     /// hair-trigger stick feel broken, which is the defect this lands.</summary>
@@ -50,10 +68,28 @@ public sealed class MobileControls : MonoBehaviour
     /// </summary>
     public static bool Suppressed;
 
+    /// <summary>
+    /// Test-only override. The touch controls are mobile-only by design, and the Mac standalone is the
+    /// review surface, so a run that needs to SHOW the controls (a capture of the cob control, an audit
+    /// of when it appears) sets this. It is never set in a shipped run.
+    /// </summary>
+    public static bool ForceShowForTest;
+
+    /// <summary>The cob control's current caption, for the harness. "(none)" until the UI is built.</summary>
+    public string ThrowLabelForTest => _throwLabel != null ? _throwLabel.text : "(none)";
+
+    /// <summary>Test-only: build and show the touch UI even on a platform that would not show it.</summary>
+    public void EnsureBuiltForTest()
+    {
+        BuildUi();
+        if (_root != null) _root.gameObject.SetActive(true);
+    }
+
     public static bool ShouldShow
     {
         get
         {
+            if (ForceShowForTest) return true;
 #if UNITY_IOS || UNITY_ANDROID
             if (!Application.isEditor) return true;
 #endif
@@ -66,6 +102,10 @@ public sealed class MobileControls : MonoBehaviour
     RectTransform _stickBase;
     RectTransform _stickKnob;
     RectTransform _runBtn;
+    RectTransform _throwBtn;
+    UnityEngine.UI.Text _throwLabel;
+    Image _throwImage;
+    int _throwFinger = -1;
     RectTransform _restartBtn;
     Image _runImage;
     int _moveFinger = -1;
@@ -127,6 +167,12 @@ public sealed class MobileControls : MonoBehaviour
         _runImage = _runBtn.GetComponent<Image>();
         Label(_runBtn, "RUN", font, 28);
 
+        _throwBtn = NewImage("Throw", _root, circle, new Color(0.30f, 0.22f, 0.03f, 0.62f), 132f);
+        _throwImage = _throwBtn.GetComponent<Image>();
+        Label(_throwBtn, "PICK UP", font, 22);
+        _throwLabel = _throwBtn.Find("Label") != null ? _throwBtn.Find("Label").GetComponent<UnityEngine.UI.Text>() : null;
+        _throwBtn.gameObject.SetActive(false);
+
         _restartBtn = NewImage("Restart", _root, SoftDiscSprite(64), new Color(0.18f, 0.14f, 0.05f, 0.82f), new Vector2(280f, 88f));
         _restartBtn.anchorMin = _restartBtn.anchorMax = _restartBtn.pivot = new Vector2(0.5f, 0.28f);
         _restartBtn.anchoredPosition = Vector2.zero;
@@ -139,12 +185,14 @@ public sealed class MobileControls : MonoBehaviour
     void LateUpdate()
     {
         RestartPressed = false;
+        ThrowPressed = false;
         LookDelta = Vector2.zero;
 
         if (!ShouldShow || Suppressed)
         {
             Move = Vector2.zero;
             Running = false;
+            _throwFinger = -1;
             if (_root != null) _root.gameObject.SetActive(false);
             return;
         }
@@ -153,6 +201,24 @@ public sealed class MobileControls : MonoBehaviour
         if (_root != null) _root.gameObject.SetActive(true);
         LayoutPads();
         ReadTouches();
+
+        // M23 §25.3: "a THROW control appears only in range". It also says which job it has — pick up
+        // what is in reach, or throw what is in hand — so the player never has to guess.
+        if (_throwBtn != null)
+        {
+            var hands = CobHands.Instance;
+            bool show = ThrowVisible;
+            if (_throwBtn.gameObject.activeSelf != show) _throwBtn.gameObject.SetActive(show);
+            if (show && _throwLabel != null && hands != null)
+            {
+                string want = hands.Held != null ? "THROW" : "PICK UP";
+                if (_throwLabel.text != want) _throwLabel.text = want;
+            }
+            if (show && _throwImage != null)
+                _throwImage.color = (hands != null && hands.Held != null)
+                    ? new Color(0.92f, 0.74f, 0.18f, 0.74f)
+                    : new Color(0.30f, 0.22f, 0.03f, 0.62f);
+        }
         if (_runImage != null)
             _runImage.color = Running ? new Color(0.92f, 0.74f, 0.18f, 0.78f) : new Color(0.12f, 0.12f, 0.12f, 0.55f);
     }
@@ -174,6 +240,15 @@ public sealed class MobileControls : MonoBehaviour
         _runBtn.anchorMin = _runBtn.anchorMax = _runBtn.pivot = new Vector2(1f, 0f);
         _runBtn.anchoredPosition = new Vector2(-(right + 78f), bottom + 86f);
         _runBtn.sizeDelta = Vector2.one * 132f;
+
+        // M23: the cob control sits directly above RUN, so the thumb that runs is the thumb that
+        // throws — §25.3 wants the throw doable mid-run, with no aiming stance and no stop-to-throw.
+        if (_throwBtn != null)
+        {
+            _throwBtn.anchorMin = _throwBtn.anchorMax = _throwBtn.pivot = new Vector2(1f, 0f);
+            _throwBtn.anchoredPosition = new Vector2(-(right + 78f), bottom + 86f + 152f);
+            _throwBtn.sizeDelta = Vector2.one * 132f;
+        }
     }
 
     void ReadTouches()
@@ -193,10 +268,16 @@ public sealed class MobileControls : MonoBehaviour
                     continue;
                 }
 
-                if (Inside(_runBtn, pos))
+                if (_runBtn != null && Inside(_runBtn, pos))
                 {
                     _runFinger = touch.fingerId;
                     runHeld = true;
+                    continue;
+                }
+
+                if (_throwBtn != null && _throwBtn.gameObject.activeSelf && Inside(_throwBtn, pos))
+                {
+                    _throwFinger = touch.fingerId;   // armed; the throw fires on RELEASE
                     continue;
                 }
 
@@ -243,6 +324,15 @@ public sealed class MobileControls : MonoBehaviour
                 {
                     LookDelta = pos - _lookLast;
                     _lookLast = pos;
+                }
+            }
+            else if (touch.fingerId == _throwFinger)
+            {
+                if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+                {
+                    // Released while still over the control: §25.3's "thrown on release".
+                    if (touch.phase == TouchPhase.Ended && Inside(_throwBtn, pos)) ThrowPressed = true;
+                    _throwFinger = -1;
                 }
             }
             else if (touch.fingerId == _runFinger)

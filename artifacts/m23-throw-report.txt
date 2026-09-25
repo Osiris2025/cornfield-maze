@@ -1,0 +1,24 @@
+begin — contract: cob 0.25 kg, thrown at 14 m/s and 20 deg; level range R = v^2 sin(2θ)/g = 6.999 m; a hit takes 1/3 of the Husk's 18 and staggers it 1.1 s, buying 2.585 m of ground
+run handed over after 1.0 s: frozen=False isPlaying=True
+cob control present: instance=True visibleWithNothingInReach=False (rule §25.3: it appears only in range)
+cobs lying in the lanes: 28 (rule: ~1 per 6 route cells)
+placement audit: 0 off-path, 0 in a dead-end mouth (both must be 0)
+throwing along a straight run from cell (1,17) toward (0.00, 0.00, 1.00)
+before pickup: inRange=True held=False controlVisible=True
+pickup: PASS — held=True cobState=Held controlVisible=True label=THROW
+in hand for the range throw: True
+arc rig camera at (10.00, 9.17, 71.16) looking at (4.00, 2.67, 71.16) (6 m out and 6.5 m up: the crop stands ~3 m, so a camera at lane height is buried in it — this looks over the wall into the lane. A cob is 190 mm long, so this is the only view where the arc reads)
+flight time to rest: 0.536 s, 4 arc frames taken
+range: level-ground 7.104 m vs nominal 6.999 m (tolerance 0.25) -> PASS
+range: actual landing point 9.735 m from the throw origin (the hand releases ~1.2 m up, so the cob falls further than the level range — both are reported)
+range: throw origin (4.00, 1.27, 67.81) landing (4.00, 0.03, 77.54) (cells are 4 m, so this is 1.78 cells)
+range: first contact = (none — flew free); player collider ignore=True myCollider=False ccCollider=True
+husk visible height 1.15 m; hit volume 2.6 m tall, 0.5 m radius (a column, so the 20° arc connects at close range)
+husk hit: PASS — health 18 -> 12 (expected 12, i.e. one third of 18), hitsTaken=1
+husk stagger: 1.10 s (contract 1.1 s) -> PASS
+husk movement during the stagger: 0.000 m (the stagger is meant to be a full stop)
+ground bought: 2.585 m = 2.35 m/s x 1.10 s (contract 2.585 m) -> PASS
+after three hits: scattered=True (expected True; it re-forms in 8 s, it does not die)
+control after the throws: visible=False label=THROW
+frames written: cob-held, cob-side-1, cob-side-2, cob-side-3, cob-side-4, cob-hit
+DONE

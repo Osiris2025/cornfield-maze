@@ -11,11 +11,44 @@ public sealed class Husk : MonoBehaviour
 {
     public const string DisplayName = "the Husk";
     const float SpawnDelay = 5f;
-    const float MoveSpeed = 2.35f;
+    /// <summary>Base chaser speed. §25.3 derives the ground a thrown cob buys from this number.</summary>
+    public const float MoveSpeed = 2.35f;
     const float RepathSeconds = 0.85f;
     const float CatchDistance = 0.62f;
     const float LaneHalf = 0.42f;
     const float TurnSpeed = 7f;
+
+    /// <summary>§25.3: a thrown cob takes one third of this — 6 dough of 18.</summary>
+    public const float MaxHealth = 18f;
+    /// <summary>
+    /// After three hits the Husk is scattered, not dead. §25.3 is explicit that the throw buys a
+    /// walk-around rather than killing anything, and §8's fairness law forbids a threat being
+    /// trivially removable, so a scattered Husk re-forms. The player spends a whole night's ammo to
+    /// buy a long walk, and the maze does not become a corridor.
+    /// </summary>
+    public const float ReformSeconds = 8f;
+
+    /// <summary>
+    /// The Husk is built from primitives with their colliders stripped, so it had no hit volume at all
+    /// and a thrown cob could fly straight through it. This is a TRIGGER on purpose: §25.3 requires
+    /// that the player stays kinematic and that the cob and the player never interact through physics.
+    /// A trigger volume never blocks or pushes the CharacterController, so the Husk still catches by
+    /// distance, exactly as before.
+    ///
+    /// It is a COLUMN, 2.6 m tall, and deliberately taller than the model: the cob leaves the hand at
+    /// 1.27 m on a 20° launch, so its arc peaks near 1.9 m. A volume that only matched the visible
+    /// body would have every throw inside 6 m sail clean over its head, and the mechanic would read as
+    /// broken while measuring "correct".
+    /// </summary>
+    public const float HitVolumeHeight = 2.60f;
+    public const float HitVolumeRadius = 0.50f;
+
+    /// <summary>Harness/verification view of the threat: health, and how long its stagger ran.</summary>
+    public float Health { get; private set; } = MaxHealth;
+    public float StaggerLeft { get; private set; }
+    public float LastStaggerSeconds { get; private set; }
+    public int HitsTaken { get; private set; }
+    public bool Scattered { get; private set; }
 
     MazeData _maze;
     FarmWalkerController _player;
@@ -29,6 +62,8 @@ public sealed class Husk : MonoBehaviour
     bool _active;
     bool _eating;
     bool _caughtPlayer;
+    float _reformAt;
+    float _flinch;
     Material _bodyMat;
     Material _mouthMat;
     Material _crumbMat;
@@ -36,6 +71,11 @@ public sealed class Husk : MonoBehaviour
     public static Husk Spawn(MazeData maze, FarmWalkerController player)
     {
         var go = new GameObject("Husk");
+        var hitVolume = go.AddComponent<CapsuleCollider>();
+        hitVolume.isTrigger = true;
+        hitVolume.height = HitVolumeHeight;
+        hitVolume.radius = HitVolumeRadius;
+        hitVolume.center = new Vector3(0f, HitVolumeHeight * 0.5f, 0f);
         var beast = go.AddComponent<Husk>();
         beast._maze = maze;
         beast._player = player;
@@ -147,6 +187,28 @@ public sealed class Husk : MonoBehaviour
             Retarget();
         }
 
+        if (Scattered)
+        {
+            if (Time.timeSinceLevelLoad >= _reformAt) Reform();
+            return;
+        }
+
+        // ---- M23 §25.3: the stagger is the whole point of the throw -------------------------
+        // No pathing, no movement for these 1.1 s: that is the ground the player buys. Nothing here
+        // touches the player's own movement, so the flow law (§25.4) is not in play.
+        if (StaggerLeft > 0f)
+        {
+            StaggerLeft -= Time.deltaTime;
+            _flinch = 1f;
+            ApplyFlinch();
+            return;
+        }
+        if (_flinch > 0f)
+        {
+            _flinch = Mathf.Max(0f, _flinch - Time.deltaTime * 2.6f);
+            ApplyFlinch();
+        }
+
         if (_eating) return;
         if (_player == null || _player.IsWon || _player.IsCaught)
             return;
@@ -188,6 +250,60 @@ public sealed class Husk : MonoBehaviour
             _jaw.localRotation = Quaternion.Euler(8f + Mathf.Sin(Time.time * 3.2f) * 6f, 0f, 0f);
 
         TryCatch();
+    }
+
+    /// <summary>A thrown cob lands: one third of the health, and the stagger that is the real prize.</summary>
+    public void TakeHit(float damage, float staggerSeconds, Vector3 fromDirection)
+    {
+        if (Scattered || _eating) return;
+
+        Health = Mathf.Max(0f, Health - damage);
+        StaggerLeft = staggerSeconds;
+        LastStaggerSeconds = staggerSeconds;
+        HitsTaken++;
+        _flinch = 1f;
+
+        // Knocked back off the line of the throw, so the hit reads as a hit.
+        if (fromDirection.sqrMagnitude > 0.0001f)
+        {
+            Vector3 push = fromDirection;
+            push.y = 0f;
+            if (push.sqrMagnitude > 0.0001f) transform.position += push.normalized * 0.22f;
+        }
+
+        if (Health <= 0f) Scatter();
+    }
+
+    void ApplyFlinch()
+    {
+        if (_model == null) return;
+        // At _flinch = 0 this is the identity pose, so the flinch eases itself out with no reset path.
+        _model.localRotation = Quaternion.Euler(-20f * _flinch, 0f, 15f * _flinch);
+        _model.localPosition = new Vector3(0f, -0.06f * _flinch, 0f);
+        if (_jaw != null) _jaw.localRotation = Quaternion.Euler(8f + 22f * _flinch, 0f, 0f);
+    }
+
+    /// <summary>Three hits' worth: scattered, not dead, and it comes back (see ReformSeconds).</summary>
+    void Scatter()
+    {
+        Scattered = true;
+        StaggerLeft = 0f;
+        _reformAt = Time.timeSinceLevelLoad + ReformSeconds;
+        if (_model != null) _model.gameObject.SetActive(false);
+    }
+
+    void Reform()
+    {
+        Scattered = false;
+        Health = MaxHealth;
+        HitsTaken = 0;
+        _flinch = 0f;
+        if (_model != null)
+        {
+            _model.gameObject.SetActive(true);
+            _model.localRotation = Quaternion.identity;
+        }
+        Retarget();
     }
 
     void Retarget()
