@@ -1,0 +1,102 @@
+M31b — the blend is a haze; make it ground eating into ground
+Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target.
+
+Ernie, on M31: "T_Ground_LaneA.png is 0.867 alpha at the centre line and the full-strength band is only 1.20 m
+of a 2.08 m lane, so the field shows through the path EVERYWHERE and the margin fades over about half a metre."
+
+He is right, and the cause is one line of the M31 bake: it resampled the strip's own profile straight into the
+lane albedo's alpha, so the lane inherited whatever shape the strip happened to have — a wide ramp topping out at
+0.867. A permanently translucent cross-fade between two different textures is haze laid over the lane, not one
+ground eating into another.
+
+M31b keeps the strip but stops obeying it. The bake now:
+  1. makes the interior OPAQUE (alpha 1.0 through the middle) so the lane reads as the ground you stand on;
+  2. uses a 0.20 m ramp instead of the strip's ~0.45 m, so the join is a seam rather than a wash;
+  3. takes the strip's own per-column 0.5-crossing — how its edge wobbles along the lane — and uses THAT to
+     displace the boundary in and out by up to +/-4 cm. This is the part that matters: fingers of field into
+     lane and lane into field, at the scale of the texture's own detail, which is what stops it reading as an
+     airbrushed gradient;
+  4. keeps the MEAN half-width fixed at 1.000 m, so the edge is irregular but the lane does not pulse.
+
+Same method as M31 otherwise: baked at design time, stock URP/Lit, normal map and moon untouched, and neither
+source texture is Read/Write in the player (the M31 CPU copy stays gone).
+
+1. THE BAKE, MEASURED OFF THE RESULT (scripts/m31b_lane_edge_bake.py)
+  M31b lane edge bake — a solid lane with a broken edge, measured off the result
+  
+    source albedo      T_Ground_Lane.png      1024x1024
+    source strip       T_Ground_LaneAlpha.png 1024x256  (edge grain, per column)
+    output             T_Ground_LaneA.png     1024x1024, 2532386 bytes, RGBA
+    lane width         2.08 m, so V 0..1 spans it; the mesh edge is at 1.04 m
+  
+    ITEM 1 — interior opaque
+      alpha on the centre line          1.000      (M31 was 0.867: the field read through the lane)
+      mean alpha inside the flat zone   1.000      over the inner 1.52 m of the lane
+      lane area fully opaque (1.000)    75.5 %
+    ITEM 2 — narrow transition
+      transition width                  0.167 m   (target 0.15-0.25 m; M31 faded over 0.84 m from the centre line)
+      the visible crease (0.9 -> 0.1)   0.122 m   <- always narrower than the band on a smoothstep
+      ramp runs from alpha 1.0 at        0.80 m from the centre line
+                          to alpha 0.0 at 1.00 m from the centre line
+    ITEM 3 — the edge is displaced, not just softened
+      strip's own edge wobble           +/-0.071 m over the columns
+      displacement applied (clamped)    +/-0.040 m   (clamp +/-0.04 m)
+      mean half-width (constant)        1.000 m  <- the wobble is around a FIXED half-width, so the lane does not pulse
+    ITEM 4 — no line at the mesh edge, and the strip still tiles
+      alpha at the mesh's own edge      0.000 / 0.000
+      U seam 0.0000 vs interior step 0.0013 -> tileable
+  
+
+2. THE BUILT APP, SAME HARNESS AS M31 (-lanetest)
+  lane pieces: 477 meshes, 954 triangles, 477 of 477 are four-vertex quads (M29's cut needed a 625-vertex grid to carry the ragged boundary; the fade needs a rectangle), 239 of them square (a cell at a lane's turn)
+  UV mapping check: 477 of 477 pieces pass — V spans 0.00..1.00 across the lane, and U advances one repeat per 2.00 m along its axis (worst error 0.000 repeats, longest U run 1.04) — every piece passes, which is what makes the fade cross the lane instead of the world
+  lane material: renderQueue=3000 renderType=Transparent _Surface=1 (0 opaque, 1 transparent) _SrcBlend=5 _DstBlend=10 _ZWrite=0 keyword _SURFACE_TYPE_TRANSPARENT=True baseMap=T_Ground_LaneA
+  that is Alpha Blend on URP/Lit itself — _Surface=1, SrcAlpha/OneMinusSrcAlpha, ZWrite off, queue 3000 — so the lane keeps the lit shader: the moon, the normal map and PathMudWetness all still land on it. No in-house shader, and no second texture sampled per pixel.
+  frames: cell (2,3), the same run M29 shot, so m29-ground-edge.png (before) and m31-ground-edge.png (after) are the same view of the same lane
+  plan view: camera 14 m above the lane's centre looking straight down (dusk, so the coverage is lit)
+  coverage map: lane tinted flat magenta (no alpha, no texture) — a doubled patch reads as a brighter magenta rectangle, a hole reads as field
+  coverage count over 2151 probe points (3x3 per path cell at 0.8 m spacing, counted against every lane piece's bounds): max 1 pieces over one point, 0 points covered twice or more, 0 points covered by none. Two pieces over the same ground is the doubled-alpha patch; a point with none is a hole in the lane.
+  lane frame at night=True (night01=1.00) after 39.8s of play
+  M31b bake, read at design time (scripts/m31b_lane_edge_bake.py, artifacts/m31b-lane-bake.txt): centre-line alpha 1.000, 75.5 % of the lane fully opaque, transition 0.167 m, edge displaced +/-0.040 m around a constant 1.000 m half-width, alpha 0.000 at the mesh edge
+  A/B: lane forced to opaque for the second measurement — renderQueue=2000 renderType=Opaque _Surface=0 (0 opaque, 1 transparent) _SrcBlend=1 _DstBlend=0 _ZWrite=1 keyword _SURFACE_TYPE_TRANSPARENT=False baseMap=T_Ground_LaneA
+  A/B restored: renderQueue=3000 renderType=Transparent _Surface=1 (0 opaque, 1 transparent) _SrcBlend=5 _DstBlend=10 _ZWrite=0 keyword _SURFACE_TYPE_TRANSPARENT=True baseMap=T_Ground_LaneA
+  A/B: all 477 lane renderers disabled for the third measurement
+  blend cost, same camera and same scene:
+    blended (as shipped)  avg 2.98 ms / worst 3.43 ms
+    forced opaque         avg 2.98 ms / worst 3.59 ms
+    lane hidden entirely  avg 2.97 ms / worst 3.71 ms
+
+3. THE FRAMES (artifacts/review/world/)
+  m31-ground-edge.png              2,371,895 bytes
+  m31-ground-lane.png              2,133,761 bytes
+  m29-ground-edge.png              1,924,228 bytes
+  m31-ground-corner.png            2,407,439 bytes
+  m31-ground-plan.png              2,048,642 bytes
+  m31-ground-coverage.png          1,914,417 bytes
+
+  m31-ground-edge.png is the close-up of the join, framed exactly like m29-ground-edge.png so the
+  M29 plate and the M31 haze and this can all be put side by side — all three views of the same lane
+  in the same cell. m31-ground-lane.png is the lane filling the frame, which is where the M31 ghost
+  was most visible.
+
+4. THE ACCEPTANCE QUESTION, ANSWERED IN ONE SENTENCE
+  At the lane's edge it now reads as two grounds MEETING — a solid gravel path whose border is eaten
+  into by fingers of field at the texture's own scale — rather than as a gradient painted on the floor.
+
+5. WHAT I AM NOT CLAIMING
+  - Measured on the Mac. The blend cost is re-measured below, but nothing here says what a phone's
+    tile-based GPU does with lane overdraw; the number is a Mac number.
+  - The strip's own edge wobble is +/-0.071 m and the bake clamps the displacement to +/-0.04 m. That is
+    a deliberate cap, not the art's limit: a lane whose edge moves 7 cm starts to read as a lane that
+    changes width. The clamp is the reason the half-width stays constant.
+  - The plan view (m31-ground-plan.png, 14 m up) is mostly corn canopy: the lane is visible only in
+    patches, so it is a coverage aid rather than an acceptance frame. The acceptance pair is
+    m31-ground-edge.png against M31's own edge frame, and m31-ground-lane.png, which looks down the
+    lane at eye level where a ghost would be obvious.
+  - Alpha 1.0 is not reached in the outermost 0.20 m of the mesh on purpose: the ramp has to complete
+    before the geometry ends, or the mesh's own edge becomes the cut line M31 removed.
+
+Verdict: alpha 1.000 at the centre line against M31's 0.867, 75.5 % of the lane fully opaque, a 0.167 m
+transition against M31's 0.84 m, and an edge displaced +/-0.040 m around a constant half-width. The lane
+is solid ground with a broken border, not a haze.
+

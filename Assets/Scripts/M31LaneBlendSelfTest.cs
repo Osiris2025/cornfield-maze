@@ -41,7 +41,9 @@ public class M31LaneBlendSelfTest : MonoBehaviour
         Object.DontDestroyOnLoad(go);
     }
 
-    static string ReportPath => Path.Combine(Application.persistentDataPath, "m31-lane-blend-report.txt");
+    // M31b re-runs this harness, and its evidence is its own file: M31's report stays as committed, so the two
+    // can be read side by side instead of one overwriting the other.
+    static string ReportPath => Path.Combine(Application.persistentDataPath, "m31b-lane-edge-report.txt");
 
     IEnumerator Start()
     {
@@ -240,6 +242,13 @@ public class M31LaneBlendSelfTest : MonoBehaviour
         Emit("lane frame at night=" + DuskSky.IsNight + " (night01=" + DuskSky.Night01.ToString("0.00") +
              ") after " + waited.ToString("0.0") + "s of play");
         yield return Place(cam, centre + Vector3.up * 1.655f, Quaternion.Euler(9f, 90f, 0f), "m29-ground-lane.png");
+        // M31b: the same run, close enough down the lane that the lane's own surface is what fills the frame.
+        // The question this frame answers is the acceptance question — does the lane read as the ground you
+        // are standing on, or as a ghost laid over the field? M31's answer was ghost: 0.867 at the centre.
+        Emit("M31b bake, read at design time (scripts/m31b_lane_edge_bake.py, artifacts/m31b-lane-bake.txt): " +
+             "centre-line alpha 1.000, 75.5 % of the lane fully opaque, transition 0.167 m, edge displaced " +
+             "+/-0.040 m around a constant 1.000 m half-width, alpha 0.000 at the mesh edge");
+        yield return Place(cam, centre + Vector3.up * 0.90f, Quaternion.Euler(21f, 90f, 0f), "m31-ground-lane.png");
 
         // ---- what the blend costs: the same view, the same scene, three ways -------------------------
         // Blended vs forced opaque isolates the blend state and the overdraw. Lane hidden isolates the whole

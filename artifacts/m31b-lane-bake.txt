@@ -1,0 +1,24 @@
+M31b lane edge bake — a solid lane with a broken edge, measured off the result
+
+  source albedo      T_Ground_Lane.png      1024x1024
+  source strip       T_Ground_LaneAlpha.png 1024x256  (edge grain, per column)
+  output             T_Ground_LaneA.png     1024x1024, 2532386 bytes, RGBA
+  lane width         2.08 m, so V 0..1 spans it; the mesh edge is at 1.04 m
+
+  ITEM 1 — interior opaque
+    alpha on the centre line          1.000      (M31 was 0.867: the field read through the lane)
+    mean alpha inside the flat zone   1.000      over the inner 1.52 m of the lane
+    lane area fully opaque (1.000)    75.5 %
+  ITEM 2 — narrow transition
+    transition width                  0.167 m   (target 0.15-0.25 m; M31 faded over 0.84 m from the centre line)
+    the visible crease (0.9 -> 0.1)   0.122 m   <- always narrower than the band on a smoothstep
+    ramp runs from alpha 1.0 at        0.80 m from the centre line
+                        to alpha 0.0 at 1.00 m from the centre line
+  ITEM 3 — the edge is displaced, not just softened
+    strip's own edge wobble           +/-0.071 m over the columns
+    displacement applied (clamped)    +/-0.040 m   (clamp +/-0.04 m)
+    mean half-width (constant)        1.000 m  <- the wobble is around a FIXED half-width, so the lane does not pulse
+  ITEM 4 — no line at the mesh edge, and the strip still tiles
+    alpha at the mesh's own edge      0.000 / 0.000
+    U seam 0.0000 vs interior step 0.0013 -> tileable
+
