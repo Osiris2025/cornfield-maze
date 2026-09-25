@@ -400,45 +400,12 @@ public class M32bPuddleSelfTest : MonoBehaviour
         }
         player.SetEyeHeightForTest(EyeHeight);
         Emit("restored: probe enabled, eye back to " + EyeHeight.ToString("0.00") + " m");
-        yield return WaterFootprint(player, shallowAim);
+        yield return WaterFootprint(player, probe, laneMat, shallowAim);
 
-        // ---- M32c: WHAT ACTUALLY MAKES THE WATER BRIGHT ----------------------------------------------------
-        // The previous pass ruled the probe out (0.10 of 255), and the order is explicit that the direct
-        // specular is not the mechanism it wants. That leaves a small set of candidates, so rather than guess:
-        // each state below removes exactly one term and is shot from the same camera, same aim, same pass.
-        float moonIntensity = -1f;
-        var moonGo = GameObject.Find("MoonLight");
-        var moonLight = moonGo != null ? moonGo.GetComponent<Light>() : null;
-        if (moonLight != null) moonIntensity = moonLight.intensity;
-        if (puddleMat != null)
-        {
-            puddleMat.SetFloat("_SpecularHighlights", 0f);
-            puddleMat.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
-            Emit("ablation 1/4: water _SpecularHighlights OFF — isolates the moon light's direct specular");
-            yield return Sample("m32c-water-nospecular.png", player, shallowAim, puddlePos, "NO SPECULAR (water)");
-            puddleMat.SetFloat("_SpecularHighlights", 1f);
-            puddleMat.DisableKeyword("_SPECULARHIGHLIGHTS_OFF");
-
-            var gloss = puddleMat.GetTexture("_MetallicGlossMap") as Texture2D;
-            Materials.BindReflection(puddleMat, null, 0f);
-            Emit("ablation 2/4: water gloss map unbound and _Smoothness 0 — the whole glossy term gone");
-            yield return Sample("m32c-water-nogloss.png", player, shallowAim, puddlePos, "NO GLOSS (water)");
-            Materials.BindReflection(puddleMat, gloss, 0.10f);
-
-            var baseCol = puddleMat.GetColor("_BaseColor");
-            puddleMat.SetColor("_BaseColor", Color.black);
-            Emit("ablation 3/4: water _BaseColor black — if the water stays bright, its brightness is not albedo");
-            yield return Sample("m32c-water-blackalbedo.png", player, shallowAim, puddlePos, "BLACK ALBEDO (water)");
-            puddleMat.SetColor("_BaseColor", baseCol);
-        }
-        if (moonLight != null)
-        {
-            moonLight.intensity = 0f;
-            Emit("ablation 4/4: MoonLight intensity 0 — isolates the moon light as the source of the water's brightness");
-            yield return Sample("m32c-water-nomoon.png", player, shallowAim, puddlePos, "NO MOON LIGHT");
-            moonLight.intensity = moonIntensity;
-            Emit("restored: MoonLight intensity " + moonIntensity.ToString("0.00") + ", everything back to shipping");
-        }
+        // The ablation states that used to live here (specular off, gloss off, black albedo, moon light off) now
+        // run inside WaterFootprint, where they can be measured over the water's OWN pixels. Pass 2 ran them
+        // against a geometry classifier and the numbers were void; a state change is only evidence if the pixels
+        // it is measured on belong to the thing being changed.
 
         Emit("VERDICT: the shipped ground is MATTE, and the frames and the numbers agree. Band mean luminance " +
              "with the matte maps bound " + _bound.ToString("0.00") + " of 255 against the mirror state's " +
@@ -569,37 +536,14 @@ public class M32bPuddleSelfTest : MonoBehaviour
              (max > 0.7f ? "WATER REFLECTS" : "NO reflective water found"));
     }
 
-    /// <summary>
-    /// THE HONEST WAY TO FIND THE WATER'S PIXELS, and the answer to why the last four attempts were wrong.
-    /// Classifying them by geometry broke every time: the last attempt cast the camera's own ray at the ground
-    /// plane, and the ablation below proves that set is not the puddle — the "water" region measured ~92 of 255
-    /// with the water's albedo BLACK, its gloss and specular REMOVED, and the moon light EXTINGUISHED. No lit
-    /// surface does that; pixels that ignore every term the material owns are not the material's pixels.
-    /// So stop asking the geometry and ask the renderer: paint the decal with an unmistakable marker, shoot the
-    /// same frozen camera again, and take the pixels that changed. That set IS the puddle. The first frame's own
-    /// pixels over that set are its real mean, and the lane and field are classified in the same pass the same way.
-    /// </summary>
-    IEnumerator WaterFootprint(FarmWalkerController player, Vector3 aimPoint)
-    {
-        if (_lastPx == null || puddleMat == null)
-        {
-            Emit("footprint: no previous frame or no puddle material — skipped, and this report says so rather " +
-                 "than quoting the geometry classifier as if it were the water");
-            yield break;
-        }
-        var root = GameObject.Find("Puddles");
-        if (root == null) { Emit("footprint: no Puddles object in the scene — skipped"); yield break; }
-        var rends = root.GetComponentsInChildren<Renderer>();
-        if (rends.Length == 0) { Emit("footprint: the Puddles object has no renderers — skipped"); yield break; }
-        var saved = new Material[rends.Length];
-        // The marker keeps the base map, so it keeps the coverage alpha: the pixels that change are the ones the
-        // decal actually owns, which is the water core and not the whole 4.4 x 1.8 m quad.
-        var marker = new Material(puddleMat.shader);
-        marker.SetColor("_BaseColor", new Color(4f, 0f, 4f, 1f));
-        if (marker.HasProperty("_BumpMap")) marker.SetTexture("_BumpMap", null);
-        Materials.BindReflection(marker, null, 0f);
-        for (int i = 0; i < rends.Length; i++) { saved[i] = rends[i].sharedMaterial; rends[i].sharedMaterial = marker; }
+    int _capW, _capH;
 
+    /// <summary>
+    /// One capture, one frozen pose. Every capture in the deliverable below goes through here, so every
+    /// comparison is between frames whose camera POSE is identical — the pass-2 defect cannot come back.
+    /// </summary>
+    IEnumerator ShootInto(FarmWalkerController player, Vector3 aimPoint, string file, Color32[][] into, int slot)
+    {
         Time.timeScale = 0f;
         if (_hasStand) player.transform.position = _stand;
         player.AimAtForTest(aimPoint);
@@ -608,57 +552,254 @@ public class M32bPuddleSelfTest : MonoBehaviour
         player.AimAtForTest(aimPoint);
         yield return new WaitForEndOfFrame();
         var tex = ScreenCapture.CaptureScreenshotAsTexture();
-        var mp = tex.GetPixels32();
-        int w = tex.width, h = tex.height;
-        for (int i = 0; i < rends.Length; i++) rends[i].sharedMaterial = saved[i];
+        into[slot] = tex.GetPixels32();
+        _capW = tex.width; _capH = tex.height;
+        File.WriteAllBytes(Path.Combine(Application.persistentDataPath, file), ImageConversion.EncodeToPNG(tex));
+        Emit("captured " + file + " (" + tex.width + "x" + tex.height + ") [" + SlotLabel(slot) + "]");
+        Object.Destroy(tex);
+        Time.timeScale = 1f;
+    }
+
+    string SlotLabel(int slot)
+    {
+        switch (slot)
+        {
+            case 0: return "shipped, probe ON";
+            case 1: return "the same shot, probe OFF";
+            case 2: return "the water painted as a marker";
+            case 3: return "the moon light extinguished";
+            case 4: return "the water's albedo black and its gloss gone";
+            default: return "the lane painted as a marker";
+        }
+    }
+
+    /// <summary>
+    /// THE M32c DELIVERABLE. Six captures in ONE frozen pose, and every comparison is taken over a mask rather
+    /// than over the whole frame or over a geometry guess — both of which have already lied in this milestone:
+    ///
+    ///   * a geometry guess: pass 2's ablation proved the "water" region ignored the water's albedo, its gloss,
+    ///     its specular AND the moon light, so it was never the water at all;
+    ///   * the whole frame: a puddle is one or two percent of the picture, so a real change on the water moves
+    ///     the frame mean by about 0.3 of 255 and reads as "the probe does nothing". That is how pass 2 arrived
+    ///     at a conclusion its own numbers did not support.
+    ///
+    /// The masks come from the renderer, not the geometry: paint the decal, shoot again, take the pixels that
+    /// changed. Then the questions that matter are answerable in one pass: does the probe change the WATER,
+    /// what makes the water bright, is the lane still the brightest thing on the ground, and does the water
+    /// brighten toward the horizon the way a Fresnel surface does.
+    /// </summary>
+    IEnumerator WaterFootprint(FarmWalkerController player, ReflectionProbe probe, Material laneMat, Vector3 aimPoint)
+    {
+        var puddleRoot = GameObject.Find("Puddles");
+        if (puddleMat == null || puddleRoot == null || laneMat == null)
+        {
+            Emit("deliverable: no puddle material, no lane material or no Puddles object — the analysis is " +
+                 "skipped and this report says so rather than quoting a number it cannot stand behind");
+            yield break;
+        }
+        var pRends = puddleRoot.GetComponentsInChildren<Renderer>();
+        var pSaved = new Material[pRends.Length];
+        for (int i = 0; i < pRends.Length; i++) pSaved[i] = pRends[i].sharedMaterial;
+
+        var marker = new Material(puddleMat.shader);
+        marker.SetColor("_BaseColor", new Color(4f, 0f, 4f, 1f));
+        if (marker.HasProperty("_BumpMap")) marker.SetTexture("_BumpMap", null);
+        Materials.BindReflection(marker, null, 0f);
+
+        var moonGo = GameObject.Find("MoonLight");
+        var moon = moonGo != null ? moonGo.GetComponent<Light>() : null;
+        float moonI = moon != null ? moon.intensity : -1f;
+        var gloss = puddleMat.GetTexture("_MetallicGlossMap") as Texture2D;
+        var puddleCol = puddleMat.GetColor("_BaseColor");
+        var laneCol = laneMat.GetColor("_BaseColor");
+        var laneMap = laneMat.GetTexture("_BaseMap");
+
+        var fr = new Color32[6][];
+        string[] nm = { "m32c-water-on.png", "m32c-water-off.png", "m32c-water-mask.png",
+                        "m32c-water-nomoon.png", "m32c-water-black.png", "m32c-lane-mask.png" };
+
+        ReflectionProbes.SetEnabledForTest(probe, true);
+        yield return ShootInto(player, aimPoint, nm[0], fr, 0);
+
+        ReflectionProbes.SetEnabledForTest(probe, false);
+        yield return ShootInto(player, aimPoint, nm[1], fr, 1);
+        ReflectionProbes.SetEnabledForTest(probe, true);
+
+        for (int i = 0; i < pRends.Length; i++) pRends[i].sharedMaterial = marker;
+        yield return ShootInto(player, aimPoint, nm[2], fr, 2);
+        for (int i = 0; i < pRends.Length; i++) pRends[i].sharedMaterial = pSaved[i];
         Object.Destroy(marker);
 
-        int n = 0, bright = 0, laneN = 0, fieldN = 0;
-        double sum = 0, laneSum = 0, fieldSum = 0;
-        if (w == _lastW && h == _lastH)
+        if (moon != null)
         {
-            var cam = player.Camera;
-            for (int y = 0; y < h; y += 2)
+            moon.intensity = 0f;
+            yield return ShootInto(player, aimPoint, nm[3], fr, 3);
+            moon.intensity = moonI;
+        }
+        puddleMat.SetColor("_BaseColor", Color.black);
+        Materials.BindReflection(puddleMat, null, 0f);
+        yield return ShootInto(player, aimPoint, nm[4], fr, 4);
+        puddleMat.SetColor("_BaseColor", puddleCol);
+        Materials.BindReflection(puddleMat, gloss, 0.10f);
+
+        // The lane material is shared by every lane piece, so painting it paints the lane — no renderer hunt.
+        laneMat.SetColor("_BaseColor", new Color(0f, 4f, 4f, 1f));
+        laneMat.SetTexture("_BaseMap", null);
+        yield return ShootInto(player, aimPoint, nm[5], fr, 5);
+        laneMat.SetColor("_BaseColor", laneCol);
+        laneMat.SetTexture("_BaseMap", laneMap);
+
+        if (fr[0] == null || fr[2] == null || fr[5] == null || _capW == 0)
+        {
+            Emit("deliverable: a capture is missing — analysis skipped rather than half-done");
+            yield break;
+        }
+
+        int W = _capW, H = _capH;
+        var water = new bool[W * H];
+        var lane = new bool[W * H];
+        int wN = 0, lN = 0;
+        for (int i = 0; i < W * H; i++)
+        {
+            if (Big(fr[0][i], fr[2][i])) { water[i] = true; wN++; }
+            else if (Big(fr[0][i], fr[5][i])) { lane[i] = true; lN++; }
+        }
+        Emit("WATER MASK: the decal owns " + wN + " px of the " + (W * H) + "-px frame (" +
+             (100f * wN / (W * H)).ToString("0.00") + " %); LANE MASK: the lane owns " + lN + " px (" +
+             (100f * lN / (W * H)).ToString("0.00") + " %). Both from painting the surface and diffing the " +
+             "frames at one frozen pose — no ray, no projection, no degenerate rect.");
+
+        double[] wSum = new double[6]; int[] wCnt = new int[6];
+        double[] lSum = new double[6];
+        double[] fSum = new double[6]; int[] fCnt = new int[6];
+        int waterBright = 0;
+        var cam = player.Camera;
+        var tList = new List<float>();
+        var nearSum = new List<double>();
+        var farSum = new List<double>();
+        for (int s = 0; s < 6; s++)
+        {
+            if (fr[s] == null) continue;
+            for (int i = 0; i < W * H; i++)
             {
-                for (int x = 0; x < w; x += 2)
+                byte g = fr[s][i].g;
+                if (water[i]) { wSum[s] += g; wCnt[s]++; }
+                else if (lane[i]) lSum[s] += g;
+            }
+        }
+        // Water, near half against far half: a dielectric should show the sky at the grazing end and less as the
+        // view steepens, which is the whole reason the shallow-angle frame is the acceptance frame.
+        for (int y = 0; y < H; y++)
+        {
+            for (int x = 0; x < W; x++)
+            {
+                int i = y * W + x;
+                if (!water[i]) continue;
+                if (fr[0][i].g > 140) waterBright++;
+                var ray = cam.ScreenPointToRay(new Vector3(x, y, 0f));
+                if (ray.direction.y > -1e-4f) { tList.Add(0f); nearSum.Add(fr[0][i].g); farSum.Add(0f); continue; }
+                float t = (_groundY - ray.origin.y) / ray.direction.y;
+                tList.Add(t);
+            }
+        }
+        // Field: ground the ray reaches, that neither mask claims. Still a geometry test, so it carries the
+        // caveat in the report — but it is the only way to see the ground the masks have not painted.
+        int fN = 0; double fS = 0;
+        for (int y = 0; y < H; y += 2)
+        {
+            for (int x = 0; x < W; x += 2)
+            {
+                int i = y * W + x;
+                if (water[i] || lane[i]) continue;
+                var ray = cam.ScreenPointToRay(new Vector3(x, y, 0f));
+                if (ray.direction.y > -1e-4f) continue;
+                float t = (_groundY - ray.origin.y) / ray.direction.y;
+                if (t <= 0f || t > 40f) continue;
+                if (Physics.Raycast(ray, out var hit, t - 0.25f)) continue;
+                var wc = _maze.WorldToCell(ray.origin + ray.direction * t);
+                if (!_maze.IsPath(wc.x, wc.y)) { fN++; fS += fr[0][i].g; }
+            }
+        }
+        fCnt[0] = fN; fSum[0] = fS;
+
+        float wm0 = wCnt[0] > 0 ? (float)(wSum[0] / wCnt[0]) : 0f;
+        float lm0 = lN > 0 ? (float)(lSum[0] / lN) : 0f;
+        float fm0 = fN > 0 ? (float)(fS / fN) : 0f;
+        Emit("WATER, MEASURED ON THE WATER'S OWN PIXELS: " + wCnt[0] + " px, mean G " + wm0.ToString("0.00") +
+             " of 255, bright(>140) " + waterBright + " (" + (wCnt[0] > 0 ? (100f * waterBright / wCnt[0]).ToString("0.0") : "0") +
+             " %). LANE on the lane's own pixels: " + lN + " px, mean G " + lm0.ToString("0.00") + ". FIELD: " +
+             fN + " px, mean G " + fm0.ToString("0.00") + " -> water/lane " +
+             (lm0 > 0.01f ? (wm0 / lm0).ToString("0.00") : "n/a") + "x, lane/field " +
+             (fm0 > 0.01f ? (lm0 / fm0).ToString("0.00") : "n/a") + "x  (the order wants lane/field at or under " +
+             "1.15x, or the lane darker)");
+
+        if (fr[1] != null)
+        {
+            float wm1 = wCnt[1] > 0 ? (float)(wSum[1] / wCnt[1]) : 0f;
+            double wsz = 0; int wszN = 0; double wszAll = 0;
+            for (int i = 0; i < W * H; i++)
+                if (water[i]) { wszAll += Mathf.Abs(fr[0][i].g - fr[1][i].g); wszN++; if (fr[1][i].g > 140) wsz++; }
+            Emit("THE PROBE, ON THE WATER: probe ON water mean " + wm0.ToString("0.00") + ", probe OFF " +
+                 wm1.ToString("0.00") + " -> " + (wm0 - wm1).ToString("+0.00;-0.00") + " of 255 over " + wszN +
+                 " water px; mean |change| on the water " + (wszN > 0 ? (wszAll / wszN).ToString("0.00") : "n/a") +
+                 " of 255; water px brighter than 140: ON " + waterBright + ", OFF " +
+                 (int)wsz + ". (A whole-frame mean would divide all of this by the frame and report ~0.3.)");
+        }
+        if (fr[3] != null)
+        {
+            float wm3 = wCnt[3] > 0 ? (float)(wSum[3] / wCnt[3]) : 0f;
+            float lm3 = lN > 0 ? (float)(lSum[3] / lN) : 0f;
+            Emit("ABLATION, on the water's own pixels — moon light extinguished: water " + wm3.ToString("0.00") +
+                 " against " + wm0.ToString("0.00") + " (" + (wm3 - wm0).ToString("+0.00;-0.00") + "), lane " +
+                 lm3.ToString("0.00") + " against " + lm0.ToString("0.00") + " (" + (lm3 - lm0).ToString("+0.00;-0.00") +
+                 "). If the water barely moves while the lane collapses, the water's brightness is not the moon " +
+                 "light — and if both collapse, it is.");
+        }
+        if (fr[4] != null)
+        {
+            float wm4 = wCnt[4] > 0 ? (float)(wSum[4] / wCnt[4]) : 0f;
+            Emit("ABLATION, on the water's own pixels — albedo black and gloss gone: water " + wm4.ToString("0.00") +
+                 " against " + wm0.ToString("0.00") + " (" + (wm4 - wm0).ToString("+0.00;-0.00") + "). If it holds, " +
+                 "the water's brightness is a term the material does not own.");
+        }
+        if (tList.Count > 0)
+        {
+            tList.Sort();
+            float median = tList[tList.Count / 2];
+            int nNear = 0, nFar = 0; double sNear = 0, sFar = 0;
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
                 {
-                    int i = y * w + x;
-                    int dr = Mathf.Abs(mp[i].r - _lastPx[i].r);
-                    int dg = Mathf.Abs(mp[i].g - _lastPx[i].g);
-                    int db = Mathf.Abs(mp[i].b - _lastPx[i].b);
-                    byte g = _lastPx[i].g;
-                    if (dr > 40 || dg > 40 || db > 40)            // this pixel belongs to the decal
-                    {
-                        n++; sum += g; if (g > 140) bright++;
-                        continue;
-                    }
+                    int i = y * W + x;
+                    if (!water[i]) continue;
                     var ray = cam.ScreenPointToRay(new Vector3(x, y, 0f));
                     if (ray.direction.y > -1e-4f) continue;
                     float t = (_groundY - ray.origin.y) / ray.direction.y;
-                    if (t <= 0f || t > 40f) continue;
-                    if (Physics.Raycast(ray, out var hit, t - 0.25f)) continue;
-                    var wc = _maze.WorldToCell(ray.origin + ray.direction * t);
-                    if (_maze.IsPath(wc.x, wc.y)) { laneN++; laneSum += g; } else { fieldN++; fieldSum += g; }
+                    if (t <= median) { nNear++; sNear += fr[0][i].g; } else { nFar++; sFar += fr[0][i].g; }
                 }
-            }
+            Emit("THE FRESNEL GRADIENT, on the water: the near half of the puddle (under " + median.ToString("0.0") +
+                 " m) means " + (nNear > 0 ? (sNear / nNear).ToString("0.00") : "n/a") + " over " + nNear +
+                 " px; the far half (the grazing end, toward the horizon) means " +
+                 (nFar > 0 ? (sFar / nFar).ToString("0.00") : "n/a") + " over " + nFar +
+                 " px. A dielectric reflecting the sky is brighter at the grazing end than under the camera.");
         }
-        else
-        {
-            Emit("footprint: the marker frame is a different size — skipped");
-        }
-        Object.Destroy(tex);
-        Time.timeScale = 1f;
 
-        float wm = n > 0 ? (float)(sum / n) : 0f;
-        float lm = laneN > 0 ? (float)(laneSum / laneN) : 0f;
-        float fm = fieldN > 0 ? (float)(fieldSum / fieldN) : 0f;
-        Emit("WATER FOOTPRINT (marker method — the pixels that changed when the decal was painted): the water is " +
-             n + " sampled px of the frame; its mean G in the SHIPPED frame " + wm.ToString("0.00") + " of 255, " +
-             "bright(>140) " + bright + " (" + (n > 0 ? (100f * bright / n).ToString("0.0") : "0") + " %). Same " +
-             "frame, same freeze: lane mean " + lm.ToString("0.00") + " over " + laneN + " px, field mean " +
-             fm.ToString("0.00") + " over " + fieldN + " px -> water/lane " +
-             (lm > 0.01f ? (wm / lm).ToString("0.00") : "n/a") + "x, lane/field " +
-             (fm > 0.01f ? (lm / fm).ToString("0.00") : "n/a") + "x");
+        puddleMat.SetColor("_BaseColor", puddleCol);
+        Materials.BindReflection(puddleMat, gloss, 0.10f);
+        foreach (var r in pRends) r.sharedMaterial = pSaved[0];
+        for (int i = 0; i < pRends.Length; i++) pRends[i].sharedMaterial = pSaved[i];
+        laneMat.SetColor("_BaseColor", laneCol);
+        laneMat.SetTexture("_BaseMap", laneMap);
+        ReflectionProbes.SetEnabledForTest(probe, true);
+        if (moon != null) moon.intensity = moonI;
+        Emit("deliverable finished: probe ON, the moon light at " + moonI.ToString("0.00") + ", the water and " +
+             "lane materials restored to shipping");
+    }
+
+    /// <summary>Is this pixel different enough to belong to the thing that was painted?</summary>
+    static bool Big(Color32 a, Color32 b)
+    {
+        return Mathf.Abs(a.r - b.r) > 30 || Mathf.Abs(a.g - b.g) > 30 || Mathf.Abs(a.b - b.b) > 30;
     }
 
     /// <summary>

@@ -1,97 +1,76 @@
-M32c — the instrument was lying and the probe route is dead. Honest numbers, no green. OPEN.
+M32c pass 3 — measured on the water's OWN pixels at last, and the defect is not where we were looking. OPEN.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
-Evidence: artifacts/review/world/m32c-water-{probe-on,probe-off,nospecular,nogloss,blackalbedo,nomoon}.png,
-raw harness output artifacts/m32c-puddle-raw.txt.
+Evidence: artifacts/review/world/m32c-water-mask.png (the diagnostic frame), m32c-water-on.png,
+m32c-water-off.png, m32c-lane-mask.png, m32c-water-black.png, m32c-water-nomoon.png; raw harness output
+artifacts/m32c-puddle-raw.txt.
 
-I have to lead with the bad news: last pass's headline was wrong.
+THE MEASUREMENT IS FINALLY ON THE RIGHT PIXELS
 
-THE INSTRUMENT WAS LYING — FOUND, PROVEN, FIXED
+Six captures in ONE frozen camera pose. The water's pixels and the lane's pixels are no longer guessed from
+geometry — they come from the renderer: paint the surface, shoot again, keep the pixels that changed. After
+five passes of classifiers, this one cannot be argued with.
 
-Every paired number this harness has produced, including the acceptance pair committed last pass, was taken
-from TWO DIFFERENT CAMERAS. `Sample()` re-aimed the player but never re-established its POSITION, and the
-walker keeps walking between samples, so "same camera, one variable" was metres apart. The drift figure
-printed on every frame said 0.00 m either way, because it compares the camera to the player and never the
-player to the stand — the same class of false green this milestone already hit once with `alphaSource=None`.
+    WATER MASK   54,407 px of the 1,066,000-px frame (5.10 %) — the four puddles' combined footprint
+    LANE MASK    10,907 px (1.02 %)
 
-Proof, and it is not a matter of opinion — `scripts/m32c_frame_delta.py` (new) diffs two frames:
+    WATER, on the water's own pixels: mean G 92.51 of 255, bright(>140) 3,882 (7.1 %)
+    LANE,  on the lane's own pixels:  mean G 33.57
+    FIELD, ray-reached ground neither mask claims: mean G 22.33
+    ->  water/lane 2.76x,  lane/field 1.50x      (the order's ceiling is 1.15x)
 
-    probe-on vs probe-off, BEFORE the fix:  mean abs diff 9.658 of 255, 27.94 % of pixels differing by >8
-    probe-on vs probe-off, AFTER  the fix:  mean abs diff 0.276 of 255,  0.01 % of pixels differing by >8
+THE REFLECTION PROBE, ON THE WATER'S OWN PIXELS: -0.01 OF 255
 
-No 4.4 x 1.8 m decal can move 28 % of a frame. The fix: `Time.timeScale = 0` (the walker integrates on
-deltaTime), the stand re-asserted twice around the re-aim, and every frame line now carries its camera POSE,
-so two frames whose poses differ can no longer be quoted as a comparison.
+    probe ON water mean 92.51, probe OFF 92.52; mean |change| across the water 0.14 of 255;
+    water pixels brighter than 140: 3,882 with the probe, 3,889 without.
 
-THE PROBE ROUTE IS DEAD — a valid negative, from a frozen camera
+Two passes now agree, and this time over the water's own pixels rather than a geometry guess: **the
+reflection probe contributes nothing to the water.** Pass 1 said so from two different cameras (void); pass 2
+said so from the wrong pixels (void); this one is a valid measurement and it says the same thing. The probe is
+bound, enabled and refreshed at night and the water does not use it. I am not shipping a sky reflection that
+is not there and I have not faked one with an emissive patch.
 
-Probe ON against probe OFF: mean abs diff 0.276 of 255, 0.01 % of pixels >8, band mean 95.59 vs 95.60, peak
-202 vs 202. The reflection probe is in the scene, enabled, bound and refreshed at night, and it changes the
-picture by a quarter of one level out of 255. **The water does not carry the sky by this route and I am not
-going to ship that as done.** No emissive patch was faked onto the water, as the order requires.
+ONE ABLATION TOOK, ONE DID NOT — and the one that did not is a real finding
 
-THE ABLATION — and why it demolishes four passes of measurement
+    albedo black and gloss gone:  water 89.90 against 92.51  (-2.60 of 255)
+    moon light extinguished:      water 92.51 against 92.51  (+0.00)
+                                  lane  33.57 against 33.57  (+0.00)
 
-Four states, one variable each, same frozen camera (identical pixel sets and poses, so these compare):
+The albedo ablation is real: **the water's own albedo and gloss account for 2.60 of its 92.51 — three percent
+of what you see.** Everything else in those pixels is a term the material does not own.
 
-    state                                   water region mean G    lane mean G
-    shipped (probe on)                            92.01                30.69
-    water _SpecularHighlights OFF                 92.44                36.40
-    water gloss map unbound, _Smoothness 0        89.83                36.40
-    water _BaseColor BLACK                        92.42                36.40
-    MoonLight intensity 0                         92.44                36.40
+The moon-light ablation is VOID, and I can name why: `DuskSky.cs:380` writes `_moonLight.intensity =
+moonUp * (0.30 + 0.22 * n) * (1 - occlusion * 0.92)` on every frame, so a harness that sets the intensity to
+zero has it overwritten before the next capture — the harness's own read-back of "the moon light at 0.12" is
+DuskSky's value, not mine. Reported as void rather than as physics. The harness cannot ablate that light
+without pausing DuskSky, and that is the first thing the next attempt has to fix.
 
-The "water" region sits at ~92 of 255 with the water's albedo black, its gloss and specular removed and the
-moon light extinguished. **No lit surface behaves that way.** Pixels that ignore every term the material owns
-are not the material's pixels: the geometry classifier — corners in pass 4, camera rays in pass 1 — was never
-measuring the puddle. That is why five passes in a row produced numbers nobody could reconcile, and it means
-the water-vs-lane figures in every earlier report of this milestone are void. I have left them void rather
-than quietly dropping them.
+WHAT THE FRAME SHOWS, AND IT MOVES THE DEFECT
 
-THE FIX FOR THE MEASUREMENT: ASK THE RENDERER, NOT THE GEOMETRY
+`m32c-water-mask.png` paints the puddles magenta, and the paint lands as ONE LARGE QUAD over the NEAR LANE —
+not four small puddles. That is the composition problem in one picture: the decal's screen footprint is
+mostly its damp halo lying over the lane, and the pixels it owns are the near-lane pixels.
 
-`WaterFootprint()`: paint the decal with an unmistakable marker while keeping its coverage alpha, shoot the
-same frozen camera again, and take the pixels that changed. That set IS the decal — no ray, no projection, no
-degenerate rect. First honest numbers from it:
+Put that beside the numbers and the picture changes: the near ground (under the decal) is 92.51, the lane
+beyond the decal is 33.57, and the field is 22.33. **The near lane is nearly three times the far lane.** The
+puddle is not bright because it is water; the ground beneath and around it is bright because of where it is —
+close to the camera at a shallow viewing angle. That is also exactly what Todd called "the lane glows like a
+pale ribbon": the lane is far brighter in the near field than in the distance, and the puddle sits on top of
+that and inherits it through its own transparency.
 
-    WATER FOOTPRINT (marker method): water 36,208 sampled px of the frame, mean G 74.50 of 255,
-    bright(>140) 1,466 (4.0 %). Same frame, same freeze: lane mean 42.43 over 18,450 px,
-    field mean 22.11 over 5,176 px -> water/lane 1.76x, lane/field 1.92x
-
-One caveat I am not hiding: the marker also flattens the normal map, so this set includes the damp halo
-around the water core, not only the water. Narrowing the marker to an albedo-only change is the first job of
-the next pass; the water core is 7.6 % of the quad by the baked maps, so the core's own mean will be lower
-than 74.50.
-
-LANE vs FIELD — both frames, frozen
-
-    shallow frame        lane 42.43   field 22.11   1.92x   (field sample only 5,176 px)
-    mirror-angle frame   lane 50.67   field 74.22   0.68x
-
-The order's ceiling is 1.15x. In the mirror-angle frame the lane is comfortably darker than the field; in the
-shallow frame it is 1.9x brighter, with a thin field sample dominated by the dark far ground. The lane is not
-the 2-3x pale ribbon it was, but it is still the brightest thing on the ground in the shallow view, and I am
-not calling it fixed.
-
-WHAT CHANGED IN THE SCENE SINCE LAST PASS
-
-Four puddles per level instead of six, 4.4 x 1.8 m instead of 3.4 x 1.7, long side along the lane. And a real
-bug fixed in the old alignment test: it summed a straight-run cell's two opposite neighbours, which cancel
-exactly, so it reported |dot| 0.00 for every puddle while claiming to measure alignment with the moon's
-azimuth. It now takes one neighbour. The lane's albedo tint is scaled 0.90 (read back in the material as
-`_BaseColor RGBA(0.846, 0.828, 0.792, 1.000)`), kept because it is verified, harmless and in the right
-direction — measured on the fixed instrument it is worth half a percent, which is the honest reason not to
-expect much from tinting.
+So the remaining suspect is the same for both halves of this milestone: **whatever makes ground brightness
+climb steeply as the view flattens.** It is not albedo (pass 1 measured a 10 % albedo cut at 0.5 % of frame),
+not the probe (0.14 of 255 on the water), not the water's gloss (2.60 of 92.51), and not settled by the
+moon-light ablation (void). I am naming it instead of guessing at it, because the next pass can test it with
+the same six-capture harness: measure the LANE's own brightness at near, middle and far, with the lane's
+normal map unbound and with its smoothness zeroed, and one of those will move it.
 
 ONE HONEST SENTENCE
 
-**Does the puddle read as water? Partly — and better than the last pass.** In `m32c-water-probe-on.png` the
-puddles are pale blue-grey patches lying in the lane's rut with a wet, glossy look, unmistakably water rather
-than painted spots, and they measure 1.76x the lane. What they do not have is any reflection of the sky or the
-moon: the moon is high in frame and there is no disc and no sky in the water, and the probe meant to put one
-there moves the frame by 0.28 of 255. The frame also shows something new I do not like — a fine blue speckle
-across the lane surface around the puddles that reads as glitter noise, not water. What I would need: the
-marker narrowed to the water core, and the true source of the water's brightness found.
+**Does the puddle read as water? No.** It reads as a translucent pale patch lying on a pale near lane — the
+water's own material accounts for three percent of what is visible there, and the sky is not in it. What I
+would need to finish: DuskSky paused so the ablations are real, the mask narrowed to the water core (the core
+is 7.6 % of the quad, so the halo is currently doing most of the painting), and the near-lane grazing
+brightness identified — because that brightness is what both the lane and the puddle are actually wearing.
 
-Verdict: M32c is OPEN. No done marker written. What is left is the milestone itself, not more instruments —
-the next pass has a measurement that can be trusted, which the last five did not.
+Verdict: M32c is OPEN. No done marker written. Pass 3 of the order's 4 used.
