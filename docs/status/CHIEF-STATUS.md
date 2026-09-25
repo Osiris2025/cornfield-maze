@@ -88,7 +88,7 @@ than the water's own highlight. **Next pass goes to the wash, not the glint** (s
 ## 4. CAPTURES FOR TODD
 
     artifacts/review/world/m32b-puddle-moon.png          M32b pass 4: the puddle IS in this one (20,359 px)
-        artifacts/review/world/m31-ground-lane.png           M31b: down the lane at eye level — solid, not a ghost
+    artifacts/review/world/m31-ground-lane.png           M31b: down the lane at eye level — solid, not a ghost
     artifacts/reference/m31b-lane-alpha-preview.png      M31b: the baked alpha — flat interior, eaten edge
     artifacts/review/world/m32-reflection-on.png         M32: the matte ground as it ships
     artifacts/m32b-puddle-report-4.txt                   M32b pass 4: the water is the sheen; the wash is not
