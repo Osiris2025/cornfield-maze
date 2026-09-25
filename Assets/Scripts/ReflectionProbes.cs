@@ -80,6 +80,12 @@ public static class ReflectionProbes
         if (old != null) Object.Destroy(old);
         if (p != null) p.bakedTexture = SkyCube;
         RenderSettings.customReflectionTexture = SkyCube;   // the fallback for anything outside the probe's box
+        // AND MAKE IT THE DEFAULT REFLECTION. Setting `customReflectionTexture` alone is not enough: without
+        // `defaultReflectionMode = Custom` the shader's `unity_SpecCube0` keeps whatever the pipeline built at boot
+        // (here: no skybox at all), which is exactly how a map that exists ends up sampled as nothing — the water
+        // reads the environment's AMBIENT and none of its reflection, which is what every measurement has shown.
+        RenderSettings.defaultReflectionMode = UnityEngine.Rendering.DefaultReflectionMode.Custom;
+        RenderSettings.customReflection = SkyCube;
     }
 
     static Cubemap CaptureSky(int size)

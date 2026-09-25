@@ -48,11 +48,29 @@ public static class PuddleDecals
         {
             var mf = p.GetComponent<MeshFilter>();
             if (mf == null || mf.sharedMesh == null) continue;
+            // WHICH WAY IS UP IS THE MESH'S OWN BUSINESS. The first two attempts offset along local +Y and scaled
+            // local X/Z, which is only correct if the decal's quad lies in the XZ plane — it does not, and a quad
+            // squashed along the wrong axis is an edge-on sliver: present, activated, and worth +0.15 of 255. The
+            // mesh's own local bounds say which axis is the flat one (the normal) and which in-plane axis is the
+            // long one (the rut the streak runs down).
+            var lb = mf.sharedMesh.bounds.size;
+            float[] e = { lb.x, lb.y, lb.z };
+            int flat = 0;
+            if (e[1] < e[flat]) flat = 1;
+            if (e[2] < e[flat]) flat = 2;
+            int a1 = (flat + 1) % 3, a2 = (flat + 2) % 3;
+            int longIn = e[a1] >= e[a2] ? a1 : a2;
+            int shortIn = longIn == a1 ? a2 : a1;
+            var off = Vector3.zero;
+            off[flat] = 0.02f / Mathf.Max(1e-4f, Mathf.Abs(p.lossyScale[flat]));
+            var sc = Vector3.one;
+            sc[longIn] = 0.46f;      // inside the water core, not out into the halo
+            sc[shortIn] = 0.30f;
             var go = new GameObject("Glint");
             go.transform.SetParent(p, false);
-            go.transform.localPosition = new Vector3(0f, 0.015f, 0f);   // above the water, no z-fight
+            go.transform.localPosition = off;
             go.transform.localRotation = Quaternion.identity;
-            go.transform.localScale = new Vector3(0.46f, 1f, 0.30f);    // inside the water core, not the halo
+            go.transform.localScale = sc;
             go.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
             go.AddComponent<MeshRenderer>().sharedMaterial = mat;
             go.SetActive(GlintEnabled);

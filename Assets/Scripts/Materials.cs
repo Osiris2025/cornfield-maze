@@ -181,6 +181,21 @@ public static class Materials
         mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Geometry;
     }
 
+    /// <summary>
+    /// M32g TEST 1 — OPAQUE WATER. The suspect is that URP's transparent pass is what loses the probe's specular
+    /// cube; if so, opaque water reflects it. Alpha-test at 0.45 keeps the coverage mask doing the shape work (the
+    /// water core is 0.86 and survives, the damp halo at 0.1-0.2 is cut), so the pool stays a pool rather than
+    /// becoming the decal's rectangle.
+    /// </summary>
+    public static void MakeOpaqueWaterForTest(Material mat)
+    {
+        if (mat == null) return;
+        MakeOpaque(mat);
+        if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 1f);
+        if (mat.HasProperty("_AlphaCutoff")) mat.SetFloat("_AlphaCutoff", 0.45f);
+        mat.EnableKeyword("_ALPHATEST_ON");
+    }
+
     /// <summary>Reads the blend state back off a material, so the report can print what is actually set
     /// rather than what the builder intended.</summary>
     public static string DescribeBlend(Material mat)
@@ -298,37 +313,35 @@ public static class Materials
     /// </summary>
     public static Material Glint()
     {
-        // URP/Lit rather than URP/Unlit on purpose: Lit is compiled into this build (the ground uses it) and Unlit
-        // may be stripped, which is the trap `CornMaze/StarUnlit` already fell into once.
-        var mat = Lit(new Color(0.74f, 0.80f, 1.00f, 1f), 0.02f, 0f);
+        // URP **Particles/Unlit**, not Lit and not URP/Unlit. This shader is PROVEN to resolve in this player build:
+        // the rain uses it (StormWeather) and the rain renders in every frame. `CornMaze/StarUnlit` is the one that
+        // does not resolve, and URP/Unlit may be stripped — a material that silently falls back to nothing is how
+        // the first two attempts at this glint measured +0.02 and +0.03 of 255 and looked like a subtlety.
+        var shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
+        if (shader == null) shader = Lit(Color.white, 0.05f, 0f).shader;
+        var mat = new Material(shader);
         var glintTex = MakeGlintTex(128);
         if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", glintTex);
-        // `_EmissionMap` TOO, not just the colour. URP/Lit's emissive term is `_EmissionMap * _EmissionColor`, so a
-        // colour with no map on the emissive slot is the same class of bug as `alphaSource=None`: wired on paper,
-        // absent in the shader. The run before this one proved it — the glint moved the water +0.02 of 255.
+        if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", glintTex);
         if (mat.HasProperty("_EmissionMap")) mat.SetTexture("_EmissionMap", glintTex);
-        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(0f, 0f, 0f, 1f));  // lit part ~0
-        if (mat.HasProperty("_EmissionColor"))
-        {
-            mat.SetColor("_EmissionColor", new Color(0.42f, 0.47f, 0.62f, 1f));   // SUBTLE: 42 % of moonlight
-            mat.EnableKeyword("_EMISSION");
-            mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
-        }
-        mat.SetOverrideTag("RenderType", "Transparent");
-        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
-        if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);
+        // Unlit and additive: the highlight does not depend on the moon light, on Fresnel, or on the view angle,
+        // which is the entire reason this variant exists. SUBTLE — a hint of moon in water, not a mirror.
+        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", new Color(0.34f, 0.39f, 0.52f, 1f));
+        if (mat.HasProperty("_EmissionColor")) mat.SetColor("_EmissionColor", new Color(0.34f, 0.39f, 0.52f, 1f));
         if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);  // ADD
+        if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);   // ADD
         if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
-        if (mat.HasProperty("_AlphaClip")) mat.SetFloat("_AlphaClip", 0f);
+        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
+        if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 1f);          // 1 = additive in the Particles family
+        mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        mat.DisableKeyword("_ALPHAMODULATE_ON");
         mat.DisableKeyword("_ALPHATEST_ON");
         mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        // Drawn AFTER the water decal so transparent sorting cannot hide it under the water it belongs to.
+        mat.renderQueue = 3100;
         return mat;
     }
-
-    /// <summary>A soft moon streak for the glint: bright core, long falloff down the puddle's rut axis, nothing
-    /// outside. Procedural like everything else in this project — no third-party asset, nothing to license.</summary>
     static Texture2D MakeGlintTex(int n)
     {
         var t = new Texture2D(n, n, TextureFormat.RGBA32, false);

@@ -747,11 +747,16 @@ public class M32bPuddleSelfTest : MonoBehaviour
             PuddleDecals.SetGlintForTest(false);
             for (int i = 0; i < 4; i++) yield return null;
         }
-        puddleMat.SetColor("_BaseColor", Color.black);
-        Materials.BindReflection(puddleMat, null, 0f);
+        // M32g TEST 1 — OPAQUE WATER, ONE FRAME, same camera and puddle. If the transparent pass is what loses the
+        // probe's cube, this frame's buckets rise toward the horizon. (The albedo-black ablation that used to hold
+        // this frame proved only that the water's brightness is not its albedo — retired, and said so in the report.)
+        Materials.MakeOpaqueWaterForTest(puddleMat);
+        for (int i = 0; i < 4; i++) yield return null;
         yield return ShootInto(player, aimPoint, nm[4], fr, 4);
+        Materials.MakeAlphaBlend(puddleMat);
         puddleMat.SetColor("_BaseColor", puddleCol);
         Materials.BindReflection(puddleMat, gloss, 0.10f);
+        for (int i = 0; i < 4; i++) yield return null;
 
         // The lane material is shared by every lane piece, so painting it paints the lane — no renderer hunt.
         laneMat.SetColor("_BaseColor", new Color(0f, 4f, 4f, 1f));
@@ -915,7 +920,8 @@ public class M32bPuddleSelfTest : MonoBehaviour
             tList.Sort();
             float tMin = tList[0], tMax = tList[tList.Count - 1];
             const int NB = 6;
-            int[] bn = new int[NB]; double[] bs = new double[NB]; double[] bd = new double[NB]; int[] bdn = new int[NB];
+            float[] tOf = new float[W * H];
+            for (int i = 0; i < W * H; i++) tOf[i] = -1f;
             for (int y = 0; y < H; y++)
                 for (int x = 0; x < W; x++)
                 {
@@ -923,29 +929,34 @@ public class M32bPuddleSelfTest : MonoBehaviour
                     if (!water[i]) continue;
                     var ray = cam.ScreenPointToRay(new Vector3(x, y, 0f));
                     if (ray.direction.y > -1e-4f) continue;
-                    float t = (_groundY - ray.origin.y) / ray.direction.y;
-                    int b = Mathf.Clamp((int)((t - tMin) / Mathf.Max(1e-3f, tMax - tMin) * NB), 0, NB - 1);
-                    bn[b]++; bs[b] += fr[0][i].g;
-                    if (fr[1] != null) { bd[b] += fr[0][i].g - fr[1][i].g; bdn[b]++; }
+                    tOf[i] = (_groundY - ray.origin.y) / ray.direction.y;
                 }
-            var gb = new System.Text.StringBuilder();
-            gb.Append("THE DISTANCE GRADIENT ACROSS THE PUDDLE (near edge -> far edge, " + tMin.ToString("0.0") + " to " +
-                      tMax.ToString("0.0") + " m past the eye), shipped frame: ");
-            for (int b = 0; b < NB; b++) gb.Append((bn[b] > 0 ? (bs[b] / bn[b]).ToString("0.0") : "n/a") + (b < NB - 1 ? " -> " : ""));
-            gb.Append(" of 255. A dielectric reflecting the sky RISES toward the horizon; a flat run means the " +
-                      "environment is arriving as ambient — view-independent, and therefore not a reflection.");
-            Emit(gb.ToString());
-            if (fr[1] != null)
+            System.Func<int, int, string> line = (fa, fb2) =>
             {
-                var db = new System.Text.StringBuilder();
-                db.Append("THE SAME GRADIENT FOR THE ENVIRONMENT'S OWN CONTRIBUTION (frame ON minus frame OFF, same " +
-                          "camera): ");
+                if (fa < 0 || fa >= fr.Length || fr[fa] == null) return "n/a";
+                bool delta = fb2 >= 0 && fb2 < fr.Length && fr[fb2] != null;
+                int[] n2 = new int[NB]; double[] s2 = new double[NB];
+                for (int i = 0; i < W * H; i++)
+                {
+                    if (tOf[i] < 0f) continue;
+                    int b = Mathf.Clamp((int)((tOf[i] - tMin) / Mathf.Max(1e-3f, tMax - tMin) * NB), 0, NB - 1);
+                    n2[b]++;
+                    s2[b] += delta ? fr[fa][i].g - fr[fb2][i].g : fr[fa][i].g;
+                }
+                var sb = new System.Text.StringBuilder();
                 for (int b = 0; b < NB; b++)
-                    db.Append((bdn[b] > 0 ? (bd[b] / bdn[b]).ToString("+0.0;-0.0") : "n/a") + (b < NB - 1 ? " -> " : ""));
-                db.Append(" of 255. THIS is the reflection test: if the environment's own contribution is flat across " +
-                          "the puddle, it is ambient light and no amount of it will ever read as a sheen.");
-                Emit(db.ToString());
-            }
+                    sb.Append((n2[b] > 0 ? (s2[b] / n2[b]).ToString(delta ? "+0.0;-0.0" : "0.0") : "n/a") +
+                              (b < NB - 1 ? " -> " : ""));
+                return sb.ToString();
+            };
+            Emit("THE DISTANCE GRADIENT ACROSS THE PUDDLE, six buckets, near edge -> far edge, " + tMin.ToString("0.0") +
+                 " to " + tMax.ToString("0.0") + " m past the eye, of 255. A reflection MUST rise toward the horizon.");
+            Emit("    shipped water (alpha-blend):  " + line(0, -1) + "   <- the frame Todd has");
+            Emit("    OPAQUE water, same camera:    " + line(4, -1) + "   <- TEST 1");
+            Emit("    the glint variant:            " + line(3, -1) + "   <- TEST 2");
+            Emit("    environment's own share:      " + line(0, 1));
+            Emit("    opaque MINUS blended:         " + line(4, 0) + "   <- if this rises near-to-far, the transparent pass was the fault");
+            Emit("    glint MINUS shipped:          " + line(3, 0));
         }
 
         puddleMat.SetColor("_BaseColor", puddleCol);

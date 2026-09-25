@@ -1,11 +1,47 @@
-M32f — the environment's contribution to the water is DARKENING and deepens with distance; it never rises. Every
-switch reads back correct. That is a transparent-pass defect, not a look choice, and the glint fallback is built
-but does not yet light up. M32c OPEN, no done marker.
+M32g — TWO TESTS. Opaque water is FLAT too (the transparent pass was not the fault), the environment's contribution
+flipped from negative to +14..+19 once `defaultReflectionMode = Custom` was set, and the glint still renders ~25x
+too weak. M32c OPEN, no done marker.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
-Evidence: artifacts/review/world/m32e-gameplay-view.png (the player's own view — the frame that matters),
-m32f-glint-on.png (the glint variant, same camera, one switch apart), m32c-water-{on,off,mask}.png,
-m32c-lane-mask.png, m32d-cube-X.png (the captured sky); raw harness output artifacts/m32c-puddle-raw.txt.
+Evidence: artifacts/review/world/m32g-water-opaque.png (TEST 1 — opaque water), m32f-glint-on.png (TEST 2 — the
+glint), m32c-water-on.png / m32e-gameplay-view.png (the shipped water, same camera), m32c-water-mask.png,
+m32d-cube-X.png (the captured sky); raw harness output artifacts/m32c-puddle-raw.txt.
+
+THE BUCKET TABLE — six buckets, near edge -> far edge, 6.0 to 10.3 m past the eye, of 255:
+
+    shipped water (alpha-blend):   25.3 -> 23.5 -> 25.0 -> 25.8 -> 22.1 -> 25.2
+    OPAQUE water, same camera:     25.3 -> 20.4 -> 25.8 -> 26.0 -> 21.5 -> 26.5     <- TEST 1
+    the glint variant:             25.3 -> 23.5 -> 25.4 -> 26.4 -> 22.2 -> 25.3     <- TEST 2
+    environment's own share:      +17.9 -> +15.3 -> +16.8 -> +19.0 -> +13.9 -> +17.7
+    opaque MINUS blended:          +0.0 -> -3.1 -> +0.9 -> +0.3 -> -0.7 -> +1.3
+    glint MINUS shipped:           +0.0 -> +0.0 -> +0.5 -> +0.6 -> +0.1 -> +0.0
+
+1) TEST 1 — OPAQUE WATER: FLAT. It does not rise toward the horizon and it is not different from the blended water
+   in any way that has a trend. **That kills the transparent-pass hypothesis, which was mine and which the order
+   shared.** Evidence that is worth keeping: the water's environment contribution is now **+14..+19 of 255** where
+   the last pass measured **-1.4..-28.0**, because `RenderSettings.customReflectionTexture` was set **without**
+   `RenderSettings.defaultReflectionMode = Custom` — so `unity_SpecCube0` was still whatever the pipeline built at
+   boot (no skybox here). That was a real defect, it is fixed, and it is why the term was negative: the surfaces
+   were being lit by a *darker* environment than the probe's.
+   What it did NOT fix: the contribution is large and still **view-independent** (+17.9 at the near edge, +17.7 at
+   the far edge). Ambient. Not a reflection. On both the blended and the opaque pass.
+   Per your own framing — "if opaque water reflects and blended water does not, the deliverable is the opaque
+   variant" — opaque water does **not** reflect either, so this closes the transparent-pass line of inquiry rather
+   than the milestone.
+
+2) TEST 2 — THE GLINT RENDERS, AND IS ~25x TOO WEAK. It is built on `Universal Render Pipeline/Particles/Unlit`
+   (the shader the rain uses, so it is not stripped), additive, unlit, queue 3100 so transparent sorting cannot
+   hide it under the water, oriented from the meshes' own local bounds rather than an assumed +Y. It moved the
+   water **+0.15 of 255** (from +0.03 before the shader change), with its own small bump in the middle buckets
+   (+0.5, +0.6) — so it IS drawing, in the right place, at roughly 4 % of the level its colour and texture call for.
+   Orientation is now ruled out; what is left is the additive contribution itself, one instrumented pass.
+   `PuddleDecals.GlintEnabled` is the switch and it is OFF in the build.
+
+ONE HONEST SENTENCE: does either frame's puddle read as water? **No — the puddle is a mottled damp patch in all
+three frames, and the glint variant is not yet bright enough to be visible.** I am not putting two frames side by
+side in the status page and calling it a choice when one of them is a copy of the other to within 0.15 of 255.
+
+=========================== M32f AND EARLIER, BELOW ===========================
 
 1) THE WATER MATERIAL, READ BACK AT RUNTIME (not what I set — what it holds):
 
