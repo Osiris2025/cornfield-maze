@@ -1,0 +1,40 @@
+M29 the ground — measured on the built Mac app, 2026-09-25 07:53:42Z
+Blend method: geometry. The lane is a mesh whose boundary vertices are pulled inwards
+by the derived mask (GroundLaneMesh) — not a blend shader, not a stripe. URP/Lit is
+kept, so the lane still gets the same lighting, normal maps and PathMudWetness path.
+Import settings in force (read back from the importers by the editor probe in
+Builds/ground-import.log; the runtime side is reported below):
+  albedo sRGB=True Repeat; normal type=NormalMap sRGB=False Repeat flipGreen=False;
+  _R sRGB=False Repeat; LaneEdge sRGB=False Repeat readable=True max=1024 Compressed.
+lane pieces built = 477 (meshes, not cubes: the margin is geometry)
+ragged margin: a boundary line wanders by up to 0.42 m (mean over 1908 faces 0.37 m; 1908 of 1908 faces wander more than 5 cm). A straight lane would read 0.00 m and 0 of 1908.
+metres per repeat: 2.00 m (constant) — a 4.00 x 2.08 m piece carries a UV span of 2.00 x 1.04, i.e. 2.00 m per repeat measured off the mesh
+raggedness mask readable=True — sampled 0.00/0.55/1.00 (min/mean/max), cut from 0.58 to 0.80; GroundLaneMesh reads it on the CPU, and unreadable would mean straight lanes
+ground textures resident = 7 maps, gpu ≈ 5.83 MB + cpu ≈ 4.00 MB
+  T_Ground_Field 1024x1024 format=DXT1 mips=11 wrap=Repeat readable=False gpu≈683KB cpu≈0KB profiler=0KB
+  T_Ground_Field_N 1024x1024 format=DXT5 mips=11 wrap=Repeat readable=False gpu≈1365KB cpu≈0KB profiler=0KB
+  T_Ground_Field_R 1024x1024 format=DXT1 mips=11 wrap=Repeat readable=False gpu≈683KB cpu≈0KB profiler=0KB
+  T_Ground_Lane 1024x1024 format=DXT1 mips=11 wrap=Repeat readable=False gpu≈683KB cpu≈0KB profiler=0KB
+  T_Ground_Lane_N 1024x1024 format=DXT5 mips=11 wrap=Repeat readable=False gpu≈1365KB cpu≈0KB profiler=0KB
+  T_Ground_Lane_R 1024x1024 format=DXT1 mips=11 wrap=Repeat readable=False gpu≈683KB cpu≈0KB profiler=0KB
+  T_Ground_LaneEdge 1024x1024 format=DXT1 mips=1 wrap=Repeat readable=True gpu≈512KB cpu≈4096KB profiler=512KB
+gpu/cpu above are computed from each texture's own format, size and mip count, because Profiler.GetRuntimeMemorySizeLong reports 0 for the DXT maps in a build (it returned the readable one only). The profiler column is printed beside them so the two can be compared.
+the mask's CPU copy is the single biggest item and it exists only because GroundLaneMesh reads the mask at world-build time. Phone follow-up, worth doing before submission: bake the jitter offsets into the lane meshes at design time and drop Read/Write from T_Ground_LaneEdge.
+the noise it replaced was three CPU-made RGBA32 tiles (128/128/96 px) — about 0.13 MB resident, so the added weight is the difference, and it is the whole cost of the photographic floor.
+NOTE: formats above are what the STANDALONE build chose; the phone target's own compression is a build-time platform setting and is not measured here.
+frame time over 1042 frames after a 90-frame warm-up: avg 3.84 ms, p95 4.55 ms, worst 5.51 ms
+delta against the noise ground: M20 recorded avg 3.14 ms / p95 6.68 ms / worst 14.80 ms with the old floor. These are NOT a like-for-like pair — M22-M26 changed the runtime since — but they are the same harness on the same machine, so a floor that had become expensive would show here.
+NOTE: the 60 fps floor is a PHONE target and no device is attached. This is the Mac build.
+lane frame: standing in the east-west run at cell (2,3), corn walls north and south, eye height 1.62 m, near clip 0.12 m
+field + edge frames taken at dusk (night01=0.11) because an unlit floor cannot be judged
+frame m29-ground-field.png -> written after 0 frames
+frame m29-ground-edge.png -> written after 0 frames
+lane frame taken at night=True (night01=1.00) after 35.6s of play
+frame m29-ground-lane.png -> written after 0 frames
+
+--- import settings, read back from the importers themselves ---------------------------
+    (Assets/Scripts/Editor/CornMazeGroundImport.cs --probe, from Builds/ground-import.log.
+     The runtime half of this is the format/wrap/readable columns in the table above: the
+     build agreed with what the importer was told, which is the cross-check that matters.)
+
+  — read back from the importers:

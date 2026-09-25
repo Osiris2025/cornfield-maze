@@ -22,24 +22,64 @@ public static class Materials
         return mat;
     }
 
-    public static Material Gravel(int seed)
+    // ---- M29: the ground (Todd, 2026-09-25; §17) --------------------------------------------------
+    //
+    // The floor used to be procedural noise: Gravel at 128 px, FieldGrass at 128 px, PathGrass at 96 px,
+    // tiled a handful of times across a 60 m field. A 128 px tile across a 2 m lane can only read as
+    // synthetic, which is why the floor looked flat. Todd supplied six photographic PBR sets (Poly Haven,
+    // CC0 — licence, checksums and synthetic tells in source-art/ground/PROVENANCE.md) which
+    // scripts/ground_build.py blended into the maps under Resources/Ground. Those are what the maze now
+    // wears; the noise generators are DELETED rather than left beside them, so nothing can drift back.
+
+    /// <summary>
+    /// Metres of maze floor per repeat of a ground map: 1K over 2 m, i.e. 512 px per metre. Matches the
+    /// source (each set is authored as a 1K pass over roughly 2 m of ground) and shows litter grain at the
+    /// player's feet without the repeat becoming readable across a 4 m cell.
+    /// </summary>
+    public const float GroundTileMetres = 2f;
+
+    public static Material GroundField()
     {
-        var mat = Lit(new Color(0.52f, 0.40f, 0.24f), 0.045f, 0f);
-        ApplyAlbedo(mat, MakeGravelTex(128, seed), 3.4f);
-        return mat;
+        return Ground("Ground/T_Ground_Field", "Ground/T_Ground_Field_N",
+                      new Color(0.88f, 0.83f, 0.72f), 0.05f);
     }
 
-    public static Material FieldGrass(int seed)
+    public static Material GroundLane()
     {
-        var mat = Lit(new Color(0.30f, 0.38f, 0.14f), 0.08f, 0f);
-        ApplyAlbedo(mat, MakeGrassTex(128, seed, true), 5.5f);
-        return mat;
+        return Ground("Ground/T_Ground_Lane", "Ground/T_Ground_Lane_N",
+                      new Color(0.94f, 0.92f, 0.88f), 0.11f);
     }
 
-    public static Material PathGrass(int seed)
+    /// <summary>
+    /// A URP/Lit ground material from the derived albedo + normal maps.
+    ///
+    /// Smoothness is a constant per material, not the sets' `_R` roughness: driving it would mean repacking
+    /// roughness into URP's metallic/smoothness slot (or the albedo's alpha via SmoothnessTextureChannel) —
+    /// another full-size map in phone memory for a dry/wet variation PathMudWetness already drives at
+    /// runtime on the lane. The `_R` maps stay imported and unused on purpose; the report says so.
+    /// </summary>
+    static Material Ground(string albedo, string normal, Color tint, float smoothness)
     {
-        var mat = Lit(new Color(0.34f, 0.44f, 0.15f), 0.10f, 0f);
-        ApplyAlbedo(mat, MakeGrassTex(96, seed, false), 2.2f);
+        var mat = Lit(tint, smoothness, 0f);
+        var a = Resources.Load<Texture2D>(albedo);
+        var n = Resources.Load<Texture2D>(normal);
+        if (a == null) Debug.LogWarning("M29: ground albedo missing: Resources/" + albedo);
+        if (n == null) Debug.LogWarning("M29: ground normal missing: Resources/" + normal);
+
+        if (mat.HasProperty("_BaseMap"))
+        {
+            if (a != null) mat.SetTexture("_BaseMap", a);
+            // The lane meshes carry the metres-per-tile in their UVs (M29), so the material tiles once.
+            mat.SetTextureScale("_BaseMap", Vector2.one);
+        }
+        if (mat.HasProperty("_MainTex") && a != null) mat.SetTexture("_MainTex", a);
+        if (n != null)
+        {
+            if (mat.HasProperty("_BumpMap")) mat.SetTexture("_BumpMap", n);
+            if (mat.HasProperty("_NormalMap")) mat.SetTexture("_NormalMap", n);
+            if (mat.HasProperty("_BumpScale")) mat.SetFloat("_BumpScale", 1f);
+            mat.EnableKeyword("_NORMALMAP");
+        }
         return mat;
     }
 
@@ -104,126 +144,4 @@ public static class Materials
         return tex;
     }
 
-    static Texture2D MakeGravelTex(int size, int seed)
-    {
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
-        {
-            wrapMode = TextureWrapMode.Repeat,
-            filterMode = FilterMode.Bilinear,
-            anisoLevel = 4,
-            name = "GravelNoise"
-        };
-        var rng = new System.Random(seed);
-        var pix = new Color[size * size];
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float n = Fbm(x, y, size, 5.5f, seed);
-                float n2 = Fbm(x + 17, y + 9, size, 13f, seed + 3);
-                float dirt = 0.42f + n * 0.22f;
-                var col = new Color(
-                    0.38f + dirt * 0.34f + n2 * 0.06f,
-                    0.28f + dirt * 0.22f,
-                    0.14f + dirt * 0.10f,
-                    1f);
-
-                double roll = rng.NextDouble();
-                if (roll < 0.07)
-                {
-                    float g = 0.38f + (float)rng.NextDouble() * 0.22f;
-                    col = new Color(g, g * 0.92f, g * 0.82f, 1f);
-                }
-                else if (roll < 0.13)
-                {
-                    col = new Color(
-                        0.28f + (float)rng.NextDouble() * 0.10f,
-                        0.20f + (float)rng.NextDouble() * 0.08f,
-                        0.11f + (float)rng.NextDouble() * 0.05f,
-                        1f);
-                }
-                pix[y * size + x] = col;
-            }
-        }
-        tex.SetPixels(pix);
-        tex.Apply(false, true);
-        return tex;
-    }
-
-    static Texture2D MakeGrassTex(int size, int seed, bool field)
-    {
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
-        {
-            wrapMode = TextureWrapMode.Repeat,
-            filterMode = FilterMode.Bilinear,
-            anisoLevel = 4,
-            name = field ? "FieldGrass" : "PathGrass"
-        };
-        var rng = new System.Random(seed);
-        var pix = new Color[size * size];
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float n = Fbm(x, y, size, field ? 4.2f : 7f, seed);
-                float blade = Fbm(x + 31, y + 19, size, 18f, seed + 11);
-                var col = new Color(
-                    0.18f + n * 0.16f + blade * 0.05f,
-                    0.30f + n * 0.22f + blade * 0.10f,
-                    0.08f + n * 0.08f,
-                    1f);
-                if (field && rng.NextDouble() < 0.045)
-                {
-                    col = new Color(
-                        0.36f + (float)rng.NextDouble() * 0.10f,
-                        0.26f + (float)rng.NextDouble() * 0.08f,
-                        0.12f + (float)rng.NextDouble() * 0.05f,
-                        1f);
-                }
-                pix[y * size + x] = col;
-            }
-        }
-        tex.SetPixels(pix);
-        tex.Apply(false, true);
-        return tex;
-    }
-
-    static float Fbm(int x, int y, int size, float freq, int seed)
-    {
-        float xf = (x / (float)size) * freq;
-        float yf = (y / (float)size) * freq;
-        float v = 0f;
-        float a = 0.5f;
-        float f = 1f;
-        for (int o = 0; o < 4; o++)
-        {
-            v += ValueNoise(xf * f, yf * f, seed + o * 17) * a;
-            a *= 0.5f;
-            f *= 2.05f;
-        }
-        return Mathf.Clamp01(v);
-    }
-
-    static float ValueNoise(float x, float y, int seed)
-    {
-        int x0 = Mathf.FloorToInt(x);
-        int y0 = Mathf.FloorToInt(y);
-        float tx = x - (float)x0;
-        float ty = y - (float)y0;
-        tx = tx * tx * (3f - 2f * tx);
-        ty = ty * ty * (3f - 2f * ty);
-        float a = Hash01(x0, y0, seed);
-        float b = Hash01(x0 + 1, y0, seed);
-        float c = Hash01(x0, y0 + 1, seed);
-        float d = Hash01(x0 + 1, y0 + 1, seed);
-        return Mathf.Lerp(Mathf.Lerp(a, b, tx), Mathf.Lerp(c, d, tx), ty);
-    }
-
-    static float Hash01(int x, int y, int seed)
-    {
-        int h = x * 374761393 + y * 668265263 + seed * 1442695040;
-        h = (h ^ (h >> 13)) * 1274126177;
-        h ^= h >> 16;
-        return ((h & 0x7fffffff) / 2147483647f);
-    }
 }

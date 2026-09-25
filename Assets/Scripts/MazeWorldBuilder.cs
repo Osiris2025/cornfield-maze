@@ -6,10 +6,17 @@ public static class MazeWorldBuilder
     public static void Build(MazeData maze)
     {
         var root = new GameObject("CornField");
-        var gravelMat = Materials.Gravel(MazeGenerator.Seed + 41);
+        // M29: the photographic ground. The lane keeps the name the wetness system registered against, so
+        // PathMudWetness still drives it; the field's repeat is carried per-renderer (the field is one cube).
+        var gravelMat = Materials.GroundLane();
         PathMudWetness.RegisterGravel(gravelMat);
-        var fieldMat = Materials.FieldGrass(MazeGenerator.Seed + 73);
-        var grassMat = Materials.PathGrass(MazeGenerator.Seed + 91);
+        var fieldMat = Materials.GroundField();
+        GroundLaneMesh.Prepare();
+        // The lane dressing quads are boxes a few centimetres across, so they need their own texture scale:
+        // the lane material tiles once per 2 m of world UV, and a 16 cm tuft with that mapping would show a
+        // single gravel stone blown up to the size of a fist.
+        var grassMat = new Material(gravelMat);
+        if (grassMat.HasProperty("_BaseMap")) grassMat.SetTextureScale("_BaseMap", new Vector2(0.12f, 0.12f));
         var pebbleMats = new[]
         {
             Materials.Pebble(new Color(0.42f, 0.36f, 0.26f)),
@@ -24,7 +31,17 @@ public static class MazeWorldBuilder
         ground.transform.SetParent(root.transform, false);
         ground.transform.position = new Vector3((maze.Width - 1) * maze.CellSize * 0.5f, -0.25f, (maze.Height - 1) * maze.CellSize * 0.5f);
         ground.transform.localScale = new Vector3(fieldW, 0.5f, fieldH);
-        ground.GetComponent<Renderer>().sharedMaterial = fieldMat;
+        var fieldRenderer = ground.GetComponent<Renderer>();
+        fieldRenderer.sharedMaterial = fieldMat;
+        // M29: a 60 m field wants 30 repeats of a 2 m map, not the 5.5 the old noise used. The cube's faces
+        // are 0..1 UV, so the repeat goes in the shader's _BaseMap_ST via a property block — per renderer,
+        // with no material instance per cell and nothing allocated per frame.
+        float fieldTu = fieldW / Materials.GroundTileMetres;
+        float fieldTv = fieldH / Materials.GroundTileMetres;
+        var fieldMpb = new MaterialPropertyBlock();
+        fieldMpb.SetVector("_BaseMap_ST", new Vector4(fieldTu, fieldTv, 0f, 0f));
+        fieldMpb.SetVector("_BumpMap_ST", new Vector4(fieldTu, fieldTv, 0f, 0f));
+        fieldRenderer.SetPropertyBlock(fieldMpb);
 
         var rng = new System.Random(MazeGenerator.Seed + 17);
         Material[] cornMats = null;
@@ -46,8 +63,8 @@ public static class MazeWorldBuilder
             Debug.LogWarning("M20: corn block prefabs are missing from Resources/Corn — falling back to " +
                              "the old primitive scatter. Run CornMaze.EditorTools.CornMazeCornSetup.SetupAll.");
 
+        // M29: the lane pieces are flat meshes now, so there is no lane thickness constant any more.
         float lane = maze.CellSize * 0.52f;
-        float thick = 0.07f;
 
         for (int x = 0; x < maze.Width; x++)
         {
@@ -56,24 +73,24 @@ public static class MazeWorldBuilder
                 var center = maze.CellToWorld(x, y);
                 if (!maze.IsWall[x, y])
                 {
-                    PlaceGravel(pathRoot.transform, center + Vector3.up * 0.03f, new Vector3(lane, thick, lane), gravelMat);
+                    PlaceLane(pathRoot.transform, center + Vector3.up * 0.03f, lane, lane, gravelMat);
 
                     bool east = maze.IsPath(x + 1, y);
                     bool north = maze.IsPath(x, y + 1);
                     if (east)
                     {
-                        PlaceGravel(
+                        PlaceLane(
                             pathRoot.transform,
                             center + new Vector3(maze.CellSize * 0.5f, 0.03f, 0f),
-                            new Vector3(maze.CellSize, thick, lane),
+                            maze.CellSize, lane,
                             gravelMat);
                     }
                     if (north)
                     {
-                        PlaceGravel(
+                        PlaceLane(
                             pathRoot.transform,
                             center + new Vector3(0f, 0.03f, maze.CellSize * 0.5f),
-                            new Vector3(lane, thick, maze.CellSize),
+                            lane, maze.CellSize,
                             gravelMat);
                     }
 
@@ -159,15 +176,18 @@ public static class MazeWorldBuilder
         return v;
     }
 
-    static void PlaceGravel(Transform parent, Vector3 pos, Vector3 scale, Material mat)
+    /// <summary>
+    /// M29: a lane piece — a mesh, not a cube, because its margin has to be ragged rather than a cut line
+    /// (see GroundLaneMesh, which explains why this is geometry and not a blend shader). No collider: the
+    /// field cube underneath is the floor the player walks on and the lane sits 3 cm above it.
+    /// </summary>
+    static void PlaceLane(Transform parent, Vector3 pos, float w, float d, Material mat)
     {
-        var path = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        path.name = "Gravel";
+        var path = new GameObject("Lane");
         path.transform.SetParent(parent, false);
         path.transform.position = pos;
-        path.transform.localScale = scale;
-        path.GetComponent<Renderer>().sharedMaterial = mat;
-        Object.Destroy(path.GetComponent<Collider>());
+        path.AddComponent<MeshFilter>().sharedMesh = GroundLaneMesh.Build(w, d, pos);
+        path.AddComponent<MeshRenderer>().sharedMaterial = mat;
     }
 
     static void ScatterPathDressing(
