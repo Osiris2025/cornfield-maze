@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public static class MazeWorldBuilder
@@ -5,7 +6,6 @@ public static class MazeWorldBuilder
     public static void Build(MazeData maze)
     {
         var root = new GameObject("CornField");
-        var cornMats = CornPlant.CreateMaterials();
         var gravelMat = Materials.Gravel(MazeGenerator.Seed + 41);
         PathMudWetness.RegisterGravel(gravelMat);
         var fieldMat = Materials.FieldGrass(MazeGenerator.Seed + 73);
@@ -27,12 +27,24 @@ public static class MazeWorldBuilder
         ground.GetComponent<Renderer>().sharedMaterial = fieldMat;
 
         var rng = new System.Random(MazeGenerator.Seed + 17);
-        CornPlant.BuildVariants(rng, out var cornMeshes, out var cornHeights);
+        Material[] cornMats = null;
+        Mesh[] cornMeshes = null;
+        float[] cornHeights = null;
 
         var pathRoot = new GameObject("Paths");
         pathRoot.transform.SetParent(root.transform, false);
         var blockRoot = new GameObject("PathBounds");
         blockRoot.transform.SetParent(root.transform, false);
+        var cornRoot = new GameObject("CornBlocks");
+        cornRoot.transform.SetParent(root.transform, false);
+
+        // M20 (§24.2): the field is TILED from the six shipped 2 m blocks — 4 per 4 m wall cell, block
+        // index and 90° rotation hashed from the cell coordinate, so the whole field costs six meshes
+        // and four rotations and nothing is unique per slot.
+        var cornPrefabs = LoadCornBlocks();
+        if (cornPrefabs == null)
+            Debug.LogWarning("M20: corn block prefabs are missing from Resources/Corn — falling back to " +
+                             "the old primitive scatter. Run CornMaze.EditorTools.CornMazeCornSetup.SetupAll.");
 
         float lane = maze.CellSize * 0.52f;
         float thick = 0.07f;
@@ -71,6 +83,19 @@ public static class MazeWorldBuilder
 
                 AddCornBlock(blockRoot.transform, center, maze.CellSize);
 
+                if (cornPrefabs != null)
+                {
+                    PlantCornBlocks(cornRoot.transform, x, y, center, cornPrefabs);
+                    continue;
+                }
+
+                // Fallback (§24.2 keeps CornPlant.cs as the fallback path until this swap lands): the old
+                // per-cell scatter, 0.4-0.6 plants/m². Only runs if the block prefabs are absent.
+                if (cornMats == null)
+                {
+                    cornMats = CornPlant.CreateMaterials();
+                    CornPlant.BuildVariants(rng, out cornMeshes, out cornHeights);
+                }
                 int stalks = 6 + rng.Next(4);
                 for (int i = 0; i < stalks; i++)
                 {
@@ -83,6 +108,55 @@ public static class MazeWorldBuilder
         }
 
         SetupAtmosphere();
+    }
+
+    /// <summary>
+    /// M20: the six shipped blocks, loaded once. Every slot instantiates one of these six — nothing is
+    /// unique per slot, which is what keeps the field at six meshes and four rotations (§24.2).
+    /// </summary>
+    public static GameObject[] LoadCornBlocks()
+    {
+        var prefabs = new List<GameObject>();
+        for (int i = 1; i <= 6; i++)
+        {
+            var prefab = Resources.Load<GameObject>("Corn/CornBlock_2m_" + i.ToString("00"));
+            if (prefab == null) return null;
+            prefabs.Add(prefab);
+        }
+        return prefabs.ToArray();
+    }
+
+    /// <summary>
+    /// Four 2 m blocks tile one 4 m wall cell (§24.2). The block index and the 90° rotation are hashed
+    /// from the cell coordinate AND the quadrant, so placement is deterministic from the seed and the
+    /// wall never repeats an obvious pattern. The blocks deliberately overhang their 2 m square — the
+    /// leaves are what closes the join between neighbours.
+    /// </summary>
+    static void PlantCornBlocks(Transform parent, int cellX, int cellY, Vector3 centre, GameObject[] prefabs)
+    {
+        const float BlockSize = 2.0f;
+        for (int q = 0; q < 4; q++)
+        {
+            int sx = (q & 1) == 0 ? -1 : 1;
+            int sz = (q & 2) == 0 ? -1 : 1;
+
+            uint h = Hash((uint)(cellX * 73856093) ^ (uint)(cellY * 19349663) ^ (uint)(q * 83492791) ^ (uint)MazeGenerator.Seed);
+
+            var go = Object.Instantiate(prefabs[h % (uint)prefabs.Length], parent);
+            go.name = "Corn_c" + cellX + "_" + cellY + "_q" + q;
+            go.transform.position = centre + new Vector3(sx * BlockSize * 0.5f, 0f, sz * BlockSize * 0.5f);
+            go.transform.rotation = Quaternion.Euler(0f, ((h / (uint)prefabs.Length) % 4u) * 90f, 0f);
+        }
+    }
+
+    static uint Hash(uint v)
+    {
+        v ^= v >> 16;
+        v *= 2246822519u;
+        v ^= v >> 13;
+        v *= 3266489917u;
+        v ^= v >> 16;
+        return v;
     }
 
     static void PlaceGravel(Transform parent, Vector3 pos, Vector3 scale, Material mat)

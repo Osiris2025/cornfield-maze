@@ -1,0 +1,10 @@
+M20 corn field — measured on the built Mac app, 2026-09-24 20:22:18Z
+corn block instances placed = 1144 (expected 4 x wall cells = 1144)
+wall cells = 286, other LOD groups = 0
+active renderers = 4469, unique materials = 17, triangles RESIDENT (every enabled renderer, ALL LOD levels — this is not the drawn cost) = 16814406
+corn LOD0 triangles for every block = 10244520 (expected 1144 x 8955 = 10244520)
+frame time over 1910 frames: avg 3.14 ms, p95 6.68 ms, worst 14.80 ms
+NOTE: this is the MAC build. The 60 fps floor is a PHONE target and no device is attached — this number is context, not that claim.
+camera samples = 954, camera inside the crop = 0  PASS (boom never parks in the leaves)
+frame m20-field-title.png -> written after 0 frames
+frame m20-field-play.png -> written after 0 frames

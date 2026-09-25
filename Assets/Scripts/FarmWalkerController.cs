@@ -36,6 +36,9 @@ public sealed class FarmWalkerController : MonoBehaviour
     /// <summary>The maze this walker is in (exposed for measurement).</summary>
     public MazeData Maze => _maze;
 
+    /// <summary>The follow camera, exposed read-only for diagnostics (the M20 field self-test samples it).</summary>
+    public Camera Camera => _camera;
+
     /// <summary>Seconds of full-storm rain to reach near-full dissolve (atmospheric, not instant).</summary>
     public const float DissolveRainSeconds = 210f;
 
@@ -389,6 +392,19 @@ public sealed class FarmWalkerController : MonoBehaviour
         mat.renderQueue = 3000;
     }
 
+    /// <summary>
+    /// M20: the corn canopy band. The crop stands 2.896-3.200 m (§24.1) and its leaves have no colliders,
+    /// so "is the camera inside the crop" is answered from the maze, not from physics.
+    /// </summary>
+    bool BoomInCorn(Vector3 p)
+    {
+        const float CanopyTop = 3.1f;
+        if (_maze == null || p.y > CanopyTop) return false;
+        var cell = _maze.WorldToCell(p);
+        if (cell.x < 0 || cell.y < 0 || cell.x >= _maze.Width || cell.y >= _maze.Height) return false;
+        return _maze.IsWall[cell.x, cell.y];
+    }
+
     void LateUpdate()
     {
         if (_camRig == null || _camera == null) return;
@@ -405,6 +421,18 @@ public sealed class FarmWalkerController : MonoBehaviour
         float boom = Mathf.Lerp(CameraDistance, CameraDistance * 0.62f, lookUp);
         float heightOff = (CameraHeight - 1.15f) + lookUp * 0.55f;
         var desired = _camRig.position - _camRig.forward * boom + Vector3.up * heightOff;
+
+        // M20 (§25.2): the corn is 2.9-3.2 m of leaves now and the leaf cards carry NO colliders, so the
+        // sphere cast below cannot see the canopy — it only knows the wall boxes. A 5.2 m boom parks the
+        // camera inside the crop on most corridor turns, which is the 5.2 m boom defect §25.2 names. The
+        // canopy is known from the maze data instead, so pull the boom in until the camera is clear of
+        // any corn cell; the cast then handles the walls as it always did.
+        for (int guard = 0; guard < 6 && boom > 1.6f && BoomInCorn(desired); guard++)
+        {
+            boom = Mathf.Max(1.6f, boom * 0.80f);
+            desired = _camRig.position - _camRig.forward * boom + Vector3.up * heightOff;
+        }
+
         float castDist = Vector3.Distance(_camRig.position, desired);
         if (castDist > 0.05f
             && Physics.SphereCast(_camRig.position, 0.18f, desired - _camRig.position, out var hit, castDist, ~0, QueryTriggerInteraction.Ignore))
