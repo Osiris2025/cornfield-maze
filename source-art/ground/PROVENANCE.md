@@ -112,3 +112,34 @@ Honest limits, for the record:
 2. The preview is a compositing schematic, not a render. It shows the blend logic, not the lit result.
 3. At 1024² × six maps the set is heavier than a phone wants as-is; a mobile pass (512² or ASTC) is
    worth doing before shipping.
+
+## The ground is matte, and that is a ruling, not a default
+
+Todd, 2026-09-25: "iMO - the sheen AT ALL is a bug, maybe there should be a sheen in puddles, but not
+over all." Until then the `_M` maps carried a broad specular: lane mean 0.28 smoothness with 7.1% of the
+surface above 0.40, the loose stones doing it. Everyone who looked at that frame called it wrong, and the
+physics agrees — dead grass and dry dirt are rough, so a moonlit field does not glint.
+
+The shipped ground is now **matte by construction**: lane mean 0.13 smoothness, field 0.11, 0.0% of the
+surface above 0.40 (roughness 0.87-0.89). Variation is kept only at the level that stops it reading as
+one flat value. Nothing on the field or the lane can throw a highlight after this — if a frame shows one,
+it is a defect in the wiring, not the texture.
+
+## Puddles: the one surface allowed to reflect
+
+Built by `scripts/puddle_build.py` (seed 4177, 512², DESIGN-TIME ONLY) — three maps, no third-party
+source, nothing licensed, derived in code from the same family of noise as the rest of the ground work:
+
+| file | what it is |
+|---|---|
+| `T_Ground_PuddleAlpha.png` | coverage: water core 7.3% of the quad, water+damp halo 18.9%, max opacity 0.86 |
+| `T_Ground_Puddle.png` | dark wet earth, mean **0.114** against the lane's 0.453 — dark, not black |
+| `T_Ground_Puddle_N.png` | a near-flat water plane with a faint silt lip |
+
+They are decals, placed in lane low spots — a handful per level, elongated along the lane, never tiled
+and never on the field. A puddle is a place, not a texture that repeats. Three attempts are on record at
+`artifacts/reference/puddle-preview.png`: the first read as a painted black hole (round lobes, hard rim,
+no damp ring), the second as parallel scratches (over-elongated lobes), and the third is the one on disk.
+The damp halo is the cue that sells it from above, and its width had to come from the *distance to the
+waterline* — derived from a second noise field it covered 94% of the quad and turned the whole decal into
+one damp patch.

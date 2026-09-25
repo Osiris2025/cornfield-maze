@@ -270,19 +270,21 @@ def build(variant):
     # squashed everything into 0.07-0.16 smoothness: uniformly matte, so nothing reflected at all.
     # Damp earth is the other lever -- where the mud and rut masks are, the surface holds water and
     # drops toward 0.6, which is why wet ground throws the moon back at you and dry grass does not.
-    # The sources' own roughness maps are nearly flat here (measured: everything above 0.84, nothing
-    # reflective), so they cannot carry this on their own. Roughness is therefore SET from the masks
-    # that describe the surface -- loose stone, rutted dust, damp earth -- with only a light tint from
-    # the source map so the details do not all share one value. Targets are the physically sensible
-    # ones for this ground: dead grass 0.90, damp earth 0.62, dust 0.85, loose stone 0.52.
+    # Todd, 2026-09-25: "the sheen AT ALL is a bug, maybe there should be a sheen in puddles, but not
+    # over all." He is right, and it is the physically correct call: dead grass and dry dirt are rough
+    # (~0.9), so a moonlit field does not glint -- water does, and only where water sits.
+    #
+    # So the ground is MATTE, full stop, with just enough variation that it does not read as one flat
+    # value. The reflective surface lives in puddles, which are placed in the world as their own pieces
+    # (wet material at low roughness), not smeared over every stone in the lane. Nothing on the field or
+    # the lane should ever be smooth enough to throw a highlight.
     def norm01(a):
         lo, hi = float(a.min()), float(a.max())
         return (a - lo) / max(hi - lo, 1e-6)
 
-    stones, ruts = lane_masks[1], lane_masks[2]
-    damp_field = np.clip(field_masks[2] * 0.85 + field_masks[1] * 0.20, 0.0, 1.0)
-    f_rgh = np.clip(0.90 - 0.50 * damp_field - 0.08 * (1.0 - norm01(f_rgh)), 0.32, 1.0)
-    l_rgh = np.clip(0.86 - 0.42 * stones - 0.14 * ruts - 0.06 * (1.0 - norm01(l_rgh)), 0.32, 1.0)
+    # 0.88-0.95: matte, with a whisper of the source's own structure so it is not a single value
+    f_rgh = np.clip(0.93 - 0.05 * norm01(f_rgh) + 0.01 * field_masks[2], 0.80, 1.0)
+    l_rgh = np.clip(0.91 - 0.06 * norm01(l_rgh) - 0.02 * lane_masks[1], 0.80, 1.0)
 
     # ---- grade: the photographs are sunny daylight; this game is dusk, horror register -------
     # Faithful-to-source ground reads as a bright afternoon under a Halloween night sky -- wrong on
