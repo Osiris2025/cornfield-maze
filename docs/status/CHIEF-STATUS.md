@@ -1,6 +1,6 @@
 # CHIEF-STATUS — Corn Field Maze
 
-_Updated 2026-09-25 by Harrow (@corn-chief). HEAD `b1c36ca` (M32b pass 3, still OPEN). One page, not a log._
+_Updated 2026-09-25 by Harrow (@corn-chief). HEAD `ce0eae8` (M32b pass 4, still OPEN). One page, not a log._
 _Project root `/Volumes/files1/projects/cornmaze/CornFieldMaze` (APFS volume files1). Unity 6000.3.23f1, URP._
 _Order of 2026-09-25 (cap 10 passes): **M31, M32, M33, M34** — with M31b and M32b attached. Unity slot free._
 
@@ -10,7 +10,7 @@ _Order of 2026-09-25 (cap 10 passes): **M31, M32, M33, M34** — with M31b and M
 |---|---|---|
 | 1 | M31 — the lane blends by **transparency** | GREEN `ea81ad8`; M31b also GREEN `992da42` |
 | 2 | M32 — the ground and the moonlight | GREEN `a2e1119` — matte by read-back |
-| 2c | M32b — puddles, the only reflective surface | **OPEN `b1c36ca`** — read-back green, camera now on the lane, moon not yet caught in the water |
+| 2c | M32b — puddles, the only reflective surface | **OPEN `ce0eae8`** — water measured as the sheen (1.70×, holds light when the ground loses it); moon not caught in it, lane still washed pale |
 | 3 | M33 — scary lanterns, placeholder + swap-in point | not started |
 | 4 | M34 — the scarecrow is THE antagonist | not started; silhouette test **OPEN, not passing** |
 
@@ -36,18 +36,27 @@ inside the waterline and outside it.
 **0.104** in the damp halo; lane **0.137**; water 7.6 % of the quad, halo 21.1 %; **6 decals under one parent
 named "Puddles"**, 3.4 × 1.7 m, inside the 2.08 m lane.
 
-**Still open — the frame.** Pass 3 fixed the blocking defect: the harness no longer guesses where the lane
-is, it asks the maze. It starts at the puddle's cell, steps while the next cell is a path cell, and takes the
-lane cell closest to the mirror distance — so the stand is on the lane **by construction**. The built app
-reports `stand: (36.00, 0.08, 44.00) — on maze cell (9,11), 1 step from the puddle's cell (9,10)`, and the
-frame finally looks down a gravel lane with corn either side instead of from inside a corn block. One cell is
-4.00 m, so the nearest lane cell to the 3.12 m mirror distance is 4.00 m; the reflection lands 0.88 m short
-of the puddle's centre, still inside a 3.4 m decal. **The moon is still not caught in the water** and the
-puddle is not distinguishable in the frame, so the milestone stays open. **Next, in order:** sample the
-puddle's own pixels against the lane's in the same frame at the same distance — if the water is not
-measurably different from the lane beside it, the decal is not reading and the fault is the decal, not the
-light; and rewrite the projected-rect counter (it still reports "3 corners rejected" and a degenerate rect
-for a decal 4 m away, so its inside/outside split is not quoted as evidence).
+**Pass 4 — the puddle is in frame, and the water is the sheen.** The corner-projection counter was replaced
+with the measurement the milestone asks for: every second pixel classified by geometry — the camera's own ray
+cast at the ground plane, tested against the decal's quad. Its first run said the puddle was **0 px of the
+frame**: the moon's reflection lies along the **moon's azimuth**, not the lane, so passes 1–3 aimed at a
+mirror point that landed on bare lane while the puddle sat out of shot. The stand is now taken on the moon's
+azimuth and snapped to the nearest path cell. Same frame, same light, same distances:
+
+    PUDDLE MOON   puddle 20,359 px, mean G 86.07 of 255; other ground 227,552 px, mean 50.75  -> 1.70x
+    UNBOUND       water 84.50, lane 31.06  -> 2.72x      (ground maps off)
+    FIELD ONLY    water 84.14, lane 30.93  -> 2.72x
+
+**The water holds its light (86 → 84) while the lane loses a third of its brightness (50.75 → 30.93).** That
+is the sheen living in the puddle and nowhere else — shown by subtraction, not argued.
+
+**Still open — the frame.** `artifacts/review/world/m32b-puddle-moon.png` is now shot down the lane from a
+lane cell: the puddles read as dark shapes (correct — wet earth is dark), and there is a **broad pale wash
+across the lane and field**. The moon is not caught in the water, and the wash is on the ground, not in it.
+That wash is what Todd called a bug, and it is measurable: the lane is 20/255 brighter with the maps bound
+than without, over a wide area, peak unchanged. M32's read-back is still clean (0.137, nothing above 0.40),
+so this is **not** the mirror floor returning — it is a diffuse lift the bound maps add, and it is brighter
+than the water's own highlight. **Next pass goes to the wash, not the glint** (see §5).
 
 ## 3. Open — reported, not hidden
 
@@ -78,25 +87,31 @@ for a decal 4 m away, so its inside/outside split is not quoted as evidence).
 
 ## 4. CAPTURES FOR TODD
 
-    artifacts/review/world/m32b-puddle-moon.png          M32b: pass 3 — down the lane now; the puddle is not in it
-    artifacts/review/world/m31-ground-lane.png           M31b: down the lane at eye level — solid, not a ghost
+    artifacts/review/world/m32b-puddle-moon.png          M32b pass 4: the puddle IS in this one (20,359 px)
+        artifacts/review/world/m31-ground-lane.png           M31b: down the lane at eye level — solid, not a ghost
     artifacts/reference/m31b-lane-alpha-preview.png      M31b: the baked alpha — flat interior, eaten edge
     artifacts/review/world/m32-reflection-on.png         M32: the matte ground as it ships
+    artifacts/m32b-puddle-report-4.txt                   M32b pass 4: the water is the sheen; the wash is not
     artifacts/m32b-puddle-report-3.txt                   M32b pass 3: the stand fixed, the glint not there
-    artifacts/m32b-puddle-report-2.txt                   M32b pass 2: the lane-crossing puddles
     artifacts/m32b-puddle-report.txt                     M32b pass 1: the read-back that does stand
-    artifacts/m28-scarecrow-silhouette.png               M28's silhouette — OPEN pending Todd's model
+    artifacts/review/world/m28-scarecrow-silhouette.png  M28's silhouette — OPEN pending Todd's model
 
 ## 5. Questions for Todd (each with my recommendation)
 
-1. **Puddles: the water is nearly invisible at night.** The read-back proves the water is reflective (0.875),
-   so this is a look problem, not a physics one. *Recommend: I finish the frame first — the harness is
-   standing in the wrong place, and until it stands on the lane I cannot tell you whether the water reads from
-   a normal view. If it still does not after that, I raise the wet-earth/dry-lane contrast.*
-2. **The dry ground variant** (`14d7ed6`, preview `artifacts/reference/ground-preview-dry.png`): withered-grass
+1. **The ground still carries a pale wash under the moon — the thing you called a bug, and it is measurable.**
+   With the ground's maps bound the lane is 20/255 brighter than with them off (50.75 vs 31.06), over a wide
+   area, with the peak unchanged — and it is brighter in frame than the water's own highlight. M32's
+   read-back is still clean (lane 0.137, nothing above 0.40), so this is not the mirror floor coming back.
+   *Recommend: I spend the next pass on this wash and re-shoot this same frame so you can see the difference.
+   The glint in the puddle is the smaller prize — a tight lobe off a small moon may simply not deliver one.*
+2. **The puddles read as dark water, which is physical** — and they are the only surface that keeps its sheen
+   when the ground's maps come off (water holds 86 → 84 while the lane drops 50.75 → 30.93). *Recommend: keep
+   them; making them legible at night is a brightness call on the water's albedo, and I will show you a frame
+   with it lifted before anything ships.*
+3. **The dry ground variant** (`14d7ed6`, preview `artifacts/reference/ground-preview-dry.png`): withered-grass
    field, gravel-road lane, 2K. *Recommend: keep the current sets.* Taste, so the frame is there and I have not
    switched it in.
-3. **M34 needs your scarecrow model to close its silhouette test.** *Recommend: build the factory hook and the
+4. **M34 needs your scarecrow model to close its silhouette test.** *Recommend: build the factory hook and the
    escalation multiplier now, leave the test marked open until the model lands, and record its licence line
    before it ships.*
 
@@ -114,8 +129,8 @@ not mine. Unity re-serialised `ProjectSettings/*`, `PC_RPAsset.asset` and
 
 ## 7. Last commits
 
-`b1c36ca` M32b pass 3 · `6dc6c9a` status after M32b pass 2 · `0e3bc05` M32b pass 2 · `ea0d85c` status after
-M32b pass 1 · `9085719` M32b puddles built, frame open · `94c2fc1` status after M31b · `992da42` M31b solid
-lane, broken edge · `a2e1119` M32 matte ground + the alphaSource fix · `ea81ad8` M31 lane blends by
-transparency · `09a59c3` matte ground + puddle art (Ernie) · `34dbf49` M28 the scarecrow · `e460272` M27 first
-person · `f46b9e0` M29 the ground.
+`ce0eae8` M32b pass 4 · `b5f081d` CAPTURES path fix · `68e8940` status after M32b pass 3 · `b1c36ca` M32b pass
+3 · `6dc6c9a` status after M32b pass 2 · `0e3bc05` M32b pass 2 · `9085719` M32b puddles built, frame open ·
+`992da42` M31b solid lane, broken edge · `a2e1119` M32 matte ground + the alphaSource fix · `ea81ad8` M31 lane
+blends by transparency · `09a59c3` matte ground + puddle art (Ernie) · `34dbf49` M28 the scarecrow · `e460272`
+M27 first person · `f46b9e0` M29 the ground.
