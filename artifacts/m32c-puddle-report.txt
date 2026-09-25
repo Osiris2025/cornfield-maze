@@ -1,10 +1,66 @@
-M32c pass 4 — the lane stops glowing and the puddle reads as water. One acceptance line is NOT met and I am not
-claiming it: the probe ships no sky. OPEN, no done marker.
+M32c pass 5 — the lane is inside the ceiling (1.06x) and the water's material is proven correct; the probe's
+capture is the one missing piece. OPEN, no done marker.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
 Evidence: artifacts/review/world/m32c-water-on.png (the acceptance frame), m32c-water-off.png,
 m32c-water-mask.png, m32c-lane-mask.png, m32c-lane-control.png, m32c-water-black.png, m32c-water-nomoon.png;
 raw harness output artifacts/m32c-puddle-raw.txt.
+
+PASS 5 — THE ONE SWITCH NOBODY HAD READ
+
+Five passes argued about whether the reflection probe reaches the water. None of them had ever read the switch
+on the water that decides it. Now read back, at runtime, on the shipped material:
+
+    WATER ENV READ-BACK: _EnvironmentReflections=1.00, keyword _ENVIRONMENTREFLECTIONS_OFF=False,
+    _SpecularHighlights=1.00, keyword _SPECULARHIGHLIGHTS_OFF=False, _Smoothness=1.00,
+    glossMap=T_Ground_Puddle_M, _METALLICSPECGLOSSMAP=True
+
+**Every switch is correct.** The water is set to reflect: environment reflections on, specular on, smoothness
+1.00 times a gloss map whose water alpha is 0.876, with the metallic/gloss keyword enabled. And the probe still
+moves it by **+0.00 of 255** (mean |change| 0.07), while the same probe also fails to help the lane (+0.01) even
+with the lane's lobe and environment reflections explicitly restored.
+
+So the material is not the fault and the water is not the fault. What is left is the capture itself:
+
+    PROBE READ-BACK: the probe has no render texture to read
+
+A realtime probe whose `texture` is null never handed anything to the renderer. (Caveat stated: Unity does not
+document exposing a realtime probe's cubemap through `texture`, so this line is strong evidence, not proof —
+which is why the material read-backs above matter, and they all pass.) With both surfaces correctly set and the
+probe contributing to neither, the reading is that **the probe produced no capture** — five passes of material
+work could never have fixed that.
+
+THE NUMBERS THIS PASS (same frozen pose, masks from the renderer)
+
+    WATER, on the water's own pixels: 54,404 px, mean G 46.57 of 255, bright(>140) 0 (0.0 %)
+    LANE,  on the lane's own pixels:  7,279 px, mean G 23.56
+    FIELD: 5,222 px, mean G 22.32
+    ->  water/lane 1.98x,  lane/field 1.06x
+
+**The lane is 1.06x the field — inside the order's 15 % ceiling, and no longer the brightest thing on the
+ground.** The Fresnel direction is still right: the near half of the puddle means 40.77, the grazing far half
+52.37, brighter toward the horizon as a dielectric should be. The water's own material accounts for 3 % of what
+is visible in it, and the water carries no glint, because nothing is being reflected into it.
+
+One honest note on the lane mask: it moved from 1,204 px last pass to 7,279 px this one, because
+`PathMudWetness` keeps writing the lane's colour and smoothness as the storm comes and goes during a run — the
+surface is not static while it is being measured. The lane figure above rests on the larger sample and both are
+inside the ceiling.
+
+WHAT THE NEXT ATTEMPT SHOULD DO (one change, not a pass of tuning)
+
+Stop trying to make a realtime probe work and give the sky reflection something real to read: bake the probe to a
+cubemap asset (or assign `RenderSettings.customReflectionTexture`), and re-run this same harness — the
+`WATER ENV READ-BACK` line and the probe on/off pair over the water's own pixels will say in one run whether the
+moon lands in the puddle. If it still does not after that, the honest answer is that a flat alpha-blended decal
+at this angle cannot show a moon disc and the mechanism needs to be a different one — which is a call for Todd,
+not for another pass.
+
+Verdict: **M32c is NOT closed and no done marker is written.** The lane half is met and measured (1.06x, inside
+the ceiling). The water half reads as water in the frame but carries no reflected sky, and the reason is now
+narrowed to a single, named thing — the probe's capture — with every material switch verified in writing.
+
+=========================== PASS 4 AND EARLIER, BELOW ===========================
 
 WHAT WAS FIXED, AND WHAT FOUND IT
 

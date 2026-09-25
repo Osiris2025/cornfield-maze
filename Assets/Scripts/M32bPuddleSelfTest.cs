@@ -365,6 +365,7 @@ public class M32bPuddleSelfTest : MonoBehaviour
                  : ("present, realtime/scripted via scripting, enabled=" + probe.enabled + ", box " +
                     probe.size.x.ToString("0") + " x " + probe.size.z.ToString("0") + " m, refreshed now that " +
                     "the sky is at night")));
+        ProbeReadBack(probe);
 
         player.SetEyeHeightForTest(1.15f);
         var backCell = maze.NearestPathCell(puddlePos - laneAxis * 6f);
@@ -539,6 +540,48 @@ public class M32bPuddleSelfTest : MonoBehaviour
     int _capW, _capH;
 
     /// <summary>
+    /// THE TEST THAT SETTLES THE PROBE QUESTION. Until now the probe's capture has been inferred from what the
+    /// water does with it — and a surface that ignores a cubemap looks exactly like a cubemap that is empty. Four
+    /// passes have argued about the inference. So read the cubemap itself: six faces, mean brightness each. The
+    /// sky dome is only 57 m out and follows the camera, so a probe inside it that captured anything at all shows
+    /// a bright sky on every face but the downward one; an empty capture is black on all six.
+    /// This is the same move that caught `alphaSource=None`: look at the data, not at the surface wearing it.
+    /// </summary>
+    void ProbeReadBack(ReflectionProbe p)
+    {
+        if (p == null) { Emit("PROBE READ-BACK: no probe in the scene"); return; }
+        var rt = p.texture as RenderTexture;
+        if (rt == null) { Emit("PROBE READ-BACK: the probe has no render texture to read"); return; }
+        var prev = RenderTexture.active;
+        var names = new[] { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
+        var faces = new[] { CubemapFace.PositiveX, CubemapFace.NegativeX, CubemapFace.PositiveY,
+                            CubemapFace.NegativeY, CubemapFace.PositiveZ, CubemapFace.NegativeZ };
+        var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
+        string line = "PROBE READ-BACK (the probe's own cubemap, face mean G of 255)";
+        double allSum = 0; int allN = 0, allBright = 0;
+        for (int f = 0; f < 6; f++)
+        {
+            Graphics.SetRenderTarget(rt, 0, faces[f]);
+            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+            tex.Apply();
+            var px = tex.GetPixels32();
+            double s = 0; int over = 0;
+            for (int i = 0; i < px.Length; i++) { s += px[i].g; if (px[i].g > 140) over++; }
+            float mean = px.Length > 0 ? (float)(s / px.Length) : 0f;
+            allSum += s; allN += px.Length; allBright += over;
+            line += "  " + names[f] + " " + mean.ToString("0.0") + (over > 0 ? " [" + over + " bright]" : "");
+        }
+        RenderTexture.active = prev;
+        Object.Destroy(tex);
+        float overall = allN > 0 ? (float)(allSum / allN) : 0f;
+        Emit(line + "  — overall " + overall.ToString("0.00") + ", bright px " + allBright + ". " +
+             (overall < 2f
+                 ? "ALL BLACK: the capture holds no sky. The fault is the capture, not the water, and no amount of " +
+                   "material work will put the moon in the puddle."
+                 : "The capture holds light: the water's material is what is not using it."));
+    }
+
+    /// <summary>
     /// One capture, one frozen pose. Every capture in the deliverable below goes through here, so every
     /// comparison is between frames whose camera POSE is identical — the pass-2 defect cannot come back.
     /// </summary>
@@ -614,12 +657,28 @@ public class M32bPuddleSelfTest : MonoBehaviour
         var laneCol = laneMat.GetColor("_BaseColor");
         var laneMap = laneMat.GetTexture("_BaseMap");
 
+        // THE WATER'S ENVIRONMENT REFLECTIONS, READ BACK RATHER THAN ASSUMED. Five passes have tested whether the
+        // probe reaches the water; none has ever read the one switch on the water that decides it. The same rule
+        // that caught `alphaSource=None` applies: look at the data the material carries.
+        Emit("WATER ENV READ-BACK: _EnvironmentReflections=" +
+             (puddleMat.HasProperty("_EnvironmentReflections") ? puddleMat.GetFloat("_EnvironmentReflections").ToString("0.00") : "n/a") +
+             ", keyword _ENVIRONMENTREFLECTIONS_OFF=" + puddleMat.IsKeywordEnabled("_ENVIRONMENTREFLECTIONS_OFF") +
+             ", _SpecularHighlights=" +
+             (puddleMat.HasProperty("_SpecularHighlights") ? puddleMat.GetFloat("_SpecularHighlights").ToString("0.00") : "n/a") +
+             ", keyword _SPECULARHIGHLIGHTS_OFF=" + puddleMat.IsKeywordEnabled("_SPECULARHIGHLIGHTS_OFF") +
+             ", _Smoothness=" + (puddleMat.HasProperty("_Smoothness") ? puddleMat.GetFloat("_Smoothness").ToString("0.00") : "n/a") +
+             ", glossMap=" + (gloss != null ? gloss.name : "none") +
+             ", _METALLICSPECGLOSSMAP=" + puddleMat.IsKeywordEnabled("_METALLICSPECGLOSSMAP"));
+        // And then make it so, explicitly, because the water is the one surface in this game allowed to reflect.
+        Materials.UnmakeMatteForTest(puddleMat);
+
         var fr = new Color32[7][];
         string[] nm = { "m32c-water-on.png", "m32c-water-off.png", "m32c-water-mask.png",
                         "m32c-water-nomoon.png", "m32c-water-black.png", "m32c-lane-mask.png",
                         "m32c-lane-control.png" };
 
         ReflectionProbes.SetEnabledForTest(probe, true);
+        ReflectionProbes.Refresh(probe);     // re-capture with the sky exactly as it stands for these frames
         yield return ShootInto(player, aimPoint, nm[0], fr, 0);
 
         ReflectionProbes.SetEnabledForTest(probe, false);
