@@ -10,12 +10,14 @@ using UnityEngine;
 /// claim "the moon rose and clouds stole it" is a measurement and not a memory of one.
 ///
 /// Dormant unless the player is launched with -skycapture. Evidence lands in:
-///   ~/Library/Application Support/arl480/Corn Field Maze/sky-report.txt and sky-t0.png / sky-t40.png
+///   ~/Library/Application Support/arl480/Corn Field Maze/m25b-moon-report.txt and moon-t0.png / moon-t40.png
+///   (M25's own report, sky-report.txt / sky-t0.png / sky-t40.png, is the committed artifact from that pass.)
 /// </summary>
 public class SkyCapture : MonoBehaviour
 {
     const string Flag = "-skycapture";
     const float SecondFrameAt = 40f;   // §25.5: the moon crosses the horizon in the first 40 seconds
+    const float ClearShotAt = 22f;     // M25b: when the moon is high enough to clear the corn from a lane
 
     readonly StringBuilder _report = new StringBuilder();
 
@@ -57,7 +59,9 @@ public class SkyCapture : MonoBehaviour
         yield return null;
 
         // ---- t ~ 0: dusk --------------------------------------------------------------------
-        yield return CaptureFrame("sky-t0.png");
+        yield return AimAtMoon(player);
+        yield return CaptureFrame("moon-t0.png");
+        Say("M25b view: " + DuskSky.MoonViewReport());
         Say("t=" + DuskSky.PlaySeconds.ToString("0.0") + "s DUSK  night01=" + DuskSky.Night01.ToString("0.00") +
             " sunColour=" + DuskSky.SunColor.ToString("0.00") + " sunIntensity=" + DuskSky.SunIntensity.ToString("0.00") +
             " sunElevation=" + SunElevationDegrees().ToString("0.0") + "deg" +
@@ -66,14 +70,32 @@ public class SkyCapture : MonoBehaviour
             " starGate=" + DuskSky.StarGate.ToString("0.00"));
 
         // ---- sample the whole rise so occlusion is measured, not assumed --------------------
+        string geoHow;
+        float expectedPx = ExpectedDiscPixels(out geoHow);
+        Say("M25b moon: " + DuskSky.MoonTextureReport());
+        Say("M25b geometry: discAngularSize=" + MoonAngularDegrees().ToString("0.00") + "deg" +
+            " quadAngularSize=" + (MoonAngularDegrees() / DuskSky.DiscFraction).ToString("0.00") + "deg" +
+            " discFraction=" + DuskSky.DiscFraction.ToString("0.00") +
+            " expectedDiscPx=" + expectedPx.ToString("0.0") + "px  (" + geoHow + ")");
         int beats = 0;
         int husksSeen = 0;
         bool wasOccluded = false;
+        bool clearShotTaken = false;
         float maxOcclusion = 0f, occludedSeconds = 0f;
         float nightAt = -1f;
         while (DuskSky.PlaySeconds < SecondFrameAt)
         {
             yield return null;
+
+            // M25b: the moon clears the crop at roughly 10 degrees of elevation, which §25.5's rise reaches
+            // about 15 seconds in; below that the 2.9-3.2 m corn is in front of it and no camera in a lane
+            // can show it. This is the frame where the moon is first actually visible.
+            if (!clearShotTaken && DuskSky.PlaySeconds >= ClearShotAt)
+            {
+                clearShotTaken = true;
+                yield return AimAtMoon(player);
+                yield return CaptureFrame("moon-clear.png");
+            }
 
             // The sky is what this harness is observing. The Husk hunted a motionless player down inside
             // the 40 s and the second frame came out as a death close-up. Keep the chaser out of the take.
@@ -93,7 +115,9 @@ public class SkyCapture : MonoBehaviour
         }
 
         // ---- t ~ 40: the moon is up ---------------------------------------------------------
-        yield return CaptureFrame("sky-t40.png");
+        yield return AimAtMoon(player);
+        yield return CaptureFrame("moon-t40.png");
+        Say("M25b view: " + DuskSky.MoonViewReport());
         Say("t=" + DuskSky.PlaySeconds.ToString("0.0") + "s NIGHT night01=" + DuskSky.Night01.ToString("0.00") +
             " sunColour=" + DuskSky.SunColor.ToString("0.00") + " sunIntensity=" + DuskSky.SunIntensity.ToString("0.00") +
             " sunElevation=" + SunElevationDegrees().ToString("0.0") + "deg" +
@@ -143,10 +167,109 @@ public class SkyCapture : MonoBehaviour
         if (filter == null || filter.sharedMesh == null) return float.NaN;
         var verts = filter.sharedMesh.vertices;
         if (verts.Length < 4) return float.NaN;
-        // The moon is the first quad written; its own width is the quad's local height above the horizon.
-        float halfWidth = (verts[1] - verts[0]).magnitude * 0.5f;
+        // The moon is the first quad written.
+        // M25b: the quad is 1/DiscFraction larger than the moon, because the photograph's disc only fills
+        // the middle of it. Report the DISC — multiply back — or this line reads 11 degrees and looks like a
+        // §25.5 regression when the moon on screen is the size it always was.
+        float halfWidth = (verts[1] - verts[0]).magnitude * 0.5f * DuskSky.DiscFraction;
         float radius = verts[0].magnitude;
         return Mathf.Atan(halfWidth / Mathf.Max(0.001f, radius)) * 2f * Mathf.Rad2Deg;
+    }
+
+    /// <summary>
+    /// M25b: the disc's diameter in pixels of the 2556x1179 review frame, from the camera's own projection.
+    /// This is the number the measurement of the captured PNG has to agree with — an internal check on its
+    /// own is worth nothing, the whole point is the frame.
+    ///
+    /// The review frame is a centred crop of the window to 2556:1179, scaled to exactly that size. The
+    /// window's half-height is fovY/2, so tan(fovY/2) / halfHeight is the tan-per-window-pixel, and the
+    /// crop's half-height is then mapped onto FinalH/2.
+    /// </summary>
+    static float ExpectedDiscPixels(out string how)
+    {
+        const float finalW = 2556f, finalH = 1179f;
+        var cam = Camera.main;
+        if (cam == null) { how = "no camera"; return float.NaN; }
+        float cropH = Mathf.Min(Screen.height, Screen.width / (finalW / finalH));
+        float tanPerWinPx = Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) / (Screen.height * 0.5f);
+        float tanHalfDisc = Mathf.Tan(DuskSky.DiscAngularRadiusDeg * Mathf.Deg2Rad);
+        float pxInCrop = 2f * tanHalfDisc / tanPerWinPx;
+        float px = pxInCrop * (finalH / cropH);
+        how = "fovY=" + cam.fieldOfView.ToString("0.0") + "deg, window=" + Screen.width + "x" + Screen.height +
+              ", crop=" + cropH.ToString("0") + "px tall -> " + finalW.ToString("0") + "x" + finalH.ToString("0") +
+              ", tan/win-px=" + tanPerWinPx.ToString("0.0000000");
+        return px;
+    }
+
+    /// <summary>M25b: the camera's forward elevation in degrees — how far up the view actually points.</summary>
+    static float CamForwardElevationDeg()
+    {
+        var cam = Camera.main;
+        if (cam == null) return float.NaN;
+        return Mathf.Asin(Mathf.Clamp(cam.transform.forward.y, -1f, 1f)) * Mathf.Rad2Deg;
+    }
+
+    /// <summary>M25b: the moon's elevation as seen from the camera, in degrees.</summary>
+    static float MoonElevationFromCameraDeg()
+    {
+        var cam = Camera.main;
+        if (cam == null) return float.NaN;
+        Vector3 d = (DuskSky.MoonWorldCentre - cam.transform.position).normalized;
+        return Mathf.Asin(Mathf.Clamp(d.y, -1f, 1f)) * Mathf.Rad2Deg;
+    }
+
+    /// <summary>
+    /// M25b: put the moon in the frame.
+    ///
+    /// The yaw is a straight correction from the measured offset. The PITCH is not: the camera hangs behind a
+    /// rig that also moves the boom, so the camera's forward elevation does not follow the controller's pitch
+    /// one-for-one (setting pitch = the moon's elevation moved the camera the WRONG way and left the moon
+    /// 81 deg out of frame). So the pitch is solved by bisection against the camera's own forward elevation —
+    /// measured, not assumed. Every attempt is reported, including the residual, so a frame that does not
+    /// contain the moon cannot pass as evidence that it does.
+    /// </summary>
+    IEnumerator AimAtMoon(FarmWalkerController player)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            player.AimAtForTest(DuskSky.MoonWorldCentre);
+            yield return null;
+            yield return null;
+            float yawOff = DuskSky.MoonYawOffsetDeg;
+            if (Mathf.Abs(yawOff) < 0.5f) break;
+            player.NudgeLookForTest(yawOff, 0f);
+            yield return null;
+        }
+
+        float target = MoonElevationFromCameraDeg();
+        float lo = player.MinPitch, hi = player.MaxPitch;
+        player.NudgeLookForTest(0f, lo - player.PitchForTest);
+        yield return null; yield return null;
+        float elevLo = CamForwardElevationDeg();
+        player.NudgeLookForTest(0f, hi - player.PitchForTest);
+        yield return null; yield return null;
+        float elevHi = CamForwardElevationDeg();
+        bool rising = elevHi > elevLo;      // which way the camera goes when the pitch rises
+
+        for (int i = 0; i < 14; i++)
+        {
+            float mid = (lo + hi) * 0.5f;
+            player.NudgeLookForTest(0f, mid - player.PitchForTest);
+            yield return null; yield return null;
+            float elev = CamForwardElevationDeg();
+            if (Mathf.Abs(elev - target) < 0.5f) break;
+            bool needHigher = (elev < target) == rising;
+            if (needHigher) lo = mid; else hi = mid;
+        }
+
+        foreach (var beast in Object.FindObjectsByType<Husk>(FindObjectsSortMode.None))
+            Object.Destroy(beast.gameObject);
+        yield return null;
+        Say("M25b aim: residual yaw=" + DuskSky.MoonYawOffsetDeg.ToString("0.00") +
+            "deg pitch=" + DuskSky.MoonPitchOffsetDeg.ToString("0.00") +
+            "deg | cameraElev=" + CamForwardElevationDeg().ToString("0.0") +
+            "deg moonElev=" + MoonElevationFromCameraDeg().ToString("0.0") +
+            "deg | pitch range " + elevLo.ToString("0.0") + ".." + elevHi.ToString("0.0") + "deg");
     }
 
     IEnumerator CaptureFrame(string name)
@@ -169,9 +292,9 @@ public class SkyCapture : MonoBehaviour
     {
         try
         {
-            var path = Path.Combine(Application.persistentDataPath, "sky-report.txt");
+            var path = Path.Combine(Application.persistentDataPath, "m25b-moon-report.txt");
             var sb = new StringBuilder();
-            sb.AppendLine("M25 dusk / moonrise — measured on the built Mac app, " +
+            sb.AppendLine("M25b the moon — a photograph in the sky, measured on the built Mac app, " +
                           System.DateTime.Now.ToString("u", CultureInfo.InvariantCulture));
             sb.Append(_report);
             File.WriteAllText(path, sb.ToString());

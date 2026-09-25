@@ -1,0 +1,72 @@
+M25b the moon — a photograph in the sky, measured on the built Mac app, 2026-09-25 07:16:07Z
+M25b aim: residual yaw=0.00deg pitch=0.23deg | cameraElev=-1.7deg moonElev=-1.4deg | pitch range 87.4..-52.7deg
+frame moon-t0.png -> written
+M25b view: cameraYaw=74.0deg moonOffset yaw=0.0deg pitch=0.2deg viewport=(0.500,0.503) moonWorldY=0.4
+t=0.1s DUSK  night01=0.00 sunColour=RGBA(1.00, 0.62, 0.30, 1.00) sunIntensity=0.55 sunElevation=-2.0deg moonElev=1.0deg moonAngularSize=7.0deg starGate=0.00
+M25b moon: moonShader=Sprites/Default atlasShader=Sprites/Default texture=T_Moon_Full 1024x1024 submeshes=2 dstBlend=none queue=3209
+M25b geometry: discAngularSize=6.96deg quadAngularSize=11.22deg discFraction=0.62 expectedDiscPx=164.1px  (fovY=62.0deg, window=1300x820, crop=600px tall -> 2556x1179, tan/win-px=0.0014655)
+M25b aim: residual yaw=0.00deg pitch=-0.21deg | cameraElev=15.0deg moonElev=14.7deg | pitch range 87.4..-52.7deg
+frame moon-clear.png -> written
+M25b aim: residual yaw=-0.02deg pitch=-0.32deg | cameraElev=28.3deg moonElev=28.0deg | pitch range 87.1..-52.9deg
+frame moon-t40.png -> written
+M25b view: cameraYaw=74.0deg moonOffset yaw=0.0deg pitch=-0.3deg viewport=(0.500,0.495) moonWorldY=27.9
+t=40.0s NIGHT night01=1.00 sunColour=RGBA(0.34, 0.40, 0.58, 1.00) sunIntensity=0.05 sunElevation=-13.0deg moonElev=28.0deg moonAngularSize=6.9deg starGate=1.00
+cloud occultation over the rise: beats=1 (a beat = a cloud covering more than half the moon), occludedTime=13.7s, max=0.72
+night arrived at t=40.0s (rule: 40 s OR 2 cells in, whichever comes first)
+moonrise frames: husk instances observed alive during the rise = 0 (proves the renamed class spawns and is found by type at runtime)
+PASS: a cloud crossed the moon during the rise — the field loses its light for a beat
+
+--- frame measurement (m25b-moon-t40 (t=40s, night, aimed)): m25b-moon-t40.png  265x265 ---
+decoded in python from the file (stdlib zlib, no image library); sky scanned = top 251 rows; search box 265x265 at (517,281) centred on the harness aim
+peak sky luminance = 207/255
+threshold sensitivity (brightest connected region):
+  >=0.40*peak : bbox 82x83 px, area 5176 px, equivalent diameter 81.2 px, centre (650,413)
+  >=0.45*peak : bbox 81x82 px, area 4924 px, equivalent diameter 79.2 px, centre (650,414)
+  >=0.50*peak : bbox 80x81 px, area 4541 px, equivalent diameter 76.0 px, centre (650,413)
+  >=0.55*peak : bbox 79x81 px, area 4010 px, equivalent diameter 71.5 px, centre (650,413)
+  >=0.60*peak : bbox 72x81 px, area 3209 px, equivalent diameter 63.9 px, centre (652,413)
+  >=0.70*peak : bbox 59x54 px, area 1620 px, equivalent diameter 45.4 px, centre (657,424)
+  >=0.85*peak : bbox 30x43 px, area 569 px, equivalent diameter 26.9 px, centre (660,423)
+headline disc width = 80 px (bbox at >=0.50*peak); widths across thresholds = [82, 81, 80, 79, 72, 59, 30]
+disc height/width = 1.01 (the oblate squash is §25.5 — expect ~0.62 low, ~1.00 high)
+angular size in degrees:  designed 6.96 deg  ->  as measured on this frame 6.71 deg
+pixel diameter:           measured 80 px  vs  camera projection 83.0 px  = 96.4%  (agree within 8%: yes)
+disc fraction honoured:   achieved 0.60 (quad expected 133.9 px) vs 0.62 built  ->  yes
+VERDICT (m25b-moon-t40 (t=40s, night, aimed)): PASS — disc 80px wide on a 265x265 frame
+
+--- frame measurement (m25b-moon-t0 (t=0, dusk, aimed; moon behind the crop)): m25b-moon-t0.png  265x265 ---
+decoded in python from the file (stdlib zlib, no image library); sky scanned = top 251 rows; search box 265x265 at (517,275) centred on the harness aim
+peak sky luminance = 221/255
+threshold sensitivity (brightest connected region):
+  >=0.40*peak : bbox 45x205 px, area 4018 px, equivalent diameter 71.5 px, centre (623,377)
+  >=0.45*peak : bbox 52x47 px, area 999 px, equivalent diameter 35.7 px, centre (674,298)
+  >=0.50*peak : bbox 50x32 px, area 810 px, equivalent diameter 32.1 px, centre (672,290)
+  >=0.55*peak : bbox 50x32 px, area 810 px, equivalent diameter 32.1 px, centre (672,290)
+  >=0.60*peak : bbox 50x32 px, area 810 px, equivalent diameter 32.1 px, centre (672,290)
+  >=0.70*peak : bbox 50x32 px, area 810 px, equivalent diameter 32.1 px, centre (672,290)
+  >=0.85*peak : bbox 8x24 px, area 108 px, equivalent diameter 11.7 px, centre (768,346)
+headline disc width = 50 px (bbox at >=0.50*peak); widths across thresholds = [45, 52, 50, 50, 50, 50, 8]
+disc height/width = 0.64 (the oblate squash is §25.5 — expect ~0.62 low, ~1.00 high)
+NOTE: the disc touches the frame edge — the true disc may be larger than measured
+angular size in degrees:  designed 6.96 deg  ->  as measured on this frame 4.19 deg
+pixel diameter:           measured 50 px  vs  camera projection 83.0 px  = 60.2%  (agree within 8%: NO)
+disc fraction honoured:   achieved 0.37 (quad expected 133.9 px) vs 0.62 built  ->  NO
+VERDICT (m25b-moon-t0 (t=0, dusk, aimed; moon behind the crop)): FAIL — disc 50px wide on a 265x265 frame
+
+--- frame measurement (m25b-moon-clear (t=22s, aimed; cloud against the disc)): m25b-moon-clear.png  265x265 ---
+decoded in python from the file (stdlib zlib, no image library); sky scanned = top 251 rows; search box 265x265 at (517,281) centred on the harness aim
+peak sky luminance = 192/255
+threshold sensitivity (brightest connected region):
+  >=0.40*peak : bbox 265x164 px, area 27719 px, equivalent diameter 187.9 px, centre (649,394)
+  >=0.45*peak : bbox 150x63 px, area 6139 px, equivalent diameter 88.4 px, centre (706,346)
+  >=0.50*peak : bbox 131x57 px, area 4807 px, equivalent diameter 78.2 px, centre (707,345)
+  >=0.55*peak : bbox 123x53 px, area 4014 px, equivalent diameter 71.5 px, centre (711,345)
+  >=0.60*peak : bbox 115x49 px, area 3187 px, equivalent diameter 63.7 px, centre (715,346)
+  >=0.70*peak : bbox 81x38 px, area 1659 px, equivalent diameter 46.0 px, centre (730,346)
+  >=0.85*peak : bbox 28x33 px, area 525 px, equivalent diameter 25.9 px, centre (662,419)
+headline disc width = 131 px (bbox at >=0.50*peak); widths across thresholds = [265, 150, 131, 123, 115, 81, 28]
+disc height/width = 0.44 (the oblate squash is §25.5 — expect ~0.62 low, ~1.00 high)
+angular size in degrees:  designed 6.96 deg  ->  as measured on this frame 10.99 deg
+pixel diameter:           measured 131 px  vs  camera projection 83.0 px  = 157.8%  (agree within 8%: NO)
+disc fraction honoured:   achieved 0.98 (quad expected 133.9 px) vs 0.62 built  ->  NO
+VERDICT (m25b-moon-clear (t=22s, aimed; cloud against the disc)): FAIL — disc 131px wide on a 265x265 frame

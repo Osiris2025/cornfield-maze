@@ -46,6 +46,14 @@ public sealed class DuskSky : MonoBehaviour
     public const float RiseSeconds = 40f;
     public const float NightCells = 2f;
 
+    /// <summary>
+    /// M25b (§25.5): the moon's DISC is this fraction of T_Moon_Full.png's width — scripts/moon_build.py's
+    /// DISC_FRACTION, and the two must move together. A quad that should subtend angle A is therefore sized
+    /// A / DiscFraction: only the middle 62 % of the quad is the disc and the rest is the baked amber glow.
+    /// Forget this factor and the moon silently shrinks to 62 % of the size §25.5 asks for.
+    /// </summary>
+    public const float DiscFraction = 0.62f;
+
     const float Radius = 57f;          // just inside NightSky's 58 so the clouds draw over the stars
     const int ScrapCount = 18;
     const int StripCount = 6;
@@ -64,10 +72,10 @@ public sealed class DuskSky : MonoBehaviour
 
     Mesh _mesh;
     Material _mat;
+    Material _moonMat;
     Vector3[] _verts;
     Vector2[] _uvs;
     Color[] _colors;
-    int[] _tris;
     int _quadCount;
 
     // moon
@@ -127,8 +135,10 @@ public sealed class DuskSky : MonoBehaviour
         BuildClouds();
         AllocateMesh();
         _mat = SkyMaterial();
+        _moonMat = MoonMaterial();
         var renderer = gameObject.AddComponent<MeshRenderer>();
-        renderer.sharedMaterial = _mat;
+        // Submesh 0 = warm band + torn clouds (the atlas). Submesh 1 = the moon, its own texture.
+        renderer.sharedMaterials = new[] { _mat, _moonMat };
         renderer.shadowCastingMode = ShadowCastingMode.Off;
         renderer.receiveShadows = false;
         renderer.lightProbeUsage = LightProbeUsage.Off;
@@ -240,10 +250,101 @@ public sealed class DuskSky : MonoBehaviour
         Rebuild();
     }
 
+    /// <summary>M25b: the moon's direction on the dome, for the frame-space checks.</summary>
+    public static Vector3 MoonDirection => Instance != null ? Instance._moonDir : Vector3.up;
+
+    /// <summary>
+    /// M25b: what the moon is actually drawn with, read off the live renderer — not what we intended.
+    /// The milestone exists because a generated disc read as a blob, so the evidence has to name the texture.
+    /// </summary>
+    public static string MoonTextureReport()
+    {
+        var sky = Instance;
+        if (sky == null) return "FAIL: no DuskSky instance";
+        var mr = sky.GetComponent<MeshRenderer>();
+        if (mr == null || mr.sharedMaterials.Length < 2 || mr.sharedMaterials[1] == null)
+            return "FAIL: the sky renderer has no submesh-1 (moon) material";
+        var mat = mr.sharedMaterials[1];
+        var tex = mat.HasProperty("_BaseMap") ? mat.GetTexture("_BaseMap") : mat.mainTexture;
+        if (tex == null) return "FAIL: the moon material has no texture";
+        // Which shader is ACTUALLY drawing this: Shader.Find can fail in a player build if nothing else
+        // references the shader, and then the material is the fallback and every blend instruction in the
+        // C# is a no-op. Name it rather than assume it.
+        var atlas = mr.sharedMaterials[0];
+        return "moonShader=" + mat.shader.name +
+               " atlasShader=" + (atlas != null ? atlas.shader.name : "?") +
+               " texture=" + tex.name + " " + tex.width + "x" + tex.height +
+               " submeshes=" + mr.sharedMaterials.Length +
+               " dstBlend=" + (mat.HasProperty("_DstBlend") ? mat.GetFloat("_DstBlend").ToString("0") : "none") +
+               " queue=" + mat.renderQueue;
+    }
+
+    /// <summary>
+    /// M25b: M25b: where the moon is drawn, in world terms — its quad centre, and its angular offset from
+    /// the camera's forward direction. The evidence needs this because the moon is 28 degrees up at the end
+    /// of the rise and a third-person camera pitched at the lane can have it above the frame entirely; then
+    /// "we photographed the moon" would be a claim about a frame that does not contain it.
+    /// </summary>
+    public static Vector3 MoonWorldCentre
+    {
+        get
+        {
+            var sky = Instance;
+            var cam = Camera.main;
+            if (sky == null || cam == null) return Vector3.zero;
+            return cam.transform.position + MoonDirection * Radius;
+        }
+    }
+
+    /// <summary>Signed yaw and pitch between the camera's forward direction and the moon, in degrees.</summary>
+    public static float MoonYawOffsetDeg
+    {
+        get
+        {
+            var cam = Camera.main;
+            if (cam == null) return float.NaN;
+            Vector3 toMoon = (MoonWorldCentre - cam.transform.position).normalized;
+            Vector3 fwd = cam.transform.forward;
+            return Vector3.SignedAngle(new Vector3(fwd.x, 0f, fwd.z), new Vector3(toMoon.x, 0f, toMoon.z), Vector3.up);
+        }
+    }
+
+    /// <summary>How far the moon is above the camera's forward direction, in degrees.</summary>
+    public static float MoonPitchOffsetDeg
+    {
+        get
+        {
+            var cam = Camera.main;
+            if (cam == null) return float.NaN;
+            Vector3 toMoon = (MoonWorldCentre - cam.transform.position).normalized;
+            float fwdY = Mathf.Clamp(cam.transform.forward.y, -1f, 1f);
+            return Mathf.Asin(Mathf.Clamp(toMoon.y, -1f, 1f)) * Mathf.Rad2Deg -
+                   Mathf.Asin(fwdY) * Mathf.Rad2Deg;
+        }
+    }
+
+    /// <summary>Signed yaw and pitch between the camera's forward direction and the moon, in degrees.</summary>
+    public static string MoonViewReport()
+    {
+        var cam = Camera.main;
+        if (cam == null) return "FAIL: no camera";
+        float yaw = MoonYawOffsetDeg, pitch = MoonPitchOffsetDeg;
+        Vector3 vp = cam.WorldToViewportPoint(MoonWorldCentre);
+        bool onScreen = vp.z > 0f && vp.x > 0f && vp.x < 1f && vp.y > 0f && vp.y < 1f;
+        return "cameraYaw=" + cam.transform.eulerAngles.y.ToString("0.0") + "deg" +
+               " moonOffset yaw=" + yaw.ToString("0.0") + "deg pitch=" + pitch.ToString("0.0") + "deg" +
+               " viewport=" + (onScreen ? "(" + vp.x.ToString("0.000") + "," + vp.y.ToString("0.000") + ")" : "OFF-SCREEN") +
+               " moonWorldY=" + MoonWorldCentre.y.ToString("0.0");
+    }
+
+    /// <summary>M25b: the disc's angular radius in degrees — deliberately oversized (§25.5), as a constant
+    /// so the frame-space check can use the same number the dome was built from.</summary>
+    public const float DiscAngularRadiusDeg = 3.5f;
+
     float MoonAngularRadiusDeg()
     {
         // §25.5: deliberately oversized for the Halloween read — roughly 7 degrees across, not 0.5.
-        return 3.5f;
+        return DiscAngularRadiusDeg;
     }
 
     void DriveLights(float moonEl)
@@ -365,16 +466,13 @@ public sealed class DuskSky : MonoBehaviour
         _verts = new Vector3[_quadCount * 4];
         _uvs = new Vector2[_quadCount * 4];
         _colors = new Color[_quadCount * 4];
-        _tris = new int[_quadCount * 6];
         for (int i = 0; i < _quadCount; i++)
         {
-            int v = i * 4, t = i * 6;
+            int v = i * 4;
             _uvs[v] = new Vector2(0f, 0f);
             _uvs[v + 1] = new Vector2(1f, 0f);
             _uvs[v + 2] = new Vector2(0f, 1f);
             _uvs[v + 3] = new Vector2(1f, 1f);
-            _tris[t] = v; _tris[t + 1] = v + 2; _tris[t + 2] = v + 1;
-            _tris[t + 3] = v + 2; _tris[t + 4] = v + 3; _tris[t + 5] = v + 1;
         }
     }
 
@@ -388,18 +486,20 @@ public sealed class DuskSky : MonoBehaviour
 
         // ---- the moon ---------------------------------------------------------------------
         float moonEl = Mathf.Lerp(-1.5f, 28f, _moonElev01);
-        float size = Mathf.Tan(MoonAngularRadiusDeg() * Mathf.Deg2Rad) * Radius * 2f;
+        // M25b: the photograph IS the moon. Sized A / DiscFraction so the DISC still subtends §25.5's ~7
+        // degrees and the extra 61 % of quad is the glow baked around it; UVs 0..1, not an atlas region.
+        float size = Mathf.Tan(MoonAngularRadiusDeg() * Mathf.Deg2Rad) * Radius * 2f / DiscFraction;
         // Oblate near the horizon: atmospheric flattening, exaggerated for the Halloween read.
         float oblate = Mathf.Lerp(0.62f, 1f, Mathf.Clamp01(moonEl / 10f));
         Color moonCol = Color.Lerp(new Color(1f, 0.58f, 0.26f), new Color(1f, 0.90f, 0.74f), Mathf.Clamp01(moonEl / 16f));
         moonCol.a = Mathf.Lerp(0.92f, 0.80f, Mathf.Clamp01(moonEl / 10f)) * (1f - _occlusion * 0.85f)
                     * Mathf.Clamp01(0.25f + _moonElev01 * 2f);
-        WriteQuad(n++, _moonDir * Radius, size, size * oblate, moonCol, camRight, camUp, 0f);
+        WriteQuad(n++, _moonDir * Radius, size, size * oblate, moonCol, camRight, camUp, FullUv);
 
         // ---- the warm band low in the west at dusk ----------------------------------------
         Vector3 bandDir = DirOf(250f, 5.5f);
         Color band = new Color(1f, 0.56f, 0.26f, (1f - _night01) * (1f - _night01) * 0.55f);
-        WriteQuad(n++, bandDir * Radius, 62f, 15f, band, camRight, camUp, 1f);
+        WriteQuad(n++, bandDir * Radius, 62f, 15f, band, camRight, camUp, 0f);
 
         // ---- clouds ------------------------------------------------------------------------
         for (int i = 0; i < _clouds.Length; i++)
@@ -418,15 +518,45 @@ public sealed class DuskSky : MonoBehaviour
             col.a = c.Opacity * Mathf.Lerp(0.55f, 1f, _night01);
             // fast scud gets a touch of speed blur by being drawn dimmer
             if (c.Kind == 2) col.a *= 0.75f;
-            WriteQuad(n++, d * Radius, w, h, col, camRight, camUp, 2f);
+            WriteQuad(n++, d * Radius, w, h, col, camRight, camUp, 1f);
         }
 
         _mesh.Clear();
         _mesh.vertices = _verts;
         _mesh.uv = _uvs;
         _mesh.colors = _colors;
-        _mesh.triangles = _tris;
+        // M25b: the moon is submesh 1 now, so quad 0's six indices move out of the atlas submesh. Left in,
+        // the atlas material would draw the old perlin disc straight over the photograph.
+        // NOTE: fill the submeshes with SetTriangles, never `mesh.triangles` — that shorthand sets
+        // subMeshCount back to 1, and the following SetTriangles(…, 1) then fails with "Submesh index is
+        // out of bounds" and the moon is silently never drawn. That is exactly what the first build did.
+        _mesh.subMeshCount = 2;
+        _mesh.SetTriangles(SkyTriangles(), 0);
+        _mesh.SetTriangles(MoonTriangles, 1);
         _mesh.bounds = new Bounds(Vector3.zero, Vector3.one * (Radius * 2.4f));
+    }
+
+    /// <summary>
+    /// The moon's own quad: vertices 0-3, same winding as the atlas quads. Static because the moon is
+    /// always quad 0 — AllocateMesh and Rebuild both assume it.
+    /// </summary>
+    static readonly int[] MoonTriangles = { 0, 2, 1, 2, 3, 1 };
+
+    const float RegionCount = 2f;      // atlas columns: 0 = warm band, 1 = torn cloud
+    const float FullUv = -1f;          // regionU meaning "sample the whole texture, 0..1"
+
+    /// <summary>Every quad except the moon (quad 0), for the atlas material.</summary>
+    int[] SkyTriangles()
+    {
+        var tris = new int[(_quadCount - 1) * 6];
+        int t = 0;
+        for (int q = 1; q < _quadCount; q++)
+        {
+            int v = q * 4;
+            tris[t++] = v; tris[t++] = v + 2; tris[t++] = v + 1;
+            tris[t++] = v + 2; tris[t++] = v + 3; tris[t++] = v + 1;
+        }
+        return tris;
     }
 
     void WriteQuad(int index, Vector3 centre, float width, float height, Color color,
@@ -441,7 +571,7 @@ public sealed class DuskSky : MonoBehaviour
         _verts[v + 2] = centre - r + u;
         _verts[v + 3] = centre + r + u;
         for (int i = 0; i < 4; i++) _colors[v + i] = color;
-        float u0 = regionU / 3f, u1 = (regionU + 1f) / 3f;
+        float u0 = regionU < 0f ? 0f : regionU / RegionCount, u1 = regionU < 0f ? 1f : (regionU + 1f) / RegionCount;
         int v0 = index * 4;
         _uvs[v0] = new Vector2(u0, 0f);
         _uvs[v0 + 1] = new Vector2(u1, 0f);
@@ -450,17 +580,50 @@ public sealed class DuskSky : MonoBehaviour
     }
 
     /// <summary>
-    /// One material for moon, band and clouds: each quad samples its own region of an atlas built here,
-    /// so the whole sky is one draw call. Region 0 = moon disc, 1 = soft horizontal band, 2 = torn cloud.
+    /// The band and the torn clouds: one atlas, one draw call, additive because both are glows.
+    /// Region 0 = soft horizontal band, 1 = torn cloud. (M25b: the moon used to be region 0 of this atlas;
+    /// it is its own material now — see MoonMaterial.)
     /// </summary>
     static Material SkyMaterial()
+    {
+        return UnlitMaterial(SkyAtlas(128), BlendMode.One, 3210);
+    }
+
+    /// <summary>
+    /// M25b: the moon's own material, sampling the photograph at full resolution.
+    ///
+    /// Why it left the atlas: the disc covers ~200 px of a 2556 px frame, and a 128 px atlas column would
+    /// resample the 1024 px photograph down to 128 — throwing away exactly the maria and crater detail this
+    /// pass exists for. Growing the atlas to suit the moon would mean a 1024 px column for two regions that
+    /// are pure gradients. So the sky is two draw calls instead of one, and neither the band nor the clouds
+    /// changed a pixel.
+    ///
+    /// Blending, measured rather than assumed: in the SHIPPED build the sky's materials are drawn by
+    /// Sprites/Default, because Shader.Find("CornMaze/StarUnlit") does not resolve in a player (nothing else
+    /// references the shader, so it is not in the build) and Sprites/Default is the explicit fallback here.
+    /// Sprites/Default is SrcAlpha/OneMinusSrcAlpha, so the moon composites — its maria darken the disc
+    /// instead of adding grey over the sky, which is the behaviour this milestone wants. The _SrcBlend /
+    /// _DstBlend pair below is stated anyway: StarUnlit now honours it with SrcAlpha/One as the default, so
+    /// the intent survives if the shader is ever included. DuskSky.MoonTextureReport() prints the shader
+    /// actually in use, so this is a fact in the report, not an assumption in a comment.
+    /// </summary>
+    static Material MoonMaterial()
+    {
+        var tex = Resources.Load<Texture2D>("Sky/T_Moon_Full");
+        var mat = UnlitMaterial(tex, BlendMode.OneMinusSrcAlpha, 3209);
+        if (tex == null)
+            Debug.LogWarning("[DuskSky] M25b: Resources/Sky/T_Moon_Full is missing — the moon has no disc");
+        return mat;
+    }
+
+    /// <summary>Shared setup for the sky's unlit quads: no fog, no z-write, the given blend and queue.</summary>
+    static Material UnlitMaterial(Texture2D tex, BlendMode dstBlend, int queue)
     {
         var shader = Shader.Find("CornMaze/StarUnlit");
         if (shader == null) shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         if (shader == null) shader = Shader.Find("Sprites/Default");
         var mat = new Material(shader);
 
-        var tex = SkyAtlas(128);
         if (mat.HasProperty("_BaseMap")) mat.SetTexture("_BaseMap", tex);
         if (mat.HasProperty("_MainTex")) mat.SetTexture("_MainTex", tex);
         if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", Color.white);
@@ -474,49 +637,40 @@ public sealed class DuskSky : MonoBehaviour
         if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
         if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 1f);
         if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-        if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)BlendMode.One);
+        if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)dstBlend);
         if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
-        mat.renderQueue = 3210;   // after the stars (3200) so cloud shapes sit over them
+        mat.renderQueue = queue;
         return mat;
     }
 
-    /// <summary>128x128 atlas: 3 columns — moon, warm band, torn cloud. Built in code, no assets.</summary>
+    /// <summary>
+    /// 128 px atlas, two columns — warm band, torn cloud. Built in code, no assets.
+    /// M25b: the moon's column is gone. It was a perlin patch pretending to be a disc; the moon is a
+    /// photograph now (MoonMaterial), and nothing here paints it any more, so the blob cannot creep back.
+    /// </summary>
     static Texture2D SkyAtlas(int size)
     {
-        var tex = new Texture2D(size * 3, size, TextureFormat.RGBA32, false)
+        var tex = new Texture2D(size * 2, size, TextureFormat.RGBA32, false)
         {
             wrapMode = TextureWrapMode.Clamp,
             filterMode = FilterMode.Bilinear,
             name = "DuskSkyAtlas"
         };
 
-        var pix = new Color[size * 3 * size];
+        var pix = new Color[size * 2 * size];
         var rng = new System.Random(MazeGenerator.Seed + 991);
 
-        // column 0: moon disc with a soft limb
-        for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-            {
-                float dx = (x - (size - 1) * 0.5f) / ((size - 1) * 0.5f);
-                float dy = (y - (size - 1) * 0.5f) / ((size - 1) * 0.5f);
-                float r = Mathf.Sqrt(dx * dx + dy * dy);
-                float a = Mathf.Clamp01((1f - r) / 0.10f);
-                // a few darker maria so it is a moon, not a blob
-                float maria = Mathf.Clamp01(0.72f + 0.28f * Mathf.PerlinNoise(dx * 2.4f + 5f, dy * 2.4f + 5f));
-                pix[y * size * 3 + x] = new Color(maria, maria, maria, a);
-            }
-
-        // column 1: soft horizontal band
+        // column 0: soft horizontal band
         for (int y = 0; y < size; y++)
             for (int x = 0; x < size; x++)
             {
                 float dy = Mathf.Abs((y - (size - 1) * 0.5f)) / ((size - 1) * 0.5f);
                 float a = Mathf.Clamp01(1f - dy);
                 a = a * a * a;
-                pix[y * size * 3 + size + x] = new Color(1f, 1f, 1f, a);
+                pix[y * size * 2 + x] = new Color(1f, 1f, 1f, a);
             }
 
-        // column 2: torn cloud — fbm with a hard ragged edge
+        // column 1: torn cloud — fbm with a hard ragged edge
         for (int y = 0; y < size; y++)
             for (int x = 0; x < size; x++)
             {
@@ -534,7 +688,7 @@ public sealed class DuskSky : MonoBehaviour
                 float body = Mathf.Clamp01(1f - r * 1.15f);
                 float a = Mathf.Clamp01(body * (0.55f + n));
                 a = Mathf.SmoothStep(0f, 1f, a);
-                pix[y * size * 3 + size * 2 + x] = new Color(1f, 1f, 1f, a);
+                pix[y * size * 2 + size + x] = new Color(1f, 1f, 1f, a);
             }
 
         tex.SetPixels(pix);

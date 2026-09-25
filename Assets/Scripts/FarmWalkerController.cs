@@ -222,6 +222,37 @@ public sealed class FarmWalkerController : MonoBehaviour
         Cursor.visible = true;
     }
 
+    /// <summary>
+    /// M25b (test only): aim the camera at a world point, the way the player's drag does — set the look
+    /// state, not the camera transforms, so the review frame comes from the game's real camera path.
+    ///
+    /// Why this exists: the third-person camera starts 106 deg off the moon's azimuth and 27 deg down at the
+    /// lane, and by the end of §25.5's rise the moon is 54 deg higher still, so an unattended frame is all
+    /// corn. There is no keyboard look, and synthetic drags posted to the Mac build do not reach Unity's
+    /// Mouse X/Y axes (measured: a 2000 px drag leaves the view pixel-identical), so the review harness is
+    /// the only way to photograph the moon from the built game.
+    /// </summary>
+    public void AimAtForTest(Vector3 worldPoint)
+    {
+        Vector3 from = transform.position + Vector3.up * 1.6f;
+        Vector3 d = worldPoint - from;
+        if (d.sqrMagnitude < 0.0001f) return;
+        _yaw = Mathf.Atan2(d.x, d.z) * Mathf.Rad2Deg;
+        float elevation = Mathf.Asin(Mathf.Clamp(d.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
+        _pitch = Mathf.Clamp(elevation, MinPitch, MaxPitch);
+    }
+
+    /// <summary>M25b (test only): the look state, so a harness can measure the residual aim error.</summary>
+    public float YawForTest => _yaw;
+    public float PitchForTest => _pitch;
+
+    /// <summary>M25b (test only): correct the look by the measured residual, to converge on the target.</summary>
+    public void NudgeLookForTest(float deltaYaw, float deltaPitch)
+    {
+        _yaw += deltaYaw;
+        _pitch = Mathf.Clamp(_pitch + deltaPitch, MinPitch, MaxPitch);
+    }
+
     void Update()
     {
         UpdateDissolveFromRain();

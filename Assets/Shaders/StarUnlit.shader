@@ -6,6 +6,11 @@ Shader "CornMaze/StarUnlit"
         _Color ("Color", Color) = (1,1,1,1)
         _Twinkle ("Twinkle", Float) = 1
         _Visibility ("Visibility", Float) = 1
+        // M25b: blend state used to be hard-coded to SrcAlpha/One (additive). The defaults below ARE that
+        // pair, so every existing user — stars, the band, the torn clouds — is pixel-identical; the moon
+        // (a photograph, which has to composite rather than add) is the only material that overrides them.
+        _SrcBlend ("Src Blend", Float) = 5     // SrcAlpha
+        _DstBlend ("Dst Blend", Float) = 1     // One
     }
 
     // URP path (project uses Universal Render Pipeline)
@@ -18,7 +23,7 @@ Shader "CornMaze/StarUnlit"
             "RenderPipeline" = "UniversalPipeline"
             "IgnoreProjector" = "True"
         }
-        Blend SrcAlpha One
+        Blend [_SrcBlend] [_DstBlend]
         ZWrite Off
         ZTest LEqual
         Cull Off
@@ -96,7 +101,7 @@ Shader "CornMaze/StarUnlit"
             "RenderType" = "Transparent"
             "IgnoreProjector" = "True"
         }
-        Blend SrcAlpha One
+        Blend [_SrcBlend] [_DstBlend]
         ZWrite Off
         ZTest LEqual
         Cull Off
