@@ -39,11 +39,11 @@ namespace CornMaze.EditorTools
             Configure(Dir + "T_Ground_Field_R.png", GroundMap.Data);
             // M32: URP's metallic/smoothness map — RGB metallic 0 (the ground is a dielectric), A = smoothness.
             // Data, so sRGB OFF and the alpha NOT treated as transparency: it is a value, not coverage.
-            Configure(Dir + "T_Ground_Field_M.png", GroundMap.Data);
+            Configure(Dir + "T_Ground_Field_M.png", GroundMap.SmoothnessMap);
             Configure(Dir + "T_Ground_Lane.png", GroundMap.Albedo);
             Configure(Dir + "T_Ground_Lane_N.png", GroundMap.Normal);
             Configure(Dir + "T_Ground_Lane_R.png", GroundMap.Data);
-            Configure(Dir + "T_Ground_Lane_M.png", GroundMap.Data);
+            Configure(Dir + "T_Ground_Lane_M.png", GroundMap.SmoothnessMap);
             Configure(Dir + "T_Ground_LaneEdge.png", GroundMap.Mask);
             // M31: the lane's fade, shipped as a strip and baked into the lane albedo's alpha by
             // scripts/m31_lane_alpha_bake.py. The bake is what the game draws; the strip is imported so the
@@ -55,7 +55,7 @@ namespace CornMaze.EditorTools
             Debug.Log("M29-GROUND: import settings applied.\n" + ProbeGround());
         }
 
-        enum GroundMap { Albedo, AlbedoAlpha, AlphaStrip, Normal, Data, Mask }
+        enum GroundMap { Albedo, AlbedoAlpha, AlphaStrip, Normal, Data, Mask, SmoothnessMap }
 
         static void Configure(string path, GroundMap kind)
         {
@@ -97,13 +97,39 @@ namespace CornMaze.EditorTools
                     settings.alphaSource = TextureImporterAlphaSource.FromInput;
                     settings.alphaIsTransparency = true;
                     break;
+                case GroundMap.SmoothnessMap:
+                    // M32, and this is the defect Todd saw. URP's metallic/smoothness map keeps RGB = metallic
+                    // (0 on all of it — ground is a dielectric) and **A = smoothness**, which is the whole
+                    // reason the file exists. Importing it with alphaSource=None throws that channel away, URP
+                    // reads the white default, and smoothness = metallicGloss.a * _Smoothness(1) = 1.0
+                    // everywhere: a mirror floor of dry dirt. It is a value, not coverage, so it must not be
+                    // treated as transparency (that would divide the RGB by it) — but it must be READ.
+                    settings.textureType = TextureImporterType.Default;
+                    settings.alphaSource = TextureImporterAlphaSource.FromInput;
+                    settings.alphaIsTransparency = false;
+                    break;
             }
 
             importer.SetTextureSettings(settings);
             importer.maxTextureSize = MaxSize;
             importer.textureCompression = TextureImporterCompression.Compressed;
-            if (kind != GroundMap.AlbedoAlpha)
+            if (kind != GroundMap.AlbedoAlpha && kind != GroundMap.SmoothnessMap)
                 importer.alphaSource = TextureImporterAlphaSource.None;   // the data maps carry no alpha
+            if (kind == GroundMap.SmoothnessMap)
+            {
+                // The compression has to KEEP the alpha channel. DXT1 has none, and a smoothness map that loses
+                // its alpha is the defect above all over again, one layer down. BC7 preserves it, and this map
+                // is data, so a format that cannot carry the value has nothing to offer.
+                importer.textureCompression = TextureImporterCompression.CompressedHQ;
+                importer.SetPlatformTextureSettings(new TextureImporterPlatformSettings
+                {
+                    name = "Standalone",
+                    overridden = true,
+                    maxTextureSize = MaxSize,
+                    format = TextureImporterFormat.BC7,
+                    textureCompression = TextureImporterCompression.CompressedHQ
+                });
+            }
             if (kind == GroundMap.AlphaStrip)
             {
                 importer.alphaSource = TextureImporterAlphaSource.FromInput;
@@ -112,7 +138,11 @@ namespace CornMaze.EditorTools
             // M31: nothing is Read/Write any more. M29 needed a CPU copy of the raggedness mask because
             // GroundLaneMesh sampled it at build time; the fade is baked now, so that 4 MB per 1K map goes
             // away with the geometry it fed.
-            importer.isReadable = false;
+            //
+            // M32 is the one exception, and it is temporary: the smoothness maps stay readable so the built
+            // game can sample the imported texture and PROVE the alpha survived the import. An import setting
+            // verified by looking at a picture is how the mirror floor shipped in the first place.
+            importer.isReadable = kind == GroundMap.SmoothnessMap;
             importer.SaveAndReimport();
         }
 
@@ -134,6 +164,16 @@ namespace CornMaze.EditorTools
                 if (importer == null) { sb.AppendLine("  " + f + " MISSING"); continue; }
                 var s = new TextureImporterSettings();
                 importer.ReadTextureSettings(s);
+                var standalone = importer.GetPlatformTextureSettings("Standalone");
+                // M32: the smoothness lives in the alpha channel, so the FORMAT has to carry alpha. DXT1/RGB24
+                // do not, and a smoothness map that loses its alpha is a mirror floor again — the reader has to
+                // be told which formats can and cannot, not asked to trust one.
+                string keepsAlpha = standalone.overridden
+                    ? (standalone.format == TextureImporterFormat.BC7 || standalone.format == TextureImporterFormat.DXT5 ||
+                       standalone.format == TextureImporterFormat.RGBA32 || standalone.format == TextureImporterFormat.BC6H ||
+                       standalone.format == TextureImporterFormat.RGBAHalf
+                       ? "yes" : "NO — this format has no alpha")
+                    : "not overridden";
                 sb.AppendLine("  " + f +
                               " type=" + s.textureType +
                               " sRGB=" + s.sRGBTexture +
@@ -144,7 +184,9 @@ namespace CornMaze.EditorTools
                               " alphaIsTransparency=" + importer.alphaIsTransparency +
                               " flipGreen=" + s.flipGreenChannel +
                               " max=" + importer.maxTextureSize +
-                              " compression=" + importer.textureCompression);
+                              " compression=" + importer.textureCompression +
+                              " standaloneFormat=" + (standalone.overridden ? standalone.format.ToString() : "auto") +
+                              " keepsAlpha=" + keepsAlpha);
             }
             return sb.ToString();
         }

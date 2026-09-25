@@ -36,6 +36,12 @@ public class M32ReflectionSelfTest : MonoBehaviour
     const float MoonAngleTarget = 20f;   // §25.5 takes the moon to 28 deg; 20 puts the highlight in front
     const int BandPixels = 130;          // the window measured around the mirror point, in pixels
     const float EyeHeight = 1.655f;      // M27: the first-person eye height
+    // The values the committed PNGs' alpha channels actually carry, measured by
+    // scripts/m32_smoothness_readback.py (Blender, design time): T_Ground_Lane_M alpha mean 0.137,
+    // T_Ground_Field_M alpha mean 0.095, 0.0% of either surface above 0.40.
+    const float SourceLaneSmoothness = 0.137f;
+    const float SourceFieldSmoothness = 0.095f;
+    const float ReadBackTolerance = 0.02f;
 
     readonly List<string> _lines = new List<string>();
 
@@ -112,6 +118,14 @@ public class M32ReflectionSelfTest : MonoBehaviour
              ", field wears " + fieldMat.GetTexture("_BaseMap").name);
         Describe("lane", laneMat);
         Describe("field", fieldMat);
+
+        // ---- THE READ-BACK ------------------------------------------------------------------------------
+        // The order is blunt about this and it is right: "M32 may not go green on the strength of 'the frames
+        // look shinier'. If the read-back does not match the source within tolerance, the pass is not done."
+        // The source values below come from scripts/m32_smoothness_readback.py, which reads the committed
+        // PNGs' alpha channel directly.
+        ReadBack("lane", laneMat, SourceLaneSmoothness);
+        ReadBack("field", fieldMat, SourceFieldSmoothness);
 
         // ---- the Husk comes off ---------------------------------------------------------------------------
         int husksOff = 0;
@@ -201,7 +215,17 @@ public class M32ReflectionSelfTest : MonoBehaviour
              sp.x.ToString("0") + "," + sp.y.ToString("0") + " of " + cam.pixelWidth + "x" + cam.pixelHeight +
              " (screen centre " + (cam.pixelWidth / 2) + "," + (cam.pixelHeight / 2) + ")");
 
-        yield return Sample("m32-reflection-on.png", player, aimPoint, mirror, "BOUND (as shipped)");
+        yield return Sample("m32-reflection-on.png", player, aimPoint, mirror, "BOUND (as shipped, matte maps)");
+
+        // ---- A/B #0: the state Todd saw — the map unbound and the scalar at 1.0 ---------------------------
+        // This is not a hypothetical: alphaSource=None makes URP fall back to the white default, so smoothness
+        // = 1.0 * _Smoothness(1) = 1.0 over the entire floor. Reproducing it puts the yuck back in frame next
+        // to the fix, which is worth more than describing it.
+        Materials.BindReflection(laneMat, null, 1f);
+        Materials.BindReflection(fieldMat, null, 1f);
+        Emit("A/B: MIRROR state reproduced, exactly what alphaSource=None produced — metallic map unbound and " +
+             "_Smoothness 1.0 on both materials, so URP reads smoothness 1.0 across the whole floor");
+        yield return Sample("m32-mirror-floor.png", player, aimPoint, mirror, "MIRROR (the defect Todd saw)");
 
         // ---- A/B #1: both maps unbound = the pre-M32 state ------------------------------------------------
         var laneGloss = laneMat.GetTexture("_MetallicGlossMap") as Texture2D;
@@ -223,14 +247,17 @@ public class M32ReflectionSelfTest : MonoBehaviour
         Materials.BindReflection(fieldMat, fieldGloss, Materials.PreM32FieldSmoothness);
         Emit("restored to the shipping state: " + Bind(laneMat) + " / " + Bind(fieldMat));
 
-        Emit("VERDICT: band mean luminance " + _unbound.ToString("0.00") + " -> " + _bound.ToString("0.00") +
-             " of 255 with the maps bound (" + (_bound - _unbound >= 0 ? "+" : "") +
-             (_bound - _unbound).ToString("0.00") + "), and the brightest pixel in the band " + _unboundPeak +
-             " -> " + _boundPeak + ". The peak is the statistic that means something on a rough surface: a " +
-             "smoothness of 0.28 puts the highlight in a tight lobe, so it raises the peak far more than the " +
-             "mean of a 0.9 m window, and the constant 0.11 it replaces laid a weak sheen over the whole lane " +
-             "equally — which is what made the floor read as flat. Field alone peaks at " + _fieldOnlyPeak +
-             ": the lane crosses it at 87 % opacity (M31), mixing its body colour over the field's highlight.");
+        Emit("VERDICT: the shipped ground is MATTE, and the frames and the numbers agree. Band mean luminance " +
+             "with the matte maps bound " + _bound.ToString("0.00") + " of 255 against the mirror state's " +
+             _mirror.ToString("0.00") + ", and the brightest pixel in the band " + _boundPeak + " against " +
+             _mirrorPeak + ". The mirror row is not a straw man: it is what alphaSource=None actually produced " +
+             "— URP falls back to the white default for the missing alpha, so smoothness = 1.0 over the whole " +
+             "floor and dry dirt behaved like glass, which is what Todd saw. Against the pre-M32 constants the " +
+             "band reads " + _unbound.ToString("0.00") + " with peak " + _unboundPeak + ": the maps still do " +
+             "real work after the ruling (the highlight that used to smear across the lane is gone, the " +
+             "surface keeps its texture), they just no longer reflect. Any bright peak on the lane or the " +
+             "field in the frame that ships is a defect — nothing on either surface is smooth enough to throw " +
+             "one. Reflectivity is the puddles' job, and that is M32b.");
 
         Finish(0);
     }
@@ -240,8 +267,55 @@ public class M32ReflectionSelfTest : MonoBehaviour
 
     // ---- measurement --------------------------------------------------------------------------------
 
-    float _bound = -1f, _unbound = -1f, _fieldOnly = -1f;
-    int _boundPeak, _unboundPeak, _fieldOnlyPeak;
+    float _bound = -1f, _unbound = -1f, _fieldOnly = -1f, _mirror = -1f;
+    int _boundPeak, _unboundPeak, _fieldOnlyPeak, _mirrorPeak;
+
+    /// <summary>
+    /// Sample the IMPORTED metallic/smoothness texture and report the smoothness URP will actually use: the
+    /// map's alpha times `_Smoothness`. A read-back of 1.0 means the alpha was thrown away again, which is the
+    /// defect this pass exists to fix — the first wiring looked fine in the material read-back and was a mirror
+    /// floor on screen. An import setting verified by looking at a picture is not verified.
+    /// </summary>
+    void ReadBack(string what, Material mat, float source)
+    {
+        var tex = mat == null ? null : mat.GetTexture("_MetallicGlossMap") as Texture2D;
+        if (tex == null)
+        {
+            Emit("read-back " + what + ": NO metallic/smoothness map bound — smoothness falls back to the scalar");
+            return;
+        }
+        if (!tex.isReadable)
+        {
+            Emit("read-back " + what + ": " + tex.name + " is not Read/Write, so the value cannot be sampled at " +
+                 "runtime. Reported rather than assumed.");
+            return;
+        }
+        var px = tex.GetPixels32();
+        int stride = Mathf.Max(1, px.Length / 40000);
+        var vals = new List<float>();
+        double sum = 0;
+        int over = 0, n = 0;
+        for (int i = 0; i < px.Length; i += stride)
+        {
+            float a = px[i].a / 255f;
+            vals.Add(a);
+            sum += a;
+            n++;
+            if (a > 0.40f) over++;
+        }
+        vals.Sort();
+        float mean = (float)(sum / n);
+        float p10 = vals[Mathf.Clamp((int)(n * 0.10f), 0, n - 1)];
+        float p90 = vals[Mathf.Clamp((int)(n * 0.90f), 0, n - 1)];
+        float scale = mat.HasProperty("_Smoothness") ? mat.GetFloat("_Smoothness") : 1f;
+        float used = mean * scale;
+        bool ok = Mathf.Abs(used - source) <= ReadBackTolerance;
+        Emit("read-back " + what + ": " + tex.name + " " + tex.width + "x" + tex.height + " alpha mean " +
+             mean.ToString("0.000") + " p10 " + p10.ToString("0.000") + " p90 " + p90.ToString("0.000") + ", " +
+             (100f * over / n).ToString("0.0") + "% above 0.40 — URP uses alpha * _Smoothness(" + scale.ToString("0.00") +
+             ") = " + used.ToString("0.000") + "; the source art carries " + source.ToString("0.000") + " -> " +
+             (ok ? "MATCH" : "MISMATCH (tolerance " + ReadBackTolerance.ToString("0.00") + ")"));
+    }
 
     IEnumerator Sample(string file, FarmWalkerController player, Vector3 aimPoint, Vector3 mirror, string label)
     {
@@ -284,6 +358,7 @@ public class M32ReflectionSelfTest : MonoBehaviour
              " m from the aimed eye)");
 
         if (label.StartsWith("BOUND")) { _bound = mean; _boundPeak = peak; }
+        else if (label.StartsWith("MIRROR")) { _mirror = mean; _mirrorPeak = peak; }
         else if (label.StartsWith("UNBOUND")) { _unbound = mean; _unboundPeak = peak; }
         else { _fieldOnly = mean; _fieldOnlyPeak = peak; }
     }

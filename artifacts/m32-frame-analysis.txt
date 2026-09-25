@@ -1,0 +1,14 @@
+== each frame, on its own
+  m32-reflection-on.png: 1300x820  mean luma 49.45  p99 165.1  max 255.0 at True
+     pixels above 0.95 luma: 19 (0.0018%), above 0.80: 1037
+     brightest cluster around x=522 y=619 (frame 1300x820, band centre 661,421)
+  m32-mirror-floor.png: 1300x820  mean luma 49.44  p99 165.3  max 255.0 at True
+     pixels above 0.95 luma: 14 (0.0013%), above 0.80: 1013
+     brightest cluster around x=572 y=691 (frame 1300x820, band centre 661,421)
+  m32-reflection-off.png: 1300x820  mean luma 33.68  p99 120.1  max 255.0 at True
+     pixels above 0.95 luma: 11 (0.0010%), above 0.80: 313
+     brightest cluster around x=555 y=622 (frame 1300x820, band centre 661,421)
+== the difference: matte (as shipped) minus pre-M32 constants, in the band around the mirror point
+  band mean luma matte 66.75 vs pre-M32 57.47 -> difference +9.28 of 255
+  the difference is concentrated where? mean |d| over the whole frame 21.94, largest single pixel 241
+  mirror state minus matte: band mean -0.07, whole frame -0.01 -> the mirror state is DARKER overall

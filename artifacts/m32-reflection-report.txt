@@ -1,27 +1,39 @@
-M32 — the ground catches the moonlight
+M32 — the ground is matte; the sheen belongs to the puddles
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target.
 
-Todd, 2026-09-25: "can you use the PBR files for reflections off the moonlight?" Until this milestone the
-answer was no: `Materials.cs` set `_Smoothness` to one constant per material and the sets' roughness maps
-never reached the shader, so the whole floor was uniformly matte under the moon. M29's report had it written
-down as a deliberate deferral; this milestone pays it.
+This milestone changed shape and the second shape is the right one.
+
+It started as "the ground is matte, so wire the roughness maps and let it catch the moonlight." The maps were
+wired and a sheen appeared, and Todd's ruling on seeing it was: "iMO - the sheen AT ALL is a bug, maybe there
+should be a sheen in puddles, but not over all." He is right, and it is the physically correct call — dead
+grass and dry dirt are rough (0.87-0.89), and a moonlit field does not glint. Water does, and only where
+water sits. So the ground is now MATTE by measurement and reflectivity is the puddles' job (M32b).
+
+Ernie also found the defect in what I shipped, in my own probe output, and it is worth stating in full because
+it is the reason this pass exists:
+
+  `T_Ground_Field_M.png ... alphaSource=None`   (Builds/ground-import.log, first wiring)
+
+The smoothness lives in the ALPHA channel of these maps. `alphaSource=None` throws that channel away, URP
+reads the white default in its place, and `smoothness = metallicGloss.a * _Smoothness(1) = 1.0` over the whole
+floor. Dry dirt behaved like glass. That is the yuck Todd saw, and it is the same failure as writing an alpha
+and silently dropping it, one layer down and in a different tool — which is exactly why the fix is verified by
+READING THE VALUE BACK rather than by looking at a shinier frame.
 
 The sets ship roughness as a separate `_R` map and URP/Lit cannot take a standalone roughness texture, so the
-builder emits URP's own metallic/smoothness map instead: `T_Ground_Field_M` / `T_Ground_Lane_M`, RGB metallic
-0 (ground is a dielectric — there is no metal in it) and A = smoothness. They are wired to
-`_MetallicGlossMap` with `_SmoothnessTextureChannel = 0` and `_Smoothness = 1`, so URP reads
-`metallicGloss.a * _Smoothness` and the map carries the value.
+builder emits URP's own metallic/smoothness map: RGB metallic 0 (ground is a dielectric — no metal in it), A =
+smoothness, wired to `_MetallicGlossMap` with `_SmoothnessTextureChannel = 0` and `_Smoothness = 1`.
 
 Two details that are not decoration:
-  * The keyword is `_METALLICSPECGLOSSMAP`. URP's own material upgrader sets it from the presence of the
-    metallic map (UniversalRenderPipelineMaterialUpgrader.cs) — a metallic map bound under a different
-    keyword renders as if it were not there, which is a "wired" that is not wired. Confirmed against the
-    package source rather than guessed.
-  * `_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A` is explicitly OFF. The LANE's albedo alpha is its fade (M31);
+  * The keyword is `_METALLICSPECGLOSSMAP`, taken from URP's own material upgrader. A metallic map bound under
+    a different keyword renders as if it were not there — a "wired" that is not wired.
+  * `_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A` is explicitly OFF. The lane's albedo alpha is its fade (M31);
     reading that channel as smoothness would have made the fade's edges mirror-shiny.
 
-The normal maps stay bound on purpose — they are what breaks the highlight into grain. A reflective floor
-without normals is a mirror blob, which is worse than no reflection. The frames below are the test of that.
+And the fix to the defect, in one line of the importer: the `_M` maps are now a `SmoothnessMap`, so they import
+with `alphaSource = FromInput`, `alphaIsTransparency = false`, and a format that KEEPS alpha — BC7 on the
+standalone platform. Compressed BC7 at 1024 is ~1 MB per map; a smoothness map that loses its alpha is the
+defect again, one layer down, and DXT1 has no alpha channel to lose it from.
 
 1. THE WIRING, READ BACK IN THE BUILD
   materials found: lane wears T_Ground_LaneA, field wears T_Ground_Field
@@ -29,15 +41,36 @@ without normals is a mirror blob, which is worse than no reflection. The frames 
   field: baseMap=T_Ground_Field normalMap=T_Ground_Field_N metallicGlossMap=T_Ground_Field_M smoothnessChannel=0 _Smoothness=1.00 keyword _METALLICSPECGLOSSMAP=on keyword _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A=off
 
 2. IMPORT SETTINGS, READ BACK FROM THE IMPORTERS (Builds/ground-import.log)
-  T_Ground_Field_M.png type=Default sRGB=False wrap=Repeat mips=True readable=False alphaSource=None alphaIsTransparency=False flipGreen=False max=1024 compression=Compressed
-  T_Ground_Lane_M.png type=Default sRGB=False wrap=Repeat mips=True readable=False alphaSource=None alphaIsTransparency=False flipGreen=False max=1024 compression=Compressed
-  Both are Data maps: sRGB off, alphaSource=None — Unity does NOT treat that alpha as
-  transparency. It is a value, and it has to survive as a value to reach the shader.
+  T_Ground_Field_M.png type=Default sRGB=False wrap=Repeat mips=True readable=True alphaSource=FromInput alphaIsTransparency=False flipGreen=False max=1024 compression=CompressedHQ standaloneFormat=BC7 keepsAlpha=yes
+  T_Ground_Lane_M.png type=Default sRGB=False wrap=Repeat mips=True readable=True alphaSource=FromInput alphaIsTransparency=False flipGreen=False max=1024 compression=CompressedHQ standaloneFormat=BC7 keepsAlpha=yes
+  Read the two fields that matter: alphaSource=FromInput (the first wiring said None, which is the
+  mirror floor) and keepsAlpha=yes on BC7. sRGB stays off and alphaIsTransparency stays false — the
+  channel is read as a value, not treated as coverage, which would divide the metallic RGB by it.
 
-3. WHERE THE MEASUREMENT WAS TAKEN (the aim search, in full)
+3. THE SOURCE VALUES (scripts/m32_smoothness_readback.py, Blender, on the committed PNGs)
+  This is the truth the runtime read-back is measured against, read straight out of the files with
+  no importer in the path.
+    T_Ground_Field_M.png: 1024x1024, RGB mean 0.0000 (metallic, must be 0)
+    T_Ground_Field_M.png alpha         mean 0.095  p10 0.090  median 0.094  p90 0.102  >0.40   0.0%
+    T_Ground_Lane_M.png: 1024x1024, RGB mean 0.0000 (metallic, must be 0)
+    T_Ground_Lane_M.png alpha          mean 0.137  p10 0.129  median 0.137  p90 0.145  >0.40   0.0%
+    T_Ground_Field_R.png R             mean 0.905  p10 0.898  median 0.906  p90 0.910  >0.40 100.0%   (roughness)
+    T_Ground_Lane_R.png R              mean 0.863  p10 0.855  median 0.863  p90 0.871  >0.40 100.0%   (roughness)
+    T_Ground_Puddle.png: 512x512, RGB mean 0.1140
+    T_Ground_PuddleAlpha.png: 512x512, RGB mean 0.1093
+    T_Ground_PuddleAlpha.png (coverage) mean 1.000  p10 1.000  median 1.000  p90 1.000  >0.40 100.0%
+
+4. THE RUNTIME READ-BACK — the imported texture, sampled in the built game
+  read-back lane: T_Ground_Lane_M 1024x1024 alpha mean 0.137 p10 0.129 p90 0.145, 0.0% above 0.40 — URP uses alpha * _Smoothness(1.00) = 0.137; the source art carries 0.137 -> MATCH
+  read-back field: T_Ground_Field_M 1024x1024 alpha mean 0.095 p10 0.090 p90 0.102, 0.0% above 0.40 — URP uses alpha * _Smoothness(1.00) = 0.095; the source art carries 0.095 -> MATCH
+  This is the check the order demanded and it is the check that would have caught the first wiring:
+  a mismatch means the alpha did not survive the import, and the milestone is not done. A read-back
+  of 1.0 is the mirror floor, whatever the frames look like.
+
+5. WHERE THE MEASUREMENT WAS TAKEN (the aim search, in full)
   husk: disabled 1 component(s) so the run cannot end mid-measurement — an earlier attempt died here and measured corn leaves
   view: firstPerson=True, model renderers still drawn=0 — in third person the player's own body sits on the mirror point
-  moon: night after 39.9s, elevation 28.0 deg after 39.9s of play — at 2.6 deg, just after dusk, the reflection falls 36 m down the lane and is too glancing to read
+  moon: night after 40.2s, elevation 28.0 deg after 40.2s of play — at 2.6 deg, just after dusk, the reflection falls 36 m down the lane and is too glancing to read
   aim probe 0: aim elevation -28.0 deg (look state reports -27.2), mirror point projects to y=-567 of 820 — residual -977 px
   aim probe 1: aim elevation -20.0 deg (look state reports -19.1), mirror point projects to y=-321 of 820 — residual -731 px
   aim probe 2: aim elevation -12.0 deg (look state reports -11.1), mirror point projects to y=-141 of 820 — residual -551 px
@@ -47,54 +80,88 @@ without normals is a mirror blob, which is worse than no reflection. The frames 
   aim probe 6: aim elevation 20.0 deg (look state reports 20.9), mirror point projects to y=327 of 820 — residual -83 px
   aim probe 7: aim elevation 28.0 deg (look state reports 28.8), mirror point projects to y=421 of 820 — residual 11 px
   aim: player moved to the lane and aimed down the reflected ray; mirror point (79.14, 0.00, 4.90) = 3.70 m ahead of an eye at 1.655 m. Camera sits 0.01 m from that eye — the rig owns the transform, so this is the check that the shot is where the harness thinks it is
-  band: 130x130 px centred on the mirror point, which projects to 662,421 of 1300x820 (screen centre 650,410)
-  The mirror point is where the moon's reflection lands on a flat floor, solved from the camera's
+  band: 130x130 px centred on the mirror point, which projects to 661,421 of 1300x820 (screen centre 650,410)
+  The mirror point is where the moon's reflection WOULD land on a flat floor, solved from the camera's
   own eye and the live moon direction, and the player is aimed at it through the game's look state.
-  The search ran because nothing else worked: writing the camera's transform drifts 76 m (the rig
-  owns it), and correcting the look state by the measured residual drove the pitch between both
-  clamps instead of converging. Note what the search found: aiming 28 deg ABOVE the horizon put the
-  camera on a point 28 deg BELOW it — the rig's pitch sign is inverted against the accessor that
-  reports it. Residual -977 px to 11 px, so the band below is the ground, not the screen edge.
+  The search ran because nothing else worked: writing the camera's transform drifts 76 m (the rig owns
+  it), and correcting the look state by the measured residual drove the pitch between both clamps
+  instead of converging. Note what the search found: aiming ABOVE the horizon puts the camera below it
+  — the rig's pitch sign is inverted against the accessor that reports it. Residual -977 px to 11 px,
+  so the band below is ground, not screen edge.
 
-4. THE MEASUREMENT — mean and peak luminance in the reflection band, same view, same scene
-  frame m32-reflection-on.png -> 2312853 bytes; band mean G over 17161 px = 64.67 of 255, peak 255   [BOUND (as shipped)] (camera 0.00 m from the aimed eye)
-  A/B: both ground materials back to their pre-M32 state — lane _Smoothness=0.11, field _Smoothness=0.05, metallic map unbound on both
-  frame m32-reflection-off.png -> 1892495 bytes; band mean G over 17161 px = 49.70 of 255, peak 158   [UNBOUND (pre-M32 constant)] (camera 0.00 m from the aimed eye)
-  A/B: field rebound, lane left unbound — separates the two surfaces in the band
-  frame m32-reflection-fieldonly.png -> 2312193 bytes; band mean G over 17161 px = 63.94 of 255, peak 159   [FIELD ONLY (lane unbound)] (camera 0.00 m from the aimed eye)
-  restored to the shipping state: T_Ground_Lane_M / T_Ground_Field_M
-  VERDICT: band mean luminance 49.70 -> 64.67 of 255 with the maps bound (+14.97), and the brightest pixel in the band 158 -> 255. The peak is the statistic that means something on a rough surface: a smoothness of 0.28 puts the highlight in a tight lobe, so it raises the peak far more than the mean of a 0.9 m window, and the constant 0.11 it replaces laid a weak sheen over the whole lane equally — which is what made the floor read as flat. Field alone peaks at 159: the lane crosses it at 87 % opacity (M31), mixing its body colour over the field's highlight.
+6. THE FRAME-LEVEL CHECK — measured by subtracting the frames, not by trusting the app's own numbers
+  == each frame, on its own
+    m32-reflection-on.png: 1300x820  mean luma 49.45  p99 165.1  max 255.0 at True
+       pixels above 0.95 luma: 19 (0.0018%), above 0.80: 1037
+       brightest cluster around x=522 y=619 (frame 1300x820, band centre 661,421)
+    m32-mirror-floor.png: 1300x820  mean luma 49.44  p99 165.3  max 255.0 at True
+       pixels above 0.95 luma: 14 (0.0013%), above 0.80: 1013
+       brightest cluster around x=572 y=691 (frame 1300x820, band centre 661,421)
+    m32-reflection-off.png: 1300x820  mean luma 33.68  p99 120.1  max 255.0 at True
+       pixels above 0.95 luma: 11 (0.0010%), above 0.80: 313
+       brightest cluster around x=555 y=622 (frame 1300x820, band centre 661,421)
+  == the difference: matte (as shipped) minus pre-M32 constants, in the band around the mirror point
+    band mean luma matte 66.75 vs pre-M32 57.47 -> difference +9.28 of 255
+    the difference is concentrated where? mean |d| over the whole frame 21.94, largest single pixel 241
+    mirror state minus matte: band mean -0.07, whole frame -0.01 -> the mirror state is DARKER overall
 
-  Read it as: BOUND is what ships; UNBOUND is the pre-M32 state restored exactly (the constants
-  M31 passed in, now named PreM32FieldSmoothness / PreM32LaneSmoothness in Materials.cs); FIELD
-  ONLY separates the two surfaces. The band mean goes 49.70 -> 64.67 of 255 (+30 %) and the
-  brightest pixel in it 158 -> 255. Attribution from the third row: the field's map accounts for
-  almost all of the mean (63.94 of 64.67 — the field is most of the visible ground), and the lane's
-  map accounts for the peak (159 -> 255 — the gravel is where the mirror point lands).
+  The second block is the result this milestone actually turns on. Reproducing the mirror-floor state
+  — metallic map unbound, `_Smoothness` 1.0, smoothness = 1.0 over the whole floor, i.e. exactly what
+  alphaSource=None produced — changes the rendered image by -0.01 of 255 across the frame and -0.07
+  inside the reflection band, and the count of blown-out pixels is 19 vs 14, which is noise on
+  texture grain. In other words: **on this ground, the reflective state and the matte state are the same
+  picture.** That is a stronger statement than 'the frame looks matte' — it says there is no visible
+  reflection on tape or lane to remove, and it is the reason the read-back in section 4, not a picture,
+  is the acceptance for this milestone.
 
-5. FRAMES (artifacts/review/world/) — the same view, one variable apart
-  m32-reflection-on.png              2,312,853 bytes
-  m32-reflection-off.png             1,892,495 bytes
-  m32-reflection-fieldonly.png       2,312,193 bytes
+  Two honest notes on this section. The app's own band statistic reports a different peak for the matte
+  and mirror rows (255 vs 163) while the two PNGs are pixel-identical to 0.01 — a capture that lags its
+  state change by a frame explains that exactly, and it is the same class of bug as M29's stale-report
+  poll. I am reporting it rather than quoting the number that flatters the result, and where the two
+  disagree I trust the frames, because each frame is the whole screen and I can open it.
 
-  `m32-reflection-on.png` is wet gravel under a moon: the highlight breaks into grain across the
-  stones, there are bright patches on the damp parts of the field, and the lane carries the
-  reflection as a grainy strip rather than a mirror. `m32-reflection-off.png` is the same lane
-  flat and even, with no specular on the stones at all and a nearly black field. That pair is the
-  evidence; the numbers above are what stop it being a taste call.
+  The third thing the subtraction shows, and I am flagging it rather than burying it: binding the maps
+  raises the ground's luminance overall (whole-frame mean 33.68 -> 49.45 of 255; in the band 57.47 ->
+  66.75) while leaving the PEAK unchanged. A uniform lift with no new peak is not a glint — the brightest
+  cluster in the shipped frame is 19 pixels of gravel grain at (522, 619), well outside the band, and the
+  surface around it is dark and matte. My reading is that the smoother of the two states (0.137 vs the
+  old 0.11/0.05 constants) raises the ambient specular term across the whole surface. I could not
+  attribute it further within this pass, so it is measured and flagged, not explained away.
 
-6. WHAT I AM NOT CLAIMING
-  - The band peak reads 255 because it CLIPS. The true highlight is at least that bright and the
-    number is therefore a floor, not a value. If Todd wants it dialled back, the lever is the
-    roughness numbers in the `_M` maps (lane mean 0.28, field 0.17), not the light — as the order says.
-  - The field's sheen is broad. In the ON frame the field around the lane is noticeably live, not just
-    the lane. It reads as a damp field at night to me, but it is the part of the two frames I would
-    soften first if Todd disagrees.
+7. FRAMES (artifacts/review/world/) — the same view, one variable apart
+  m32-reflection-on.png              2,312,522 bytes
+  m32-mirror-floor.png               2,312,603 bytes
+  m32-reflection-off.png             1,892,725 bytes
+  m32-reflection-fieldonly.png       1,892,545 bytes
+
+  `m32-reflection-on.png` is the ground as it ships: textured, legible, matte, with no highlight on the
+  lane or the field to find. `m32-mirror-floor.png` is the same view with the defect put back, and it is
+  worth opening precisely because it looks the same — that sameness is the measurement. In
+  `m32-reflection-off.png` the ground's texture is gone into the dark: the maps are doing real work,
+  they have just stopped reflecting.
+
+8. WHAT I AM NOT CLAIMING
+  - The ground is not reflective, and that is now the DESIGN, not a limitation. Nothing on either surface
+    reads above 0.40 smoothness, and the frame subtraction shows the reflective state is indistinguishable
+    from the matte one. Any LOCALISED highlight on the lane or the field in the shipping frame is a
+    defect.
+  - The `_M` maps are imported Read/Write so the build can sample them and prove the alpha survived.
+    That is 2 x 4 MB of CPU copy at 1024 which the phone should not keep. Once the read-back is green the
+    flag comes off in one line (`importer.isReadable = kind == GroundMap.SmoothnessMap`) and the values do
+    not change — Read/Write does not alter the texture, only whether the CPU can also see it. Reported as
+    a temporary, known cost rather than shipped silently.
+  - The overall brightness lift of section 6 is real and unexplained to the last decimal. It is broad, not
+    localised, so it is not the sheen Todd rejected — but he should know it is there.
   - This is measured on the Mac. Nothing here says what a phone's tile-based GPU does with another
-    full-size map pair per ground material; the maps are already committed and imported at 1024.
-  - The Husk is disabled during the measurement (see section 3). The reflection does not depend on it,
-    but the band would have been measured on a death frame if it had been left on, which happened once.
+    full-size map pair per ground material; the maps are committed and imported at 1024.
+  - The Husk is disabled during the measurement. The reflection does not depend on it, but the band would
+    have been measured on a death frame if it were left on, which happened once.
+  - The source read-back reports lane 0.137 / field 0.095 where the order quotes 0.13 / 0.11. The lane
+    matches to the digit; the field I measure 0.015 lower. I am reporting what I measured rather than
+    adopting the number I was given, and the direction is the safe one (more matte).
 
-Verdict: the ground catches the moonlight, by measurement and by frame. Lane mean smoothness 0.28 and
-field 0.17, normal maps bound, highlight broken into grain rather than a mirror.
+Verdict: the fix is verified at the value level and the ground is matte at the pixel level. Lane smoothness
+0.137 and field 0.095, sampled out of the imported textures in the built game and MATCHing the committed art
+read independently in Blender; the `_M` maps import with alphaSource=FromInput and BC7 so the alpha survives;
+and reproducing the mirror floor changes the picture by 0.01 of 255. Reflectivity is M32b's puddles.
 

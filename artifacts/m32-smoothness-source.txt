@@ -1,0 +1,13 @@
+== source smoothness (the alpha channel of the metallic/smoothness maps)
+  T_Ground_Field_M.png: 1024x1024, RGB mean 0.0000 (metallic, must be 0)
+  T_Ground_Field_M.png alpha         mean 0.095  p10 0.090  median 0.094  p90 0.102  >0.40   0.0%   
+  T_Ground_Lane_M.png: 1024x1024, RGB mean 0.0000 (metallic, must be 0)
+  T_Ground_Lane_M.png alpha          mean 0.137  p10 0.129  median 0.137  p90 0.145  >0.40   0.0%   
+== source roughness (the R channel of the roughness maps, = 1 - smoothness)
+  T_Ground_Field_R.png R             mean 0.905  p10 0.898  median 0.906  p90 0.910  >0.40 100.0%   (roughness)
+  T_Ground_Lane_R.png R              mean 0.863  p10 0.855  median 0.863  p90 0.871  >0.40 100.0%   (roughness)
+== puddles
+  T_Ground_Puddle.png: 512x512, RGB mean 0.1140
+  T_Ground_PuddleAlpha.png: 512x512, RGB mean 0.1093
+  T_Ground_PuddleAlpha.png (coverage) mean 1.000  p10 1.000  median 1.000  p90 1.000  >0.40 100.0%   
+     water core (alpha>0.80) 100.0% of the quad, water+damp (alpha>0.10) 100.0%, max 1.00
