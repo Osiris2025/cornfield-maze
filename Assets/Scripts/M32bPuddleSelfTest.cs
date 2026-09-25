@@ -614,9 +614,10 @@ public class M32bPuddleSelfTest : MonoBehaviour
         var laneCol = laneMat.GetColor("_BaseColor");
         var laneMap = laneMat.GetTexture("_BaseMap");
 
-        var fr = new Color32[6][];
+        var fr = new Color32[7][];
         string[] nm = { "m32c-water-on.png", "m32c-water-off.png", "m32c-water-mask.png",
-                        "m32c-water-nomoon.png", "m32c-water-black.png", "m32c-lane-mask.png" };
+                        "m32c-water-nomoon.png", "m32c-water-black.png", "m32c-lane-mask.png",
+                        "m32c-lane-control.png" };
 
         ReflectionProbes.SetEnabledForTest(probe, true);
         yield return ShootInto(player, aimPoint, nm[0], fr, 0);
@@ -649,6 +650,18 @@ public class M32bPuddleSelfTest : MonoBehaviour
         laneMat.SetColor("_BaseColor", laneCol);
         laneMat.SetTexture("_BaseMap", laneMap);
 
+        // THE CONTROL, and the lane's fix measured in the same pose. The shipping lane is matte by construction
+        // (Materials.MakeMatte: no specular lobe, no environment reflection). This capture puts both back AND
+        // takes the lane to mirror smoothness — the most reflective a lane could possibly be — so one frame
+        // answers two questions: is the highlight the fix removes real, and does the reflection probe's capture
+        // contain any sky at all to reflect?
+        Materials.UnmakeMatteForTest(laneMat);
+        var laneGloss = laneMat.GetTexture("_MetallicGlossMap") as Texture2D;
+        Materials.BindReflection(laneMat, null, 1f);
+        yield return ShootInto(player, aimPoint, nm[6], fr, 6);
+        Materials.BindReflection(laneMat, laneGloss, Materials.PreM32LaneSmoothness);
+        Materials.MakeMatte(laneMat);
+
         if (fr[0] == null || fr[2] == null || fr[5] == null || _capW == 0)
         {
             Emit("deliverable: a capture is missing — analysis skipped rather than half-done");
@@ -669,22 +682,22 @@ public class M32bPuddleSelfTest : MonoBehaviour
              (100f * lN / (W * H)).ToString("0.00") + " %). Both from painting the surface and diffing the " +
              "frames at one frozen pose — no ray, no projection, no degenerate rect.");
 
-        double[] wSum = new double[6]; int[] wCnt = new int[6];
-        double[] lSum = new double[6];
-        double[] fSum = new double[6]; int[] fCnt = new int[6];
+        double[] wSum = new double[7]; int[] wCnt = new int[7];
+        double[] lSum = new double[7]; int[] lCnt = new int[7];
+        double[] fSum = new double[7]; int[] fCnt = new int[7];
         int waterBright = 0;
         var cam = player.Camera;
         var tList = new List<float>();
         var nearSum = new List<double>();
         var farSum = new List<double>();
-        for (int s = 0; s < 6; s++)
+        for (int s = 0; s < 7; s++)
         {
             if (fr[s] == null) continue;
             for (int i = 0; i < W * H; i++)
             {
                 byte g = fr[s][i].g;
                 if (water[i]) { wSum[s] += g; wCnt[s]++; }
-                else if (lane[i]) lSum[s] += g;
+                else if (lane[i]) { lSum[s] += g; lCnt[s]++; }
             }
         }
         // Water, near half against far half: a dielectric should show the sky at the grazing end and less as the
@@ -733,6 +746,19 @@ public class M32bPuddleSelfTest : MonoBehaviour
              (fm0 > 0.01f ? (lm0 / fm0).ToString("0.00") : "n/a") + "x  (the order wants lane/field at or under " +
              "1.15x, or the lane darker)");
 
+        if (fr[6] != null)
+        {
+            float lm6 = lCnt[6] > 0 ? (float)(lSum[6] / lCnt[6]) : 0f;
+            Emit("THE LANE'S FIX, ON THE LANE'S OWN PIXELS: shipping (matte by construction — no specular lobe, " +
+                 "no environment reflection) the lane means " + lm0.ToString("0.00") + " over " + lCnt[0] +
+                 " px; with both back on AND the lane at mirror smoothness it means " + lm6.ToString("0.00") +
+                 " over " + lCnt[6] + " px (" + (lm6 - lm0).ToString("+0.00;-0.00") + "). " +
+                 (lm6 - lm0 > 6f
+                     ? "The highlight is real and the fix removes it."
+                     : "A mirror lane with environment reflections on top of a reflection probe still does not " +
+                       "brighten, so the probe's capture holds no sky — the same conclusion as the water's -0.01, " +
+                       "now tested on the one surface certain to use it."));
+        }
         if (fr[1] != null)
         {
             float wm1 = wCnt[1] > 0 ? (float)(wSum[1] / wCnt[1]) : 0f;

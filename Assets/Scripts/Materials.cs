@@ -40,8 +40,43 @@ public static class Materials
 
     public static Material GroundField()
     {
-        return Ground("Ground/T_Ground_Field", "Ground/T_Ground_Field_N",
-                      new Color(0.88f, 0.83f, 0.72f), PreM32FieldSmoothness, "Ground/T_Ground_Field_M");
+        var mat = Ground("Ground/T_Ground_Field", "Ground/T_Ground_Field_N",
+                         new Color(0.88f, 0.83f, 0.72f), PreM32FieldSmoothness, "Ground/T_Ground_Field_M");
+        MakeMatte(mat);
+        return mat;
+    }
+
+    /// <summary>
+    /// M32c (§17, and the standing rule): a MATTE surface, structurally. Any highlight on the lane or the field
+    /// is a defect, so the ground does not get a specular lobe or an environment reflection AT ALL rather than a
+    /// low smoothness value that a later edit could quietly raise — pass 3 measured the near lane at 92.5 of 255
+    /// against 33.6 for the lane beyond it and 22.3 for the field, and a highlight that survives an albedo cut of
+    /// ten percent and a gloss cut to zero is not something to tune, it is something to remove.
+    /// The water is the only surface in this game that reflects; it is built by GroundPuddle(), which does not
+    /// pass through here.
+    /// </summary>
+    public static void MakeMatte(Material mat)
+    {
+        if (mat == null) return;
+        if (mat.HasProperty("_SpecularHighlights")) mat.SetFloat("_SpecularHighlights", 0f);
+        mat.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
+        if (mat.HasProperty("_EnvironmentReflections")) mat.SetFloat("_EnvironmentReflections", 0f);
+        mat.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
+    }
+
+    /// <summary>
+    /// The harness's control: put the lobe and the environment reflection back on a matte surface, at mirror
+    /// smoothness, so the fix can be measured instead of asserted — and so the reflection probe's capture is
+    /// tested on a surface that is certain to use it. If a mirror-smooth lane at a grazing angle stays dark, the
+    /// probe's cubemap holds no sky and the report says so rather than blaming the water.
+    /// </summary>
+    public static void UnmakeMatteForTest(Material mat)
+    {
+        if (mat == null) return;
+        if (mat.HasProperty("_SpecularHighlights")) mat.SetFloat("_SpecularHighlights", 1f);
+        mat.DisableKeyword("_SPECULARHIGHLIGHTS_OFF");
+        if (mat.HasProperty("_EnvironmentReflections")) mat.SetFloat("_EnvironmentReflections", 1f);
+        mat.DisableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
     }
 
     /// <summary>
@@ -74,6 +109,7 @@ public static class Materials
                          new Color(0.94f * LaneTintScale, 0.92f * LaneTintScale, 0.88f * LaneTintScale),
                          PreM32LaneSmoothness, "Ground/T_Ground_Lane_M");
         MakeAlphaBlend(mat);
+        MakeMatte(mat);
         return mat;
     }
 

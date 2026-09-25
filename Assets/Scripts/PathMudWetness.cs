@@ -8,6 +8,14 @@ public sealed class PathMudWetness : MonoBehaviour
     /// <summary>Seconds of full-intensity rain to reach max mud tint.</summary>
     const float MudRainSeconds = 150f;
 
+    /// <summary>
+    /// M32c: the most smoothness this script may hand the path surface, ever. The lane is matte by rule — any
+    /// highlight on it is a defect — and a per-frame writer that can raise smoothness is a way for the rule to be
+    /// broken without anything in the material read-back changing. 0.20 keeps the wet path well inside it whether
+    /// URP reads `_Smoothness` alone or multiplies it by the map's alpha.
+    /// </summary>
+    public const float MatteSmoothCeiling = 0.20f;
+
     static Material _gravel;
     static Color _baseColor = new Color(0.52f, 0.40f, 0.24f);
     static float _baseSmooth = 0.045f;
@@ -62,7 +70,12 @@ public sealed class PathMudWetness : MonoBehaviour
         if (_gravel.HasProperty("_BaseColor")) _gravel.SetColor("_BaseColor", col);
         if (_gravel.HasProperty("_Color")) _gravel.SetColor("_Color", col);
 
-        float smooth = Mathf.Lerp(_baseSmooth, 0.42f, mud);
+        // M32c: the standing rule is that the ground is MATTE and any highlight on the lane is a defect — M32
+        // measured the lane's smoothness at 0.137 with 0.0 % of the surface above 0.40. This script was lerping
+        // the lane's `_Smoothness` toward 0.42 as the storm ran, so the path could walk past that rule on its own
+        // while the material read-back still showed the map's 0.137 — two different numbers for one surface.
+        // Wet dirt darkens; it does not grow a highlight.
+        float smooth = Mathf.Min(Mathf.Lerp(_baseSmooth, 0.42f, mud), MatteSmoothCeiling);
         if (_gravel.HasProperty("_Smoothness")) _gravel.SetFloat("_Smoothness", smooth);
         if (_gravel.HasProperty("_Glossiness")) _gravel.SetFloat("_Glossiness", smooth);
     }

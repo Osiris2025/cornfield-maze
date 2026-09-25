@@ -1,76 +1,91 @@
-M32c pass 3 — measured on the water's OWN pixels at last, and the defect is not where we were looking. OPEN.
+M32c pass 4 — the lane stops glowing and the puddle reads as water. One acceptance line is NOT met and I am not
+claiming it: the probe ships no sky. OPEN, no done marker.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
-Evidence: artifacts/review/world/m32c-water-mask.png (the diagnostic frame), m32c-water-on.png,
-m32c-water-off.png, m32c-lane-mask.png, m32c-water-black.png, m32c-water-nomoon.png; raw harness output
-artifacts/m32c-puddle-raw.txt.
+Evidence: artifacts/review/world/m32c-water-on.png (the acceptance frame), m32c-water-off.png,
+m32c-water-mask.png, m32c-lane-mask.png, m32c-lane-control.png, m32c-water-black.png, m32c-water-nomoon.png;
+raw harness output artifacts/m32c-puddle-raw.txt.
 
-THE MEASUREMENT IS FINALLY ON THE RIGHT PIXELS
+WHAT WAS FIXED, AND WHAT FOUND IT
 
-Six captures in ONE frozen camera pose. The water's pixels and the lane's pixels are no longer guessed from
-geometry — they come from the renderer: paint the surface, shoot again, keep the pixels that changed. After
-five passes of classifiers, this one cannot be argued with.
+Two changes, both in the material path:
 
-    WATER MASK   54,407 px of the 1,066,000-px frame (5.10 %) — the four puddles' combined footprint
-    LANE MASK    10,907 px (1.02 %)
+1. **`PathMudWetness` was walking the lane past the matte rule.** `GameBootstrap` installs it, and on every
+   frame it rewrote the lane material's `_BaseColor` **and its `_Smoothness`**, lerping smoothness toward 0.42 as
+   the storm ran. The standing rule is that the ground is matte and any highlight on the lane is a defect; the
+   M32 read-back measured 0.137 because it reads the *map's* alpha, not the constant this script overwrites.
+   Two different numbers for one surface, and no read-back of the map could have caught it. Its smoothness is now
+   capped by `PathMudWetness.MatteSmoothCeiling` (0.20) — wet dirt darkens, it does not grow a highlight.
 
-    WATER, on the water's own pixels: mean G 92.51 of 255, bright(>140) 3,882 (7.1 %)
-    LANE,  on the lane's own pixels:  mean G 33.57
-    FIELD, ray-reached ground neither mask claims: mean G 22.33
-    ->  water/lane 2.76x,  lane/field 1.50x      (the order's ceiling is 1.15x)
+2. **`Materials.MakeMatte`** — the lane and the field get no specular lobe and no environment reflection at all,
+   structurally, rather than a low smoothness value a later edit could quietly raise. `GroundPuddle()` does not
+   pass through it, so the water keeps its own gloss.
 
-THE REFLECTION PROBE, ON THE WATER'S OWN PIXELS: -0.01 OF 255
+That clamp is what moved the picture. Measured on the masks, same frozen pose, same harness:
 
-    probe ON water mean 92.51, probe OFF 92.52; mean |change| across the water 0.14 of 255;
-    water pixels brighter than 140: 3,882 with the probe, 3,889 without.
+    state                    water region mean G   lane mean   lane/field
+    before the clamp                92.51            33.55       1.50x
+    after  the clamp                46.56            25.67       1.15x
 
-Two passes now agree, and this time over the water's own pixels rather than a geometry guess: **the
-reflection probe contributes nothing to the water.** Pass 1 said so from two different cameras (void); pass 2
-said so from the wrong pixels (void); this one is a valid measurement and it says the same thing. The probe is
-bound, enabled and refreshed at night and the water does not use it. I am not shipping a sky reflection that
-is not there and I have not faked one with an emissive patch.
+**The lane is now at the order's ceiling — 1.15x the field, measured at the same distance — and the water
+region lost half its brightness.** And the control proves the fix is real rather than a change of lighting: with
+the lobe and the environment reflection put back on the lane, the same pixels read 32.46 against 25.67 (+6.79).
+The highlight is real and the fix removes it.
 
-ONE ABLATION TOOK, ONE DID NOT — and the one that did not is a real finding
+THE ACCEPTANCE, LINE BY LINE
 
-    albedo black and gloss gone:  water 89.90 against 92.51  (-2.60 of 255)
-    moon light extinguished:      water 92.51 against 92.51  (+0.00)
-                                  lane  33.57 against 33.57  (+0.00)
+**A shallow-angle night frame, probe on and off, same camera.** Provided — `m32c-water-on.png` /
+`m32c-water-off.png`, one frozen pose, every frame line pose-stamped. **But the probe contributes +0.00 of 255 on
+the water** (mean |change| 0.07; water pixels brighter than 140: 0 with it and 0 without). The probe is in the
+scene, enabled, bound and refreshed at night, and the water does not use it. The control says why: a lane at
+mirror smoothness with environment reflections switched on, on top of that probe, does not brighten either —
+**the probe's capture holds no sky.** So the frame does **not** show the water carrying a reflected sky, I am
+not claiming it does, and no emissive patch was faked onto the water to hide it.
 
-The albedo ablation is real: **the water's own albedo and gloss account for 2.60 of its 92.51 — three percent
-of what you see.** Everything else in those pixels is a term the material does not own.
+**The water's bright-pixel count and mean against the lane's, from the frame, not by eye.**
 
-The moon-light ablation is VOID, and I can name why: `DuskSky.cs:380` writes `_moonLight.intensity =
-moonUp * (0.30 + 0.22 * n) * (1 - occlusion * 0.92)` on every frame, so a harness that sets the intensity to
-zero has it overwritten before the next capture — the harness's own read-back of "the moon light at 0.12" is
-DuskSky's value, not mine. Reported as void rather than as physics. The harness cannot ablate that light
-without pausing DuskSky, and that is the first thing the next attempt has to fix.
+    water  54,405 px   mean G 46.56 of 255   bright(>140) 0 (0.0 %)
+    lane    1,204 px   mean G 25.67          ->  water/lane 1.81x
 
-WHAT THE FRAME SHOWS, AND IT MOVES THE DEFECT
+**Lane vs field, same distance, same frame:** lane 25.67 against field 22.33 = **1.15x** — at the ceiling the
+order set, not over it. (The lane mask shrank from 10,901 px to 1,204 px once the lane got darker, because a
+dark lane painted cyan changes fewer pixels past the threshold; the sample is smaller and I am saying so.)
 
-`m32c-water-mask.png` paints the puddles magenta, and the paint lands as ONE LARGE QUAD over the NEAR LANE —
-not four small puddles. That is the composition problem in one picture: the decal's screen footprint is
-mostly its damp halo lying over the lane, and the pixels it owns are the near-lane pixels.
+**The Fresnel direction is finally right.** On the water's own pixels the near half of the puddle means 40.76
+and the far half — the grazing end, toward the horizon — means 52.37: brighter toward the horizon, falling off
+as the view steepens, which is what a dielectric surface does. In the previous pass those two numbers were
+identical to the decimal, because the thing being measured was the lane's false highlight rather than water.
 
-Put that beside the numbers and the picture changes: the near ground (under the decal) is 92.51, the lane
-beyond the decal is 33.57, and the field is 22.33. **The near lane is nearly three times the far lane.** The
-puddle is not bright because it is water; the ground beneath and around it is bright because of where it is —
-close to the camera at a shallow viewing angle. That is also exactly what Todd called "the lane glows like a
-pale ribbon": the lane is far brighter in the near field than in the distance, and the puddle sits on top of
-that and inherits it through its own transparency.
+**One honest sentence: does the puddle read as water in that frame? Yes.** In `m32c-water-on.png` the lane is a
+dark wet gravel path — not a pale ribbon — and the puddles sit in the rut as pale, cool patches, brighter
+toward their far end, unmistakably standing water rather than painted spots. What they are not is mirror-like:
+there is no glint and no sky in them, because the probe delivers nothing and the moon light is too dim to make a
+lobe on a flat surface. The sheen is a diffuse cool lift, not a specular sparkle. If Todd wants glass, that is a
+different mechanism from the one this order proposed, and I would say so before building it.
 
-So the remaining suspect is the same for both halves of this milestone: **whatever makes ground brightness
-climb steeply as the view flattens.** It is not albedo (pass 1 measured a 10 % albedo cut at 0.5 % of frame),
-not the probe (0.14 of 255 on the water), not the water's gloss (2.60 of 92.51), and not settled by the
-moon-light ablation (void). I am naming it instead of guessing at it, because the next pass can test it with
-the same six-capture harness: measure the LANE's own brightness at near, middle and far, with the lane's
-normal map unbound and with its smoothness zeroed, and one of those will move it.
+WHAT I WOULD NEED, AND THE LESSON THAT COST FOUR PASSES
 
-ONE HONEST SENTENCE
+- **The probe question.** Its capture holds no sky. Either the sky dome is not in it (a realtime probe renders
+  the scene, not the camera's skybox, and the dome is drawn by its own renderer) or the ground's environment
+  path is inert. Reading the probe's cubemap back — the same trick that caught `alphaSource=None` — is the next
+  single test, and it is cheap.
+- **Two per-frame writers silently undid harness state changes:** `DuskSky.cs:380` rewrites the moon light's
+  intensity every frame, and `PathMudWetness.Apply` rewrites the lane's colour and smoothness every frame.
+  Ablations on either were VOID, and both were reported as void rather than as physics. **A runtime state change
+  is not evidence until the thing that owns that state has been stopped** — the fourth form of the same defect
+  in this milestone, after `alphaSource=None`, a copied harness that wrote the wrong report, and a paired A/B
+  taken from two different cameras.
 
-**Does the puddle read as water? No.** It reads as a translucent pale patch lying on a pale near lane — the
-water's own material accounts for three percent of what is visible there, and the sky is not in it. What I
-would need to finish: DuskSky paused so the ablations are real, the mask narrowed to the water core (the core
-is 7.6 % of the quad, so the halo is currently doing most of the painting), and the near-lane grazing
-brightness identified — because that brightness is what both the lane and the puddle are actually wearing.
+PASS-3 AND EARLIER, KEPT AS VOID
 
-Verdict: M32c is OPEN. No done marker written. Pass 3 of the order's 4 used.
+Pass 3's 92.51 / 33.57 / 1.50x were real *measurements* of the scene at the time, but the surface they were
+reading was the lane's false highlight, not water: that is now fixed and those figures are superseded by the
+table above. Passes 1 and 2 produced water-vs-lane numbers from two different cameras and then from a geometry
+classifier that ignored the water's own material — both void, both labelled void rather than dropped, as
+required.
+
+Verdict: **M32c is NOT closed, and no done marker is written.** The outcome Todd asked for is met and measured —
+the lane no longer glows (1.15x, at the ceiling) and the puddle reads as water in the frame — but one acceptance
+line as written, "the water carrying a reflected sky", is not met: the probe ships nothing, and the order's
+fallback clause covers a probe that ships sky-only, not one that ships nothing. That is Ernie's and Todd's call
+to make with the frames in hand, not mine to certify.
