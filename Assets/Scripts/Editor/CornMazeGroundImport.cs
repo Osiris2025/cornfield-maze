@@ -37,9 +37,13 @@ namespace CornMaze.EditorTools
             Configure(Dir + "T_Ground_Field.png", GroundMap.Albedo);
             Configure(Dir + "T_Ground_Field_N.png", GroundMap.Normal);
             Configure(Dir + "T_Ground_Field_R.png", GroundMap.Data);
+            // M32: URP's metallic/smoothness map — RGB metallic 0 (the ground is a dielectric), A = smoothness.
+            // Data, so sRGB OFF and the alpha NOT treated as transparency: it is a value, not coverage.
+            Configure(Dir + "T_Ground_Field_M.png", GroundMap.Data);
             Configure(Dir + "T_Ground_Lane.png", GroundMap.Albedo);
             Configure(Dir + "T_Ground_Lane_N.png", GroundMap.Normal);
             Configure(Dir + "T_Ground_Lane_R.png", GroundMap.Data);
+            Configure(Dir + "T_Ground_Lane_M.png", GroundMap.Data);
             Configure(Dir + "T_Ground_LaneEdge.png", GroundMap.Mask);
             // M31: the lane's fade, shipped as a strip and baked into the lane albedo's alpha by
             // scripts/m31_lane_alpha_bake.py. The bake is what the game draws; the strip is imported so the
@@ -119,8 +123,8 @@ namespace CornMaze.EditorTools
             sb.AppendLine("M29 ground import — read back from the importers:");
             string[] files =
             {
-                "T_Ground_Field.png", "T_Ground_Field_N.png", "T_Ground_Field_R.png",
-                "T_Ground_Lane.png", "T_Ground_Lane_N.png", "T_Ground_Lane_R.png",
+                "T_Ground_Field.png", "T_Ground_Field_N.png", "T_Ground_Field_R.png", "T_Ground_Field_M.png",
+                "T_Ground_Lane.png", "T_Ground_Lane_N.png", "T_Ground_Lane_R.png", "T_Ground_Lane_M.png",
                 "T_Ground_LaneEdge.png",
                 "T_Ground_LaneA.png", "T_Ground_LaneAlpha.png"
             };

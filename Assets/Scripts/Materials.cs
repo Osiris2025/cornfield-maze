@@ -41,8 +41,17 @@ public static class Materials
     public static Material GroundField()
     {
         return Ground("Ground/T_Ground_Field", "Ground/T_Ground_Field_N",
-                      new Color(0.88f, 0.83f, 0.72f), 0.05f);
+                      new Color(0.88f, 0.83f, 0.72f), PreM32FieldSmoothness, "Ground/T_Ground_Field_M");
     }
+
+    /// <summary>
+    /// M32: the smoothness the field and lane carried before the maps were wired — a constant per material.
+    /// The reflection report's A/B restores exactly this, so it is defined once, here, and used both by the
+    /// material and by the harness that measures the difference. Not a guess at "before": this is the number
+    /// the previous commit passed in.
+    /// </summary>
+    public const float PreM32FieldSmoothness = 0.05f;
+    public const float PreM32LaneSmoothness = 0.11f;
 
     /// <summary>
     /// M31 (§17): the lane, blended into the field by alpha rather than cut out of it.
@@ -55,7 +64,7 @@ public static class Materials
     public static Material GroundLane()
     {
         var mat = Ground("Ground/T_Ground_LaneA", "Ground/T_Ground_Lane_N",
-                         new Color(0.94f, 0.92f, 0.88f), 0.11f);
+                         new Color(0.94f, 0.92f, 0.88f), PreM32LaneSmoothness, "Ground/T_Ground_Lane_M");
         MakeAlphaBlend(mat);
         return mat;
     }
@@ -127,14 +136,27 @@ public static class Materials
     /// <summary>
     /// A URP/Lit ground material from the derived albedo + normal maps.
     ///
-    /// Smoothness is a constant per material, not the sets' `_R` roughness: driving it would mean repacking
-    /// roughness into URP's metallic/smoothness slot (or the albedo's alpha via SmoothnessTextureChannel) —
-    /// another full-size map in phone memory for a dry/wet variation PathMudWetness already drives at
-    /// runtime on the lane. The `_R` maps stay imported and unused on purpose; the report says so.
+    /// M32 (Todd): "can you use the PBR files for reflections off the moonlight?" — the sets ship roughness
+    /// as a separate `_R` map and URP/Lit cannot take a standalone roughness texture, so the builder emits
+    /// URP's own metallic/smoothness map instead: `_M` is RGB = metallic 0 (ground is a dielectric; there is
+    /// no metal in it) and **A = smoothness**, straight from the set's roughness.
+    ///
+    /// The keyword matters and is not guesswork: URP's own material upgrader sets `_METALLICSPECGLOSSMAP`
+    /// from the presence of `_MetallicGlossMap` (UniversalRenderPipelineMaterialUpgrader.cs), and URP reads
+    /// smoothness as `metallicGloss.a * _Smoothness`, so the scalar goes to 1 and the map carries the value.
+    /// `_SmoothnessTextureChannel` stays 0 = metallic alpha, with `_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A`
+    /// explicitly OFF — the LANE's albedo alpha is its fade (M31), and reading that as smoothness would make
+    /// the fade edges mirror-shiny.
+    ///
+    /// The normal map stays bound on purpose: it is what breaks the highlight into grain. A reflective floor
+    /// without normals is a mirror blob, which is worse than no reflection.
+    ///
+    /// `preM32Smoothness` is the constant this material carried before the maps were wired; it is the value
+    /// the A/B restores.
     /// </summary>
-    static Material Ground(string albedo, string normal, Color tint, float smoothness)
+    static Material Ground(string albedo, string normal, Color tint, float preM32Smoothness, string glossMap)
     {
-        var mat = Lit(tint, smoothness, 0f);
+        var mat = Lit(tint, preM32Smoothness, 0f);
         var a = Resources.Load<Texture2D>(albedo);
         var n = Resources.Load<Texture2D>(normal);
         if (a == null) Debug.LogWarning("M29: ground albedo missing: Resources/" + albedo);
@@ -154,7 +176,42 @@ public static class Materials
             if (mat.HasProperty("_BumpScale")) mat.SetFloat("_BumpScale", 1f);
             mat.EnableKeyword("_NORMALMAP");
         }
+
+        var g = glossMap == null ? null : Resources.Load<Texture2D>(glossMap);
+        if (g == null)
+        {
+            Debug.LogWarning("M32: ground metallic/smoothness map missing: Resources/" + glossMap +
+                             " — this material falls back to a constant smoothness of " + preM32Smoothness);
+        }
+        BindReflection(mat, g, preM32Smoothness);
         return mat;
+    }
+
+    /// <summary>
+    /// M32: bind (or clear) the metallic/smoothness map and set the scalar to match. Kept public because it
+    /// is also the harness's A/B switch — same view, same scene, one variable — and because a material with a
+    /// metallic map bound but the wrong keyword renders as if it had none, which is exactly the kind of
+    /// "wired" that is not wired.
+    /// </summary>
+    public static void BindReflection(Material mat, Texture2D gloss, float constantSmoothness)
+    {
+        if (mat == null) return;
+        if (mat.HasProperty("_MetallicGlossMap")) mat.SetTexture("_MetallicGlossMap", gloss);
+        if (gloss != null)
+        {
+            if (mat.HasProperty("_SmoothnessTextureChannel")) mat.SetFloat("_SmoothnessTextureChannel", 0f);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 1f);
+            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0f);
+            mat.EnableKeyword("_METALLICSPECGLOSSMAP");
+            mat.DisableKeyword("_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A");
+        }
+        else
+        {
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", constantSmoothness);
+            if (mat.HasProperty("_Metallic")) mat.SetFloat("_Metallic", 0f);
+            mat.DisableKeyword("_METALLICSPECGLOSSMAP");
+            mat.DisableKeyword("_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A");
+        }
     }
 
     public static Material Pebble(Color color)
