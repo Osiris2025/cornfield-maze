@@ -129,6 +129,13 @@ ABSENT — nothing needs a human to continue; the next step is named in §2.
 **Working tree left alone as ordered:** the two pre-existing M0 items; Ernie's ground art uncommitted as not
 mine. Unity re-serialised `ProjectSettings/*` and the RP assets during builds.
 
+**Flagged, not staged:** the working tree carries unstaged **deletions of three tracked `.meta` files** —
+`Assets/GingerbreadMan.meta` and `Assets/Resources/PerformanceTestRun{Info,Settings}.json.meta`. Not mine and not
+touched; they are not in any commit from this crew. But `Assets/Resources/PerformanceTestRun*.json` themselves
+are **rewritten inside `Assets/` every time the built app runs** (mtime tracks each `shoot.sh` run), which is why
+those two paths keep changing shape between passes. A build should not write into `Assets/`; worth a line in the
+clean-up list. **No `git add -A` has been run and none should be** — it would commit these deletions.
+
 ## 8. Last commits
 
 `0172956` M32c pass 5 (the water's env read-back, the probe's empty capture; lane 1.06x) · `6238881` M32c pass 4
