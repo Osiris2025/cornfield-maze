@@ -67,6 +67,7 @@ public class SkyCapture : MonoBehaviour
 
         // ---- sample the whole rise so occlusion is measured, not assumed --------------------
         int beats = 0;
+        int husksSeen = 0;
         bool wasOccluded = false;
         float maxOcclusion = 0f, occludedSeconds = 0f;
         float nightAt = -1f;
@@ -76,8 +77,11 @@ public class SkyCapture : MonoBehaviour
 
             // The sky is what this harness is observing. The Husk hunted a motionless player down inside
             // the 40 s and the second frame came out as a death close-up. Keep the chaser out of the take.
-            foreach (var beast in Object.FindObjectsByType<CrumbBeast>(FindObjectsSortMode.None))
+            foreach (var beast in Object.FindObjectsByType<Husk>(FindObjectsSortMode.None))
+            {
+                husksSeen++;
                 Object.Destroy(beast.gameObject);
+            }
 
             float occ = DuskSky.MoonOcclusion;
             if (occ > maxOcclusion) maxOcclusion = occ;
@@ -100,6 +104,8 @@ public class SkyCapture : MonoBehaviour
             "the moon), occludedTime=" + occludedSeconds.ToString("0.0") + "s, max=" + maxOcclusion.ToString("0.00"));
         Say("night arrived at t=" + (nightAt < 0f ? "never" : nightAt.ToString("0.0") + "s") +
             " (rule: 40 s OR " + DuskSky.NightCells + " cells in, whichever comes first)");
+        Say("moonrise frames: husk instances observed alive during the rise = " + husksSeen +
+            " (proves the renamed class spawns and is found by type at runtime)");
         Say(beats > 0
             ? "PASS: a cloud crossed the moon during the rise — the field loses its light for a beat"
             : "FAIL: no cloud crossed the moon in the first 40 s, so the occlusion beat never fired");

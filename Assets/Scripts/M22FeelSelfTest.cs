@@ -78,7 +78,7 @@ public sealed class M22FeelSelfTest : MonoBehaviour
         yield return new WaitForSeconds(1.0f);
 
         // The Husk is not part of this test and would eat the subject.
-        foreach (var beast in Object.FindObjectsByType<CrumbBeast>(FindObjectsSortMode.None))
+        foreach (var beast in Object.FindObjectsByType<Husk>(FindObjectsSortMode.None))
             Object.Destroy(beast.gameObject);
 
         var maze = player.Maze;

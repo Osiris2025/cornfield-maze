@@ -41,7 +41,7 @@ Rain soften/dissolve must wash the **ICING FIRST**, and the asset makes that dir
 Todd, verbatim, on the supplied cookie's hollow ring eyes and big red ring mouth: *"that is by design. this will be a scary gamer"* — read as **scary game**. Source: `docs/DECISIONS.md` §Tone.
 
 - The wide-eyed, hollow, **ring-eyes-and-red-ring-mouth face is DELIBERATE. Do not "fix" it.** Rounding the rings into friendly dot-eyes, shrinking the mouth into a smile, or adding cartoon charm has misread the product and is a defect.
-- **The register is horror, not cosy.** The existing shipped material is the reference standard: anxious underscore, chase stabs, horror bed, the Crumb Beast, the dissolve with icing washing off first, near-night sky, lightning before thunder.
+- **The register is horror, not cosy.** The existing shipped material is the reference standard: anxious underscore, chase stabs, horror bed, the Husk, the dissolve with icing washing off first, near-night sky, lightning before thunder.
 - **The cookie is the victim, not a mascot.** Cute-and-scary is allowed; cute-and-safe is not.
 - Warm baked dough and icing may stay — a soft thing in a bad place. Do not sand off the menace to make him likeable.
 - A bot that believes a change makes the game **less scary** escalates to Harrow with options laid out, rather than deciding.

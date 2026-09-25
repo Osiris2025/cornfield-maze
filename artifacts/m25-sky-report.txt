@@ -1,8 +1,9 @@
-M25 dusk / moonrise — measured on the built Mac app, 2026-09-24 20:29:16Z
+M25 dusk / moonrise — measured on the built Mac app, 2026-09-24 20:38:46Z
 frame sky-t0.png -> written
 t=0.0s DUSK  night01=0.00 sunColour=RGBA(1.00, 0.62, 0.30, 1.00) sunIntensity=0.55 sunElevation=-2.0deg moonElev=1.0deg moonAngularSize=6.6deg starGate=0.00
 frame sky-t40.png -> written
 t=40.0s NIGHT night01=1.00 sunColour=RGBA(0.34, 0.40, 0.58, 1.00) sunIntensity=0.05 sunElevation=-13.0deg moonElev=28.0deg moonAngularSize=6.8deg starGate=1.00
-cloud occultation over the rise: beats=1 (a beat = a cloud covering more than half the moon), occludedTime=13.7s, max=0.72
+cloud occultation over the rise: beats=1 (a beat = a cloud covering more than half the moon), occludedTime=13.6s, max=0.72
 night arrived at t=40.0s (rule: 40 s OR 2 cells in, whichever comes first)
+moonrise frames: husk instances observed alive during the rise = 1 (proves the renamed class spawns and is found by type at runtime)
 PASS: a cloud crossed the moon during the rise — the field loses its light for a beat

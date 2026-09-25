@@ -1,6 +1,6 @@
 # Corn Field Maze
 
-A third-person Unity 6 game: you play as a gingerbread cookie running through a corn maze. Several long dead ends force you to backtrack a few passages. Reach the pot of gold to win — an original celebratory jingle plays when you get there. Stay too long in the rain and the cookie slowly softens and dissolves; wrong turns risk the **Crumb Beast**, an original hungry cookie-chasing chase beast (not Sesame Street IP).
+A third-person Unity 6 game: you play as a gingerbread cookie running through a corn maze. Several long dead ends force you to backtrack a few passages. Reach the pot of gold to win — an original celebratory jingle plays when you get there. Stay too long in the rain and the cookie slowly softens and dissolves; wrong turns risk **the Husk**, what is left of a corn plant once it is stripped (an original threat — not Sesame Street IP).
 
 ## Open the project
 
@@ -20,7 +20,7 @@ You are a stylized gingerbread cookie (brown dough, icing, gumdrop buttons). Fin
 
 A looping anxious underscore, chase-string stabs, hollow wind, and dry corn rustle start when you press Play (original procedural audio, not licensed tracks). Reach the pot of gold and the horror bed ducks for an original upbeat win jingle (bright brass and walking bass). After about **20 seconds** the weather turns: sky and fog go almost night-dark, wind and corn-sway harden, mostly vertical rain starts, paths grow slightly muddier over time, and lightning flashes before distant then closer thunder. When the sky darkens, look **straight up** — a faint star arrow near zenith points along the **next correct corridor** toward the gold.
 
-About **5 seconds** after play starts, the **Crumb Beast** appears and chases along the gravel paths only. It is slow: if you stay on the solution route it cannot catch you. Dead ends that force a turnaround into the beast can get you eaten (game over — press **R** or Restart).
+About **5 seconds** after play starts, **the Husk** appears and chases along the gravel paths only. It is slow: if you stay on the solution route it cannot catch you. Dead ends that force a turnaround into it can get you eaten (game over — press **R** or Restart).
 
 Stay on the **gravel-and-grass lanes**. You cannot walk through the corn or off the trail. **WASD / arrows follow the corridor** you are in (not free-strafe off the path). Longer rain slowly dissolves the gingerbread (icing washes off first) over minutes of play — you can still finish if you are reasonably quick.
 

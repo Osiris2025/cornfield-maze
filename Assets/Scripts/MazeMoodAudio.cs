@@ -91,7 +91,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
     {
         MobileAudioSession.Apply();
         _music = MakeSource("Music", MusicVol, 0f, true, 64);
-        _chase = MakeSource("ChaseStrings", ChaseVol, 0f, true, 72);
+        _chase = MakeSource("HuskChase", ChaseVol, 0f, true, 72);
         _wind = MakeSource("Wind", WindVol, 0f, true, 110);
         _howl = MakeSource("Howl", HowlVol, 0f, true, 118);
         _rustle = MakeSource("Rustle", RustleVol, 0.30f, true, 128);
@@ -104,7 +104,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
         }
 
         _music.clip = MazeMoodSynth.AnxiousDrama(16f);
-        _chase.clip = MazeMoodSynth.ChaseStrings(14f);
+        _chase.clip = MazeMoodSynth.HuskChase(14f);
         _wind.clip = MazeMoodSynth.Wind(10f);
         _howl.clip = MazeMoodSynth.HollowHowl(12f);
         _rustle.clip = MazeMoodSynth.CornRustle(8f);
@@ -339,7 +339,7 @@ static class MazeMoodSynth
     /// Periodic high-string shrieks: short saw/triangle/noise bursts in irregular
     /// clusters (tense, stab, pause) — original, not a film cue.
     /// </summary>
-    public static AudioClip ChaseStrings(float seconds)
+    public static AudioClip HuskChase(float seconds)
     {
         int frames = Mathf.RoundToInt(seconds * Rate);
         var data = new float[frames * 2];
@@ -425,7 +425,7 @@ static class MazeMoodSynth
 
         CrossfadeStereo(data, frames, Mathf.RoundToInt(0.08f * Rate));
         PeakSoft(data, 0.68f);
-        return Clip("ChaseStrings", data, frames, 2);
+        return Clip("HuskChase", data, frames, 2);
     }
 
     public static AudioClip Wind(float seconds)

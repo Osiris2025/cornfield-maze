@@ -1,14 +1,15 @@
 using UnityEngine;
 
 /// <summary>
-/// Original hungry cookie-chasing beast (not Sesame Street IP).
+/// THE HUSK — the thing that chases Gingy. What is left of a corn plant once it is stripped.
+/// Original design, not Sesame Street IP.
 /// Spawns after a short delay, pathfinds along maze lanes toward the gingerbread player,
 /// and is slow enough that staying on the correct route keeps you safe.
 /// Wrong turns / backtracking into it can get you eaten.
 /// </summary>
-public sealed class CrumbBeast : MonoBehaviour
+public sealed class Husk : MonoBehaviour
 {
-    public const string DisplayName = "Crumb Beast";
+    public const string DisplayName = "the Husk";
     const float SpawnDelay = 5f;
     const float MoveSpeed = 2.35f;
     const float RepathSeconds = 0.85f;
@@ -32,10 +33,10 @@ public sealed class CrumbBeast : MonoBehaviour
     Material _mouthMat;
     Material _crumbMat;
 
-    public static CrumbBeast Spawn(MazeData maze, FarmWalkerController player)
+    public static Husk Spawn(MazeData maze, FarmWalkerController player)
     {
-        var go = new GameObject("CrumbBeast");
-        var beast = go.AddComponent<CrumbBeast>();
+        var go = new GameObject("Husk");
+        var beast = go.AddComponent<Husk>();
         beast._maze = maze;
         beast._player = player;
 
@@ -94,7 +95,7 @@ public sealed class CrumbBeast : MonoBehaviour
         var pupil = Materials.Lit(new Color(0.08f, 0.08f, 0.10f), 0.1f);
         var tooth = Materials.Lit(new Color(0.95f, 0.93f, 0.85f), 0.45f);
 
-        _model = new GameObject("CrumbBeastMesh").transform;
+        _model = new GameObject("HuskMesh").transform;
         _model.SetParent(transform, false);
 
         // Round goofy body — original design, not trademark blue-fur character.

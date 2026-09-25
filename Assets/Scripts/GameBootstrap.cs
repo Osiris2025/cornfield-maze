@@ -64,7 +64,7 @@ public sealed class GameBootstrap : MonoBehaviour
         if (_hud != null) _hud.Begin();
         if (_beastSpawned || _maze == null || _player == null) return;
         _beastSpawned = true;
-        CrumbBeast.Spawn(_maze, _player);
+        Husk.Spawn(_maze, _player);
         PlayTone(220f, 0.15f);
     }
 
