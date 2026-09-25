@@ -1,10 +1,66 @@
-M32c pass 5 — the lane is inside the ceiling (1.06x) and the water's material is proven correct; the probe's
-capture is the one missing piece. OPEN, no done marker.
+M32c pass 6 — the environment map is real and read back; the water reflects it ~400x better than the lane, and
+it still does not read as water at this angle. OPEN, no done marker.
 
 Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
 Evidence: artifacts/review/world/m32c-water-on.png (the acceptance frame), m32c-water-off.png,
 m32c-water-mask.png, m32c-lane-mask.png, m32c-lane-control.png, m32c-water-black.png, m32c-water-nomoon.png;
 raw harness output artifacts/m32c-puddle-raw.txt.
+
+PASS 6 — THE ENVIRONMENT MAP, BUILT AND READ BACK
+
+Pass 5 left one named fault: the probe produced no capture. Pass 6 stops asking a realtime capture to happen —
+the probe cleared to the skybox, and this scene's sky is a 57 m MESH DOME, not a skybox material — and BUILDS
+the environment instead: the night sky as a 64 px cube generated in code, horizon band under the storm, dark
+overhead, the moon disc placed at `DuskSky.MoonDirection`, a wide soft halo, sparse stars. Procedural, in code,
+no third-party asset, and the order allows it ("baked once -- the sky barely moves").
+
+It was wrong on the first build, and the read-back caught it in one run:
+
+    array +Y mean G -560.08, post-upload 0.00, g range -2.203 .. -0.769
+
+`Mathf.SmoothStep(from, to, t)` clamps t and returns a value BETWEEN from AND to — it is not "smooth a 0..1 ramp".
+Handing it (0, 3.6, ang) returns up to 3.6, so `1 - that` ran to -2.6 and RGBA32 clamped the negative radiance
+to black. And a black probe cubemap does not merely fail to light the water: it took the ground's ambient with
+it (field 22.32 -> 6.45, water 46.56 -> 5.90). Normalised (`r = ang / 3.6`, smooth 1 -> 0 across the disc) and
+the map reads back real.
+
+    ENVIRONMENT MAP, READ BACK (face mean G of 255)
+    +X 64.6 [177 bright]  -X 39.3  +Y 27.8  -Y 87.0  +Z 42.1  -Z 39.6   overall 50.06, brightest 255 on +X
+
+The moon is on +X at this azimuth — 28 deg up — which is where DuskSky puts it, so the map's bright source is in
+the same place in the sky as the quad the player sees.
+
+CALIBRATED, NOT GUESSED. A probe's cubemap feeds the ambient as well as the reflections, so a physically-dark
+night sky DIMS the ground. Its job is to give the water something to reflect, not to relight the maze, so its
+gain is set from measurement: cube mean 12.23 -> field 10.23 and cube 26.88 -> field 14.95, i.e. ambient ~0.322
+of the cube's mean plus a 6.29 light-only floor; matching the 22.32 baseline needs a cube mean of ~50 = gain 4.1.
+Result: field **20.92** against the 22.32 baseline (94 %) and water **44.90** against 46.56 (96 %).
+
+THE ACCEPTANCE LINES, MEASURED
+
+    water, on the water's own pixels: 54,405 px, mean G 44.90 of 255, bright(>140) 0 (0.0 %)
+    lane,  on the lane's own pixels:   9,089 px, mean G 23.39
+    field:                             5,222 px, mean G 20.92
+    ->  water/lane 1.92x,  lane/field 1.12x      (the order wants 1.15x or darker — MET)
+    ENVIRONMENT ON vs OFF, on the water: 44.90 vs 46.56 = -1.66 of 255, mean |change| 3.93 of 255
+    THE SAME SWITCH ON THE LANE, lobe and env reflections restored: +0.01 of 255
+    FRESNEL: near half 38.54, grazing far half 51.26 — brighter toward the horizon, as a dielectric should be
+
+So the water does carry the sky and the lane does not — 3.93 of 255 against 0.01, roughly four hundred times more
+— and the Fresnel direction is right. But 3.93/255 is not a glint, and that number is the whole story of this
+pass: at a ~16 deg view onto the water, the Fresnel reflectance of a dielectric is a few percent of a night sky,
+and a few percent of a night sky is four levels of 255. The physics is now correct and it is still not visible.
+
+ONE HONEST SENTENCE: does the puddle read as water in this frame? **No.** In `m32c-water-on.png` the lane reads
+as a wet grey path with a lighter mottled patch where the water is — wet lane, not standing water with a sheen.
+What it would need is either a much shallower view down the lane than this shot has, or a mechanism other than
+environment reflection; the order forbids faking that with an emissive patch, so the choice is Todd's.
+
+VERDICT: **M32c OPEN, no done marker.** The lane half is met (1.12x, and four hundred times less reflective
+than the water). The water half: the mechanism now exists, is read back, and measures ~4/255 — structurally
+right, visibly absent.
+
+=========================== PASS 5 AND EARLIER, BELOW ===========================
 
 PASS 5 — THE ONE SWITCH NOBODY HAD READ
 

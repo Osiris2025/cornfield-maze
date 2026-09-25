@@ -549,36 +549,40 @@ public class M32bPuddleSelfTest : MonoBehaviour
     /// </summary>
     void ProbeReadBack(ReflectionProbe p)
     {
-        if (p == null) { Emit("PROBE READ-BACK: no probe in the scene"); return; }
-        var rt = p.texture as RenderTexture;
-        if (rt == null) { Emit("PROBE READ-BACK: the probe has no render texture to read"); return; }
-        var prev = RenderTexture.active;
+        // Prefer the map we built (pass 6): a baked probe's cubemap is not exposed as a render texture, and the
+        // thing under test is the environment the water reads, whichever object is holding it.
+        Cubemap cube = ReflectionProbes.SkyCube;
+        if (cube == null && p != null) cube = p.texture as Cubemap;
+        if (cube == null)
+        {
+            var rt = p != null ? p.texture as RenderTexture : null;
+            if (rt == null) { Emit("PROBE READ-BACK: no cube map to read — the environment is empty"); return; }
+        }
+        if (cube == null) { Emit("PROBE READ-BACK: the environment is a render texture, not a readable cube"); return; }
         var names = new[] { "+X", "-X", "+Y", "-Y", "+Z", "-Z" };
         var faces = new[] { CubemapFace.PositiveX, CubemapFace.NegativeX, CubemapFace.PositiveY,
                             CubemapFace.NegativeY, CubemapFace.PositiveZ, CubemapFace.NegativeZ };
-        var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBA32, false);
-        string line = "PROBE READ-BACK (the probe's own cubemap, face mean G of 255)";
-        double allSum = 0; int allN = 0, allBright = 0;
+        string line = "PROBE READ-BACK (the environment's own cube, face mean G of 255)";
+        double allSum = 0; int allN = 0, allBright = 0; float brightest = 0f; string brightestFace = "-";
         for (int f = 0; f < 6; f++)
         {
-            Graphics.SetRenderTarget(rt, 0, faces[f]);
-            tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
-            tex.Apply();
-            var px = tex.GetPixels32();
-            double s = 0; int over = 0;
-            for (int i = 0; i < px.Length; i++) { s += px[i].g; if (px[i].g > 140) over++; }
+            var px = cube.GetPixels(faces[f]);
+            double s = 0; int over = 0; float mx = 0f;
+            for (int i = 0; i < px.Length; i++) { float g = px[i].g * 255f; s += g; if (g > 140f) over++; if (g > mx) mx = g; }
             float mean = px.Length > 0 ? (float)(s / px.Length) : 0f;
             allSum += s; allN += px.Length; allBright += over;
+            if (mx > brightest) { brightest = mx; brightestFace = names[f]; }
             line += "  " + names[f] + " " + mean.ToString("0.0") + (over > 0 ? " [" + over + " bright]" : "");
         }
-        RenderTexture.active = prev;
-        Object.Destroy(tex);
         float overall = allN > 0 ? (float)(allSum / allN) : 0f;
-        Emit(line + "  — overall " + overall.ToString("0.00") + ", bright px " + allBright + ". " +
+        Emit(line + "  — overall " + overall.ToString("0.00") + ", bright px " + allBright +
+             ", brightest " + brightest.ToString("0") + " on " + brightestFace + ". " +
              (overall < 2f
-                 ? "ALL BLACK: the capture holds no sky. The fault is the capture, not the water, and no amount of " +
-                   "material work will put the moon in the puddle."
-                 : "The capture holds light: the water's material is what is not using it."));
+                 ? "ALL BLACK: the environment is empty, so the water has nothing to reflect and the fault is " +
+                   "here, not in the water's material."
+                 : allBright > 0
+                     ? "The environment holds a bright source: the water has a real sky to reflect."
+                     : "The environment holds light but no bright source."));
     }
 
     /// <summary>
