@@ -1,0 +1,85 @@
+M32c — the reflection probe is in and the frames are at the angle that can show it; but the probe changes
+nothing measurable, and the lane's brightness is not its albedo. OPEN.
+
+Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target. 2026-09-25.
+Evidence: artifacts/review/world/m32c-water-probe-on.png, m32c-water-probe-off.png,
+artifacts/review/world/m32b-puddle-moon.png, raw harness output artifacts/m32c-puddle-raw.txt.
+
+WHAT I BUILT
+
+A sky reflection probe, because there was none anywhere in the project — `ReflectionProbes.cs`, created by
+the world builder after the ground and the puddles exist. Realtime, refreshed through scripting (the sky
+barely moves, so one capture is enough), 128 px, box-projected, 130 x 114 m over the maze, refreshed from
+the harness once the sky has actually reached night. Environment reflections are now set explicitly ON for
+every ground material (`_ENVIRONMENTREFLECTIONS_OFF` cleared, `_EnvironmentReflections` 1, specular
+highlights 1) rather than assumed — wired is not wired, and the material read-back confirms the values.
+
+I also added one test hook, `FarmWalkerController.SetEyeHeightForTest`, so the acceptance frames can be shot
+with the eye at 1.15 m as the order asks, and the harness's drift check now measures against the eye the game
+is actually using rather than a fixed 1.655 m.
+
+THE ACCEPTANCE PAIR — SAME CAMERA, ONE VARIABLE
+
+    frame                        water mean G   lane mean G   water/lane   band mean   peak
+    m32c-water-probe-on.png         91.68          29.02         3.16x        95.01     200
+    m32c-water-probe-off.png        91.78          28.97         3.17x        95.21     200
+
+Both shot standing low on maze cell (1,1) with the eye at 1.15 m, the puddle 3.93 m ahead, aimed 22 m down
+the lane at a near-level pitch — the flattest view available, which is the angle a Fresnel reflection needs.
+Probe present, enabled and refreshed:
+
+    M32c reflection probe: present, realtime/scripted via scripting, enabled=True, box 130 x 114 m,
+    refreshed now that the sky is at night
+
+**And switching it off changes the water by 0.10 of 255.** The probe is in the scene and bound to the
+materials, and it contributes nothing measurable — the A/B was taken with the probe disabled *and*
+`_ENVIRONMENTREFLECTIONS_OFF` set on the water, and the frame did not move. So the water does **not**
+currently carry a reflection of the sky, and I am not going to claim it does. Per the order, I have not
+faked it with an emissive patch on the water.
+
+What that means: the water's pale blue brightness comes from something other than the environment map. Two
+candidates, both measurable next pass: the moon directional light's specular on the near-flat water normal,
+and the broad lift that binding the M32 maps produces (the flagged 33.68 -> 49.45 whole-frame rise that the
+M32 report could not explain). Until one of them is identified, anything I do to the water is guesswork.
+
+THE PUDDLES
+
+Four per level instead of six, 4.4 x 1.8 m instead of 3.4 x 1.7, long side along the lane. In
+`m32c-water-probe-on.png` they read as pale blue-grey elongated patches lying in the lane's rut — no longer
+the near-circular painted spots of the last pass.
+
+I also found and fixed a real bug in the last pass's alignment test: it summed both of a straight-run cell's
+neighbours, which point in exactly opposite directions and cancel, so it reported |dot| 0.00 for every puddle
+in the maze while claiming to measure alignment with the moon's azimuth. It now takes one neighbour.
+
+THE LANE, AND A FINDING THAT MATTERS MORE THAN THE TINT
+
+The order asked for lane vs field within 15 %, or the lane darker. Measured, same frame, lane and field
+classified by the maze's own answer for the cell under each pixel (the water excluded):
+
+    m32c-water-probe-on.png        lane 31.49   field 27.14   1.16x
+    m32b-puddle-moon.png           lane 47.98   field 54.04   0.89x
+
+So in the mirror-angle frame the lane is already darker than the field, and in the shallow frame it is 16 %
+brighter — one point over the ceiling, not the 2-3x the order describes.
+
+I scaled the lane's albedo tint by 0.90 to close that gap, and the material read-back proves the change
+reached the shader:
+
+    lane _BaseColor RGBA(0.846, 0.828, 0.792, 1.000)
+
+**And the frame barely moved: the lane's mean went 48.22 -> 47.98, half a percent, for a ten percent albedo
+cut.** That is the interesting result of this pass. The lane reading as a pale ribbon is *not* its albedo, so
+it cannot be tuned away by tinting, and the next pass should measure what actually drives it rather than
+turning that knob harder. I have left the 0.90 scale in place because it is verified, harmless and in the
+right direction, and I have not chased it further on a guess.
+
+ONE HONEST SENTENCE
+
+Does the puddle read as water in the frame? **Partly, and not yet.** It reads as a flat pale patch lying in
+the rut with a bluish cast, and at a glancing angle it measures 3.16x the lane — the water is unmistakably
+the brightest surface there, which is the Fresnel behaviour the order described. But it does not carry a
+visible reflection of the sky or the moon, and the probe that was supposed to put one there changes the frame
+by 0.1 of 255. What it needs is the true source of its brightness identified, not another pass of tuning.
+
+Verdict: M32c is OPEN. No done marker written.

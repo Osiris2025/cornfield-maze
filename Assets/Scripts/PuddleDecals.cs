@@ -21,11 +21,13 @@ using UnityEngine;
 /// </summary>
 public static class PuddleDecals
 {
-    public const int PuddlesPerLevel = 6;
-    // M32b second pass: 2.6 x 1.5 was too small to read as water at night from a 28 deg view. Widened to
-    // 3.4 x 1.7 — still inside the 2.08 m lane, still elongated along it, so the decal cannot reach the corn.
-    public const float PuddleLong = 3.4f;    // along the lane
-    public const float PuddleWide = 1.7f;    // across it — inside the 2.08 m lane, so it never reaches the field
+    public const int PuddlesPerLevel = 4;
+    // M32c: fewer and larger. Four at 4.4 x 1.8 m instead of six at 3.4 x 1.7 m — a 3.4 m rut seen from a
+    // shallow angle foreshortens to roughly its own width and reads as a round painted spot, which is what
+    // the frame showed. Water sits in a rut, so the rut should be long enough to still read as one when the
+    // view flattens. The short side stays inside the 2.08 m lane, so the decal still cannot reach the corn.
+    public const float PuddleLong = 4.4f;    // along the lane
+    public const float PuddleWide = 1.8f;    // across it — inside the 2.08 m lane
     const float Lift = 0.006f;        // above the lane's own 0.03 m, so the decal does not z-fight it
     const float YawJitter = 8f;       // degrees
     const int SeedOffset = 4177;      // the puddle build's own seed (scripts/puddle_build.py)

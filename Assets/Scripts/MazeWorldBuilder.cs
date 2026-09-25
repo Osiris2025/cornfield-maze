@@ -154,6 +154,9 @@ public static class MazeWorldBuilder
 
         // M32b: puddles go in after the lanes exist, on straight runs, under one parent named "Puddles".
         PuddleDecals.Build(root.transform, maze, Materials.GroundPuddle());
+        // M32c: without this the water has no sky to reflect, which is why the sheen could be measured and
+        // never seen. Built after the ground so the probe captures the finished scene.
+        ReflectionProbes.Build(root.transform, maze);
 
         SetupAtmosphere();
     }

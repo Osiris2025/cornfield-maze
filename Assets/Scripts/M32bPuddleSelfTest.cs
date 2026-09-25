@@ -61,7 +61,7 @@ public class M32bPuddleSelfTest : MonoBehaviour
         Object.DontDestroyOnLoad(go);
     }
 
-    static string ReportPath => Path.Combine(Application.persistentDataPath, "m32b-puddle-report.txt");
+    static string ReportPath => Path.Combine(Application.persistentDataPath, "m32c-puddle-report.txt");
 
     void Emit(string s)
     {
@@ -115,7 +115,11 @@ public class M32bPuddleSelfTest : MonoBehaviour
         }
 
         Emit("materials found: lane wears " + laneMat.GetTexture("_BaseMap").name +
-             ", field wears " + fieldMat.GetTexture("_BaseMap").name);
+             ", field wears " + fieldMat.GetTexture("_BaseMap").name +
+             "; lane _BaseColor " + (laneMat.HasProperty("_BaseColor") ? laneMat.GetColor("_BaseColor").ToString("F3") : "?") +
+             ", field _BaseColor " + (fieldMat.HasProperty("_BaseColor") ? fieldMat.GetColor("_BaseColor").ToString("F3") : "?") +
+             " — M32c scaled the lane's tint by 0.90, so (~0.846, 0.828, 0.792) means the change reached the " +
+             "shader and (0.940, 0.920, 0.880) means it did not, whatever the frame looks like");
         Describe("lane", laneMat);
         Describe("field", fieldMat);
 
@@ -177,6 +181,8 @@ public class M32bPuddleSelfTest : MonoBehaviour
         // measured, 0 px of the frame. The puddle whose lane runs closest to the moon's azimuth is the one whose
         // water can be both under the reflection and reached from the lane.
         Vector3 moonHoriz = new Vector3(DuskSky.MoonDirection.x, 0f, DuskSky.MoonDirection.z).normalized;
+        Vector3 laneAxis = Vector3.forward;     // the chosen puddle's own lane direction, horizontal and unit
+        _maze = maze;
         int puddleCount = 0;
         if (puddleRoot != null)
         {
@@ -193,11 +199,17 @@ public class M32bPuddleSelfTest : MonoBehaviour
                 {
                     var n = new Vector2Int(cell.x + d.x, cell.y + d.y);
                     if (maze.IsPath(n.x, n.y))
-                        axis += maze.CellToWorld(n.x, n.y) - maze.CellToWorld(cell.x, cell.y);
+                    {
+                        // ONE neighbour, not the sum. A straight-run cell's two opposite neighbours point in
+                        // exactly opposite directions and cancel — which is how the previous pass reported
+                        // |dot| 0.00 for every puddle in the maze while claiming to measure alignment.
+                        axis = maze.CellToWorld(n.x, n.y) - maze.CellToWorld(cell.x, cell.y);
+                        break;
+                    }
                 }
                 axis.y = 0f;
                 float align = axis.sqrMagnitude > 1e-6f ? Mathf.Abs(Vector3.Dot(axis.normalized, moonHoriz)) : 0f;
-                if (align > bestAlign) { bestAlign = align; chosen = c; }
+                if (align > bestAlign) { bestAlign = align; chosen = c; laneAxis = axis.normalized; }
             }
             puddlePos = chosen.position;
             // The lane's own axis is the decal's LONG axis, which the mesh puts on local X — so it is `right`,
@@ -338,6 +350,55 @@ public class M32bPuddleSelfTest : MonoBehaviour
         Materials.BindReflection(fieldMat, fieldGloss, Materials.PreM32FieldSmoothness);
         Emit("restored to the shipping state: " + Bind(laneMat) + " / " + Bind(fieldMat));
 
+        // ---- M32c: the shallow-angle acceptance pair -------------------------------------------------------
+        // What makes water read as water is Fresnel: at a glancing angle a dielectric shows you the sky. That
+        // means standing well back down the lane and looking along it nearly level — NOT standing over the water
+        // and looking down at the mirror point, which is the steepest angle available and is what all four
+        // previous passes photographed. The moon is a billboard quad in the sky dome, so the reflection is the
+        // only mechanism that can put it on the water.
+        var probeGo = GameObject.Find(ReflectionProbes.ProbeName);
+        var probe = probeGo != null ? probeGo.GetComponent<ReflectionProbe>() : null;
+        ReflectionProbes.Refresh(probe);
+        Emit("M32c reflection probe: " + (probe == null
+                 ? "MISSING from the scene — the water has no sky to reflect and the glint cannot appear"
+                 : ("present, realtime/scripted via scripting, enabled=" + probe.enabled + ", box " +
+                    probe.size.x.ToString("0") + " x " + probe.size.z.ToString("0") + " m, refreshed now that " +
+                    "the sky is at night")));
+
+        player.SetEyeHeightForTest(1.15f);
+        var backCell = maze.NearestPathCell(puddlePos - laneAxis * 6f);
+        Vector3 backPos = maze.CellToWorld(backCell.x, backCell.y);
+        backPos.y = groundY;
+        player.transform.position = backPos;
+        for (int i = 0; i < 4; i++) yield return null;
+        Vector3 shallowAim = puddlePos + laneAxis * 18f;
+        shallowAim.y = backPos.y + 0.15f;      // a couple of degrees down: down the lane, not at the water
+        Emit("shallow shot: eye 1.15 m at " + F(player.transform.position) + " on maze cell (" + backCell.x + "," +
+             backCell.y + "), puddle " + Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") +
+             " m ahead and low in frame, aimed " + Vector3.Distance(player.transform.position, shallowAim).ToString("0") +
+             " m down the lane at a near-level pitch — the flattest view available of the water");
+        yield return Sample("m32c-water-probe-on.png", player, shallowAim, puddlePos,
+                            "PROBE ON (sky reflection; water at a glancing angle, the flattest view there is)");
+
+        // The same camera, the same frame, the probe off: one variable, which is what the order asks for.
+        ReflectionProbes.SetEnabledForTest(probe, false);
+        if (puddleMat != null)
+        {
+            if (puddleMat.HasProperty("_EnvironmentReflections")) puddleMat.SetFloat("_EnvironmentReflections", 0f);
+            puddleMat.EnableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
+        }
+        Emit("A/B: probe disabled and _ENVIRONMENTREFLECTIONS_OFF set on the water — same camera, same aim");
+        yield return Sample("m32c-water-probe-off.png", player, shallowAim, puddlePos, "PROBE OFF (same camera)");
+
+        ReflectionProbes.SetEnabledForTest(probe, true);
+        if (puddleMat != null)
+        {
+            puddleMat.DisableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
+            if (puddleMat.HasProperty("_EnvironmentReflections")) puddleMat.SetFloat("_EnvironmentReflections", 1f);
+        }
+        player.SetEyeHeightForTest(EyeHeight);
+        Emit("restored: probe enabled, eye back to " + EyeHeight.ToString("0.00") + " m");
+
         Emit("VERDICT: the shipped ground is MATTE, and the frames and the numbers agree. Band mean luminance " +
              "with the matte maps bound " + _bound.ToString("0.00") + " of 255 against the mirror state's " +
              _mirror.ToString("0.00") + ", and the brightest pixel in the band " + _boundPeak + " against " +
@@ -409,6 +470,7 @@ public class M32bPuddleSelfTest : MonoBehaviour
     // the ground plane and asking whether that world point is inside the decal's quad.
     Transform _puddleT;
     float _groundY = 0.03f;
+    MazeData _maze;                     // for classifying pixels as lane or field by the maze's own answer
 
     /// <summary>
     /// M32b's acceptance, and the order is explicit that it is a sampled value and not an eyeballed one: the
@@ -518,7 +580,10 @@ public class M32bPuddleSelfTest : MonoBehaviour
         player.AimAtForTest(aimPoint);
         for (int i = 0; i < 4; i++) yield return null;
         var cam = player.Camera;
-        Vector3 eye = player.transform.position + Vector3.up * EyeHeight;
+        // Measured against the eye the game is actually using, not the default: the shallow-angle acceptance
+        // shots lower the eye to 1.15 m, and a drift figure computed against 1.655 would read as a 0.5 m error
+        // in a shot that is exactly where the harness asked for.
+        Vector3 eye = player.transform.position + Vector3.up * player.FirstPersonEyeHeight;
         float drift = Vector3.Distance(cam.transform.position, eye);
 
         yield return new WaitForEndOfFrame();
@@ -638,6 +703,39 @@ public class M32bPuddleSelfTest : MonoBehaviour
                  " over " + waterNear + " px vs lane " + lnm.ToString("0.00") + " over " + laneNear + " px. " +
                  "Bright(>140) pixels: " + waterBright + " in the water, " + laneBright + " in the lane — " +
                  "the moon caught in a puddle means the first number is not zero while the lane stays dark");
+        }
+
+        // Lane vs field, the other number the order asks for: same frame, same rays, classified by the maze's
+        // own answer for the cell under each pixel rather than by eye. The water is excluded here because it is
+        // counted above, and it is the only surface allowed to be brighter than the ground.
+        if (_maze != null)
+        {
+            int nLane = 0, nField = 0;
+            double sLane2 = 0, sField2 = 0;
+            for (int y = 0; y < h; y += 2)
+            {
+                for (int x = 0; x < w; x += 2)
+                {
+                    var ray2 = cam.ScreenPointToRay(new Vector3(x, y, 0f));
+                    if (ray2.direction.y > -1e-4f) continue;
+                    float t2 = (_groundY - ray2.origin.y) / ray2.direction.y;
+                    if (t2 <= 0f || t2 > 40f) continue;
+                    Vector3 wp2 = ray2.origin + ray2.direction * t2;
+                    Vector3 lp2 = _puddleT.InverseTransformPoint(wp2);
+                    if (Mathf.Abs(lp2.x) <= PuddleDecals.PuddleLong * 0.5f &&
+                        Mathf.Abs(lp2.z) <= PuddleDecals.PuddleWide * 0.5f) continue;      // water, counted above
+                    var wc = _maze.WorldToCell(wp2);
+                    byte g2 = px[y * w + x].g;
+                    if (_maze.IsPath(wc.x, wc.y)) { nLane++; sLane2 += g2; } else { nField++; sField2 += g2; }
+                }
+            }
+            float lm2 = (float)(sLane2 / Mathf.Max(1, nLane));
+            float fm2 = (float)(sField2 / Mathf.Max(1, nField));
+            Emit("  lane vs field, same frame: lane mean G " + lm2.ToString("0.00") + " over " + nLane +
+                 " px, field mean " + fm2.ToString("0.00") + " over " + nField + " px -> lane/field " +
+                 (fm2 > 0.01f ? (lm2 / fm2).ToString("0.00") : "n/a") + "x (the order wants this at or under " +
+                 "1.15x, or the lane darker — the lane must stay findable, but it must not be the brightest " +
+                 "thing in the maze)");
         }
 
         var path = Path.Combine(Application.persistentDataPath, file);

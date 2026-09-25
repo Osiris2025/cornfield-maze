@@ -63,8 +63,16 @@ public static class Materials
     /// </summary>
     public static Material GroundLane()
     {
+        // M32c: the lane read as a pale lit ribbon rather than a path through a night field — measured 1.16x the
+        // field's mean brightness in the shallow acceptance frame, against the order's 15 % ceiling (the other
+        // frame measured 0.89x, lane already darker). A uniform tint scale is the honest knob: it changes the
+        // lane's albedo and nothing else — footprint, alpha blend, normal map, smoothness and the HUD are all
+        // untouched — and the result is measured again in the frame rather than assumed. Wet dirt is darker than
+        // dry in any case, and it is raining in this level.
+        const float LaneTintScale = 0.90f;
         var mat = Ground("Ground/T_Ground_LaneA", "Ground/T_Ground_Lane_N",
-                         new Color(0.94f, 0.92f, 0.88f), PreM32LaneSmoothness, "Ground/T_Ground_Lane_M");
+                         new Color(0.94f * LaneTintScale, 0.92f * LaneTintScale, 0.88f * LaneTintScale),
+                         PreM32LaneSmoothness, "Ground/T_Ground_Lane_M");
         MakeAlphaBlend(mat);
         return mat;
     }
@@ -206,6 +214,14 @@ public static class Materials
                              " — this material falls back to a constant smoothness of " + preM32Smoothness);
         }
         BindReflection(mat, g, preM32Smoothness);
+
+        // M32c: environment reflections ON, set explicitly rather than assumed. URP/Lit's toggle is the keyword
+        // `_ENVIRONMENTREFLECTIONS_OFF`; a material that carries it samples no environment at all, which would
+        // make the new sky probe useless on exactly the surface that is supposed to reflect it. Same class of
+        // bug as `alphaSource=None` throwing away the smoothness: wired is not wired until it is read back.
+        mat.DisableKeyword("_ENVIRONMENTREFLECTIONS_OFF");
+        if (mat.HasProperty("_EnvironmentReflections")) mat.SetFloat("_EnvironmentReflections", 1f);
+        if (mat.HasProperty("_SpecularHighlights")) mat.SetFloat("_SpecularHighlights", 1f);
         return mat;
     }
 

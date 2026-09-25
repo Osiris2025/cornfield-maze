@@ -335,6 +335,13 @@ public sealed class FarmWalkerController : MonoBehaviour
     /// Mouse X/Y axes (measured: a 2000 px drag leaves the view pixel-identical), so the review harness is
     /// the only way to photograph the moon from the built game.
     /// </summary>
+    /// <summary>
+    /// M32c test hook: the shallow-angle acceptance frames want the eye near 1.0-1.3 m, because the reflection
+    /// this milestone is about is a Fresnel effect and the flatter the view the stronger it is. Same
+    /// convention as AimAtForTest — test-only, no effect unless the harness calls it.
+    /// </summary>
+    public void SetEyeHeightForTest(float h) => FirstPersonEyeHeight = Mathf.Clamp(h, 0.5f, 2.5f);
+
     public void AimAtForTest(Vector3 worldPoint)
     {
         Vector3 from = transform.position + Vector3.up * 1.6f;
