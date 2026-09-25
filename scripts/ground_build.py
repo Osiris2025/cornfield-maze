@@ -101,9 +101,11 @@ def find(name, kind, res, layout):
 
 
 def save(arr, path, colorspace="sRGB"):
+    """Writes RGBA. If the array is already 4-channel the alpha is kept -- URP's metallic/smoothness
+    map reads its alpha as smoothness, so that channel is data, not transparency."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     img = bpy.data.images.new(os.path.basename(path), width=arr.shape[1], height=arr.shape[0],
-                              alpha=False, float_buffer=False)
+                              alpha=True, float_buffer=False)   # smoothness lives in alpha; see save()
     img.colorspace_settings.name = colorspace
     flat = arr[::-1].reshape(-1).astype(np.float32)
     img.pixels.foreach_set(flat)
@@ -262,10 +264,25 @@ def build(variant):
     l_nor = blend_normals(spec["lane"], lw, lane_masks, res, layout)
     l_rgh = blend_scalars(spec["lane"], "rough", lw, lane_masks, res, layout)
 
-    # dry leaves and dead grass are matte, packed dirt is not: pull the field's roughness up,
-    # the lane's down a touch
-    f_rgh = np.clip(f_rgh * 0.35 + 0.62, 0.0, 1.0)
-    l_rgh = np.clip(l_rgh * 0.55 + 0.38, 0.0, 1.0)
+    # ---- roughness, which is what the moonlight actually catches ------------------------------
+    # Do NOT compress this range. Dead grass is matte (~0.9) but loose stone is not (~0.45), and that
+    # difference is what makes a reflection read as a surface rather than a mirror. The first version
+    # squashed everything into 0.07-0.16 smoothness: uniformly matte, so nothing reflected at all.
+    # Damp earth is the other lever -- where the mud and rut masks are, the surface holds water and
+    # drops toward 0.6, which is why wet ground throws the moon back at you and dry grass does not.
+    # The sources' own roughness maps are nearly flat here (measured: everything above 0.84, nothing
+    # reflective), so they cannot carry this on their own. Roughness is therefore SET from the masks
+    # that describe the surface -- loose stone, rutted dust, damp earth -- with only a light tint from
+    # the source map so the details do not all share one value. Targets are the physically sensible
+    # ones for this ground: dead grass 0.90, damp earth 0.62, dust 0.85, loose stone 0.52.
+    def norm01(a):
+        lo, hi = float(a.min()), float(a.max())
+        return (a - lo) / max(hi - lo, 1e-6)
+
+    stones, ruts = lane_masks[1], lane_masks[2]
+    damp_field = np.clip(field_masks[2] * 0.85 + field_masks[1] * 0.20, 0.0, 1.0)
+    f_rgh = np.clip(0.90 - 0.50 * damp_field - 0.08 * (1.0 - norm01(f_rgh)), 0.32, 1.0)
+    l_rgh = np.clip(0.86 - 0.42 * stones - 0.14 * ruts - 0.06 * (1.0 - norm01(l_rgh)), 0.32, 1.0)
 
     # ---- grade: the photographs are sunny daylight; this game is dusk, horror register -------
     # Faithful-to-source ground reads as a bright afternoon under a Halloween night sky -- wrong on
@@ -320,8 +337,24 @@ def build(variant):
     lane_alpha = np.clip((lane_alpha - 0.10) / 0.80, 0.0, 1.0)
     lane_alpha = np.repeat(lane_alpha[:, :, None], 3, axis=2)
 
+    # ---- moonlight reflections ---------------------------------------------------------------
+    # Todd, 2026-09-25: "can you use the PBR files for reflections off the moonlight?"
+    # Yes -- and they are not being used today: Materials.cs sets _Smoothness to a CONSTANT per
+    # material, so the roughness maps Todd paid for never reach the shader. URP's Lit shader cannot
+    # take a standalone roughness texture, so roughness is repacked the way URP wants it: the
+    # metallic/smoothness map, RGB = metallic (0, because ground is a dielectric -- no metal in it),
+    # A = smoothness = 1 - roughness. The normal map is what breaks the highlight into grain; without
+    # it a reflective floor is a mirror blob.
+    def pack_ms(rough):
+        rgb = np.zeros((SIZE, SIZE, 3), dtype=np.float32)          # metallic 0: dirt and gravel
+        a = np.clip(1.0 - rough, 0.0, 1.0)                          # smoothness
+        return np.concatenate([rgb, a], axis=2)
+
+    field_ms, lane_ms = pack_ms(f_rgh), pack_ms(l_rgh)
+
     return dict(variant=variant, size=SIZE, field_alb=f_alb, field_nor=f_nor, field_rgh=f_rgh,
                 lane_alb=l_alb, lane_nor=l_nor, lane_rgh=l_rgh, edge=edge, lane_alpha=lane_alpha,
+                field_ms=field_ms, lane_ms=lane_ms,
                 field_raw=f_alb_raw, lane_raw=l_alb_raw, ship=(variant == SHIP))
 
 
@@ -391,10 +424,15 @@ def main():
                               (f"T_Ground_Lane_R", r["lane_rgh"], "Non-Color"),
                               (f"T_Ground_LaneEdge", np.repeat(r["edge"][:, :, None], 3, axis=2),
                                "Non-Color"),
-                              (f"T_Ground_LaneAlpha", r["lane_alpha"], "Non-Color")):
+                              (f"T_Ground_LaneAlpha", r["lane_alpha"], "Non-Color"),
+                              (f"T_Ground_Field_M", r["field_ms"], "Non-Color"),
+                              (f"T_Ground_Lane_M", r["lane_ms"], "Non-Color")):
             if arr.ndim == 3 and arr.shape[2] == 1:     # roughness is single-channel; PNG is not
                 arr = np.repeat(arr, 3, axis=2)
-            rgba = np.concatenate([arr, np.ones((arr.shape[0], arr.shape[1], 1), dtype=np.float32)], axis=2)
+            if arr.ndim == 3 and arr.shape[2] == 4:     # metallic/smoothness: alpha IS the data
+                rgba = arr
+            else:
+                rgba = np.concatenate([arr, np.ones((arr.shape[0], arr.shape[1], 1), dtype=np.float32)], axis=2)
             p = os.path.join(OUT_DIR, name + ".png")
             n = save(rgba, p, cs)
             print(f"[ground:{r['variant']}] SHIP wrote {p}  ({n // 1024} KB)  {r['size']}px")
