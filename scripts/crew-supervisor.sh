@@ -18,7 +18,7 @@
 set -u
 REPO="/Volumes/files1/projects/cornmaze/CornFieldMaze"   # fixed 2026-09-23: files2 tree is gone (retired in the files1 move); a stale REPO made `cd || exit 1` kill the supervisor on startup
 CHIEF_SESSION="20260917_203359_dcd37b"     # first pass; continuation order resumes it
-ORDER="/tmp/corn-order-m29.txt"    # M25b (carry-over) + M27 first person + M28 the scarecrow. Archived in docs/status/
+ORDER="/tmp/corn-order-m29.txt"    # M29 ground wiring, then M27 first person, then M28 the scarecrow.
 NOTIFY="$REPO/scripts/notify-todd.sh"
 DONE=/tmp/corn-crew-done
 BLOCKED=/tmp/corn-crew-blocked
