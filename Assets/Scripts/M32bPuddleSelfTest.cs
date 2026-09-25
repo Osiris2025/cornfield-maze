@@ -263,6 +263,7 @@ public class M32bPuddleSelfTest : MonoBehaviour
         Vector3 stand = maze.CellToWorld(standCell.x, standCell.y);
         stand.y = groundY;
         player.transform.position = stand;
+        _stand = stand; _hasStand = true;
         for (int i = 0; i < 4; i++) yield return null;
         Emit("stand: " + F(player.transform.position) + " — " + Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") +
              " m from the puddle's centre, on maze cell (" + standCell.x + "," + standCell.y + "). The target was " +
@@ -370,6 +371,7 @@ public class M32bPuddleSelfTest : MonoBehaviour
         Vector3 backPos = maze.CellToWorld(backCell.x, backCell.y);
         backPos.y = groundY;
         player.transform.position = backPos;
+        _stand = backPos; _hasStand = true;
         for (int i = 0; i < 4; i++) yield return null;
         Vector3 shallowAim = puddlePos + laneAxis * 18f;
         shallowAim.y = backPos.y + 0.15f;      // a couple of degrees down: down the lane, not at the water
@@ -398,6 +400,45 @@ public class M32bPuddleSelfTest : MonoBehaviour
         }
         player.SetEyeHeightForTest(EyeHeight);
         Emit("restored: probe enabled, eye back to " + EyeHeight.ToString("0.00") + " m");
+        yield return WaterFootprint(player, shallowAim);
+
+        // ---- M32c: WHAT ACTUALLY MAKES THE WATER BRIGHT ----------------------------------------------------
+        // The previous pass ruled the probe out (0.10 of 255), and the order is explicit that the direct
+        // specular is not the mechanism it wants. That leaves a small set of candidates, so rather than guess:
+        // each state below removes exactly one term and is shot from the same camera, same aim, same pass.
+        float moonIntensity = -1f;
+        var moonGo = GameObject.Find("MoonLight");
+        var moonLight = moonGo != null ? moonGo.GetComponent<Light>() : null;
+        if (moonLight != null) moonIntensity = moonLight.intensity;
+        if (puddleMat != null)
+        {
+            puddleMat.SetFloat("_SpecularHighlights", 0f);
+            puddleMat.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
+            Emit("ablation 1/4: water _SpecularHighlights OFF — isolates the moon light's direct specular");
+            yield return Sample("m32c-water-nospecular.png", player, shallowAim, puddlePos, "NO SPECULAR (water)");
+            puddleMat.SetFloat("_SpecularHighlights", 1f);
+            puddleMat.DisableKeyword("_SPECULARHIGHLIGHTS_OFF");
+
+            var gloss = puddleMat.GetTexture("_MetallicGlossMap") as Texture2D;
+            Materials.BindReflection(puddleMat, null, 0f);
+            Emit("ablation 2/4: water gloss map unbound and _Smoothness 0 — the whole glossy term gone");
+            yield return Sample("m32c-water-nogloss.png", player, shallowAim, puddlePos, "NO GLOSS (water)");
+            Materials.BindReflection(puddleMat, gloss, 0.10f);
+
+            var baseCol = puddleMat.GetColor("_BaseColor");
+            puddleMat.SetColor("_BaseColor", Color.black);
+            Emit("ablation 3/4: water _BaseColor black — if the water stays bright, its brightness is not albedo");
+            yield return Sample("m32c-water-blackalbedo.png", player, shallowAim, puddlePos, "BLACK ALBEDO (water)");
+            puddleMat.SetColor("_BaseColor", baseCol);
+        }
+        if (moonLight != null)
+        {
+            moonLight.intensity = 0f;
+            Emit("ablation 4/4: MoonLight intensity 0 — isolates the moon light as the source of the water's brightness");
+            yield return Sample("m32c-water-nomoon.png", player, shallowAim, puddlePos, "NO MOON LIGHT");
+            moonLight.intensity = moonIntensity;
+            Emit("restored: MoonLight intensity " + moonIntensity.ToString("0.00") + ", everything back to shipping");
+        }
 
         Emit("VERDICT: the shipped ground is MATTE, and the frames and the numbers agree. Band mean luminance " +
              "with the matte maps bound " + _bound.ToString("0.00") + " of 255 against the mirror state's " +
@@ -468,6 +509,8 @@ public class M32bPuddleSelfTest : MonoBehaviour
     // M32b pass 4: identify the water by geometry instead of projecting the decal's corners — three passes of
     // corner projection gave degenerate rects. Every pixel is classified by casting the camera's own ray at
     // the ground plane and asking whether that world point is inside the decal's quad.
+    Vector3 _stand; bool _hasStand;     // the player's stand for the current shot — Sample re-establishes it
+    Color32[] _lastPx; int _lastW, _lastH;   // the last captured frame, for the marker-based footprint method
     Transform _puddleT;
     float _groundY = 0.03f;
     MazeData _maze;                     // for classifying pixels as lane or field by the maze's own answer
@@ -527,6 +570,98 @@ public class M32bPuddleSelfTest : MonoBehaviour
     }
 
     /// <summary>
+    /// THE HONEST WAY TO FIND THE WATER'S PIXELS, and the answer to why the last four attempts were wrong.
+    /// Classifying them by geometry broke every time: the last attempt cast the camera's own ray at the ground
+    /// plane, and the ablation below proves that set is not the puddle — the "water" region measured ~92 of 255
+    /// with the water's albedo BLACK, its gloss and specular REMOVED, and the moon light EXTINGUISHED. No lit
+    /// surface does that; pixels that ignore every term the material owns are not the material's pixels.
+    /// So stop asking the geometry and ask the renderer: paint the decal with an unmistakable marker, shoot the
+    /// same frozen camera again, and take the pixels that changed. That set IS the puddle. The first frame's own
+    /// pixels over that set are its real mean, and the lane and field are classified in the same pass the same way.
+    /// </summary>
+    IEnumerator WaterFootprint(FarmWalkerController player, Vector3 aimPoint)
+    {
+        if (_lastPx == null || puddleMat == null)
+        {
+            Emit("footprint: no previous frame or no puddle material — skipped, and this report says so rather " +
+                 "than quoting the geometry classifier as if it were the water");
+            yield break;
+        }
+        var root = GameObject.Find("Puddles");
+        if (root == null) { Emit("footprint: no Puddles object in the scene — skipped"); yield break; }
+        var rends = root.GetComponentsInChildren<Renderer>();
+        if (rends.Length == 0) { Emit("footprint: the Puddles object has no renderers — skipped"); yield break; }
+        var saved = new Material[rends.Length];
+        // The marker keeps the base map, so it keeps the coverage alpha: the pixels that change are the ones the
+        // decal actually owns, which is the water core and not the whole 4.4 x 1.8 m quad.
+        var marker = new Material(puddleMat.shader);
+        marker.SetColor("_BaseColor", new Color(4f, 0f, 4f, 1f));
+        if (marker.HasProperty("_BumpMap")) marker.SetTexture("_BumpMap", null);
+        Materials.BindReflection(marker, null, 0f);
+        for (int i = 0; i < rends.Length; i++) { saved[i] = rends[i].sharedMaterial; rends[i].sharedMaterial = marker; }
+
+        Time.timeScale = 0f;
+        if (_hasStand) player.transform.position = _stand;
+        player.AimAtForTest(aimPoint);
+        for (int i = 0; i < 2; i++) yield return null;
+        if (_hasStand) player.transform.position = _stand;
+        player.AimAtForTest(aimPoint);
+        yield return new WaitForEndOfFrame();
+        var tex = ScreenCapture.CaptureScreenshotAsTexture();
+        var mp = tex.GetPixels32();
+        int w = tex.width, h = tex.height;
+        for (int i = 0; i < rends.Length; i++) rends[i].sharedMaterial = saved[i];
+        Object.Destroy(marker);
+
+        int n = 0, bright = 0, laneN = 0, fieldN = 0;
+        double sum = 0, laneSum = 0, fieldSum = 0;
+        if (w == _lastW && h == _lastH)
+        {
+            var cam = player.Camera;
+            for (int y = 0; y < h; y += 2)
+            {
+                for (int x = 0; x < w; x += 2)
+                {
+                    int i = y * w + x;
+                    int dr = Mathf.Abs(mp[i].r - _lastPx[i].r);
+                    int dg = Mathf.Abs(mp[i].g - _lastPx[i].g);
+                    int db = Mathf.Abs(mp[i].b - _lastPx[i].b);
+                    byte g = _lastPx[i].g;
+                    if (dr > 40 || dg > 40 || db > 40)            // this pixel belongs to the decal
+                    {
+                        n++; sum += g; if (g > 140) bright++;
+                        continue;
+                    }
+                    var ray = cam.ScreenPointToRay(new Vector3(x, y, 0f));
+                    if (ray.direction.y > -1e-4f) continue;
+                    float t = (_groundY - ray.origin.y) / ray.direction.y;
+                    if (t <= 0f || t > 40f) continue;
+                    if (Physics.Raycast(ray, out var hit, t - 0.25f)) continue;
+                    var wc = _maze.WorldToCell(ray.origin + ray.direction * t);
+                    if (_maze.IsPath(wc.x, wc.y)) { laneN++; laneSum += g; } else { fieldN++; fieldSum += g; }
+                }
+            }
+        }
+        else
+        {
+            Emit("footprint: the marker frame is a different size — skipped");
+        }
+        Object.Destroy(tex);
+        Time.timeScale = 1f;
+
+        float wm = n > 0 ? (float)(sum / n) : 0f;
+        float lm = laneN > 0 ? (float)(laneSum / laneN) : 0f;
+        float fm = fieldN > 0 ? (float)(fieldSum / fieldN) : 0f;
+        Emit("WATER FOOTPRINT (marker method — the pixels that changed when the decal was painted): the water is " +
+             n + " sampled px of the frame; its mean G in the SHIPPED frame " + wm.ToString("0.00") + " of 255, " +
+             "bright(>140) " + bright + " (" + (n > 0 ? (100f * bright / n).ToString("0.0") : "0") + " %). Same " +
+             "frame, same freeze: lane mean " + lm.ToString("0.00") + " over " + laneN + " px, field mean " +
+             fm.ToString("0.00") + " over " + fieldN + " px -> water/lane " +
+             (lm > 0.01f ? (wm / lm).ToString("0.00") : "n/a") + "x, lane/field " +
+             (fm > 0.01f ? (lm / fm).ToString("0.00") : "n/a") + "x");
+    }
+
+    /// <summary>
     /// Sample the IMPORTED metallic/smoothness texture and report the smoothness URP will actually use: the
     /// map's alpha times `_Smoothness`. A read-back of 1.0 means the alpha was thrown away again, which is the
     /// defect this pass exists to fix — the first wiring looked fine in the material read-back and was a mirror
@@ -575,10 +710,22 @@ public class M32bPuddleSelfTest : MonoBehaviour
 
     IEnumerator Sample(string file, FarmWalkerController player, Vector3 aimPoint, Vector3 mirror, string label)
     {
-        // Re-aim through the game's own look state before every sample, then read the camera back: the rig
-        // follows the player, so writing the camera's transform directly is what produced a 76 m drift.
+        // FREEZE THE PLAYER FIRST, and re-establish the stand. This is the defect that invalidated every paired
+        // number this harness had produced, including the previous pass's headline. Sample re-aimed but never
+        // restored the player's POSITION, and the walker keeps walking between samples, so two shots labelled
+        // "same camera, one variable" were taken metres apart — measured with scripts/m32c_frame_delta.py:
+        // 28 % of the frame differed by more than 8/255 between the probe-on and probe-off shots, which no
+        // 4.4 x 1.8 m decal can explain. The drift figure printed on every frame says 0.00 m either way, because
+        // it compares the camera to the player and never the player to the stand. Hence: timeScale 0 (the walker
+        // integrates on deltaTime), the stand re-asserted twice around the re-aim, and the camera's pose printed
+        // on every frame line — two frames whose poses differ are not a comparison and this report says so.
+        Time.timeScale = 0f;
+        if (_hasStand) player.transform.position = _stand;
         player.AimAtForTest(aimPoint);
-        for (int i = 0; i < 4; i++) yield return null;
+        for (int i = 0; i < 2; i++) yield return null;
+        if (_hasStand) player.transform.position = _stand;
+        player.AimAtForTest(aimPoint);
+        yield return null;
         var cam = player.Camera;
         // Measured against the eye the game is actually using, not the default: the shallow-angle acceptance
         // shots lower the eye to 1.15 m, and a drift figure computed against 1.655 would read as a 0.5 m error
@@ -676,6 +823,12 @@ public class M32bPuddleSelfTest : MonoBehaviour
                     float t = (_groundY - ray.origin.y) / ray.direction.y;
                     if (t <= 0f || t > 60f) continue;                        // behind us, or past the fog
                     Vector3 wp = ray.origin + ray.direction * t;
+                    // OCCLUSION. Until now the classifier called a pixel "water" whenever its sightline crossed
+                    // the decal's quad AT GROUND LEVEL — so corn standing between the camera and the puddle was
+                    // counted as water, and bright leaves were averaged into a dark puddle's mean. That is how a
+                    // surface with a darker albedo than the lane measured three times the lane. A pixel whose
+                    // sightline is blocked before it reaches the ground is showing the blocker, not the ground.
+                    if (Physics.Raycast(ray, out var blocker, t - 0.25f)) continue;
                     Vector3 lp = _puddleT.InverseTransformPoint(wp);
                     bool water = Mathf.Abs(lp.x) <= PuddleDecals.PuddleLong * 0.5f &&
                                  Mathf.Abs(lp.z) <= PuddleDecals.PuddleWide * 0.5f;
@@ -721,6 +874,7 @@ public class M32bPuddleSelfTest : MonoBehaviour
                     float t2 = (_groundY - ray2.origin.y) / ray2.direction.y;
                     if (t2 <= 0f || t2 > 40f) continue;
                     Vector3 wp2 = ray2.origin + ray2.direction * t2;
+                    if (Physics.Raycast(ray2, out var blocker2, t2 - 0.25f)) continue;   // same occlusion rule
                     Vector3 lp2 = _puddleT.InverseTransformPoint(wp2);
                     if (Mathf.Abs(lp2.x) <= PuddleDecals.PuddleLong * 0.5f &&
                         Mathf.Abs(lp2.z) <= PuddleDecals.PuddleWide * 0.5f) continue;      // water, counted above
@@ -740,16 +894,22 @@ public class M32bPuddleSelfTest : MonoBehaviour
 
         var path = Path.Combine(Application.persistentDataPath, file);
         File.WriteAllBytes(path, ImageConversion.EncodeToPNG(tex));
+        _lastPx = (Color32[])px.Clone(); _lastW = w; _lastH = h;   // the footprint method compares against this frame
         Object.Destroy(tex);
         Emit("frame " + file + " -> " + new FileInfo(path).Length + " bytes; band mean G over " + n + " px = " +
              mean.ToString("0.00") + " of 255, peak " + peak + "   [" + label + "] (camera " + drift.ToString("0.00") +
-             " m from the aimed eye)");
+             " m from the aimed eye; POSE " + cam.transform.position.x.ToString("0.000") + "," +
+             cam.transform.position.y.ToString("0.000") + "," + cam.transform.position.z.ToString("0.000") +
+             " pitch " + cam.transform.eulerAngles.x.ToString("0.000") + " yaw " +
+             cam.transform.eulerAngles.y.ToString("0.000") +
+             " — two frames whose poses differ are not a comparison)");
 
         if (label.StartsWith("PUDDLE")) { _puddle = mean; _puddlePeak = peak; }
         else if (label.StartsWith("BOUND")) { _bound = mean; _boundPeak = peak; }
         else if (label.StartsWith("MIRROR")) { _mirror = mean; _mirrorPeak = peak; }
         else if (label.StartsWith("UNBOUND")) { _unbound = mean; _unboundPeak = peak; }
         else { _fieldOnly = mean; _fieldOnlyPeak = peak; }
+        Time.timeScale = 1f;                  // the freeze is per-sample only; the rest of the run needs real time
     }
 
     void Describe(string what, Material mat)
