@@ -171,11 +171,34 @@ public class M32bPuddleSelfTest : MonoBehaviour
         Vector3 puddlePos = Vector3.zero;
         Vector3 puddleFwd = Vector3.forward;
         Vector3 puddleLong = Vector3.right, puddleWide = Vector3.forward;   // the decal's own axes, kept in scope
+        // The moon's reflection lies along the MOON's azimuth, not along the lane: off a flat plane the
+        // reflection's horizontal direction is the same as the moon's. Passes 1-3 stood the player up-lane and
+        // aimed at the mirror point, so the mirror point landed on bare lane and the puddle sat out of shot —
+        // measured, 0 px of the frame. The puddle whose lane runs closest to the moon's azimuth is the one whose
+        // water can be both under the reflection and reached from the lane.
+        Vector3 moonHoriz = new Vector3(DuskSky.MoonDirection.x, 0f, DuskSky.MoonDirection.z).normalized;
         int puddleCount = 0;
         if (puddleRoot != null)
         {
             puddleCount = puddleRoot.transform.childCount;
-            var chosen = puddleRoot.transform.GetChild(puddleCount / 2);   // the middle one: deterministic
+            var chosen = puddleRoot.transform.GetChild(0);
+            float bestAlign = -1f;
+            Vector2Int[] nb = { new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1) };
+            for (int i = 0; i < puddleCount; i++)
+            {
+                var c = puddleRoot.transform.GetChild(i);
+                var cell = maze.NearestPathCell(c.position);
+                Vector3 axis = Vector3.zero;
+                foreach (var d in nb)
+                {
+                    var n = new Vector2Int(cell.x + d.x, cell.y + d.y);
+                    if (maze.IsPath(n.x, n.y))
+                        axis += maze.CellToWorld(n.x, n.y) - maze.CellToWorld(cell.x, cell.y);
+                }
+                axis.y = 0f;
+                float align = axis.sqrMagnitude > 1e-6f ? Mathf.Abs(Vector3.Dot(axis.normalized, moonHoriz)) : 0f;
+                if (align > bestAlign) { bestAlign = align; chosen = c; }
+            }
             puddlePos = chosen.position;
             // The lane's own axis is the decal's LONG axis, which the mesh puts on local X — so it is `right`,
             // not `forward`. Reading `forward` here is what sent the "up-lane" stand across the lane and into
@@ -185,6 +208,8 @@ public class M32bPuddleSelfTest : MonoBehaviour
             puddleMat = pr != null ? pr.sharedMaterial : null;
             Vector3 cl = chosen.right, cw = chosen.forward;      // long axis, wide axis
             puddleLong = cl; puddleWide = cw;
+            _puddleT = chosen;
+            _groundY = groundY;
             _puddleCorners = new[]
             {
                 puddlePos + cl * (PuddleDecals.PuddleLong * 0.5f) + cw * (PuddleDecals.PuddleWide * 0.5f),
@@ -194,7 +219,10 @@ public class M32bPuddleSelfTest : MonoBehaviour
             };
             Emit("puddles: " + puddleCount + " decals under one object named \"Puddles\" (deleting it is removing " +
                  "every puddle); measuring " + chosen.name + " at " + F(puddlePos) + ", yaw " +
-                 chosen.eulerAngles.y.ToString("0") + " deg, scale " + chosen.lossyScale.ToString("0.0"));
+                 chosen.eulerAngles.y.ToString("0") + " deg, scale " + chosen.lossyScale.ToString("0.0") +
+                 ". Picked for alignment with the moon's azimuth: |dot| " + bestAlign.ToString("0.00") +
+                 " (1.00 is a lane pointing straight at or away from the moon, which is the only arrangement " +
+                 "where the reflection can land on the water from a stand on the lane)");
         }
         else
         {
@@ -218,33 +246,19 @@ public class M32bPuddleSelfTest : MonoBehaviour
         // lane is, so ask it instead of guessing from geometry.
         float moonElDeg = Mathf.Asin(Mathf.Clamp(DuskSky.MoonDirection.normalized.y, -1f, 1f)) * Mathf.Rad2Deg;
         float standDist = EyeHeight / Mathf.Tan(Mathf.Max(5f, moonElDeg) * Mathf.Deg2Rad);
-        Vector2Int cell = maze.NearestPathCell(puddlePos);
-        Vector2Int bestCell = cell;
-        float bestScore = float.MaxValue;
-        int stepsTaken = 0;
-        Vector2Int[] four = { new Vector2Int(1, 0), new Vector2Int(-1, 0), new Vector2Int(0, 1), new Vector2Int(0, -1) };
-        foreach (var d in four)
-        {
-            var c = cell;
-            for (int k = 1; k <= 3; k++)
-            {
-                var n = new Vector2Int(c.x + d.x, c.y + d.y);
-                if (!maze.IsPath(n.x, n.y)) break;          // the run ends: no lane to stand on this way
-                c = n;
-                float score = Mathf.Abs(Vector3.Distance(maze.CellToWorld(c.x, c.y), puddlePos) - standDist);
-                if (score < bestScore) { bestScore = score; bestCell = c; stepsTaken = k; }
-            }
-        }
-        Vector3 stand = maze.CellToWorld(bestCell.x, bestCell.y);
+        Vector3 standCand = puddlePos - moonHoriz * standDist;
+        Vector2Int standCell = maze.NearestPathCell(standCand);
+        Vector3 stand = maze.CellToWorld(standCell.x, standCell.y);
         stand.y = groundY;
         player.transform.position = stand;
         for (int i = 0; i < 4; i++) yield return null;
         Emit("stand: " + F(player.transform.position) + " — " + Vector3.Distance(player.transform.position, puddlePos).ToString("0.00") +
-             " m from the puddle's centre, on maze cell (" + bestCell.x + "," + bestCell.y + "), " + stepsTaken +
-             " step(s) along the lane from the puddle's cell (" + cell.x + "," + cell.y + "). The distance is " +
-             standDist.ToString("0.00") + " m because that is where a " + moonElDeg.ToString("0") +
+             " m from the puddle's centre, on maze cell (" + standCell.x + "," + standCell.y + "). The target was " +
+             standDist.ToString("0.00") + " m on the moon's own azimuth (" + moonHoriz.x.ToString("0.00") + "," +
+             moonHoriz.z.ToString("0.00") + "), because that is where a " + moonElDeg.ToString("0") +
              " deg moon reflects onto the water at an eye height of " + EyeHeight.ToString("0.00") +
-             " m, and the cell is a path cell, so the stand is on the lane by construction, not by geometry");
+             " m; the spot is then snapped to the nearest PATH cell, so the stand is on the lane by the maze's " +
+             "own answer and never in the corn");
         Vector3 eye = player.transform.position + Vector3.up * EyeHeight;
         Vector3 mirror = eye + down * s;
 
@@ -390,6 +404,11 @@ public class M32bPuddleSelfTest : MonoBehaviour
     // M32b: the decal's four corners in world space, so every frame can say whether the puddle is IN it and
     // how much of the highlight falls inside the waterline rather than on the lane beside it.
     Vector3[] _puddleCorners;
+    // M32b pass 4: identify the water by geometry instead of projecting the decal's corners — three passes of
+    // corner projection gave degenerate rects. Every pixel is classified by casting the camera's own ray at
+    // the ground plane and asking whether that world point is inside the decal's quad.
+    Transform _puddleT;
+    float _groundY = 0.03f;
 
     /// <summary>
     /// M32b's acceptance, and the order is explicit that it is a sampled value and not an eyeballed one: the
@@ -570,6 +589,55 @@ public class M32bPuddleSelfTest : MonoBehaviour
             {
                 Emit("  puddle in frame: NO — the decal's quad is behind the camera in this shot");
             }
+        }
+
+        // THE MEASUREMENT THE MILESTONE ACTUALLY ASKS FOR. Every second pixel is classified by geometry: cast
+        // the camera's own ray through it at the ground plane and ask whether that world point falls inside
+        // the decal's quad. Then "is the moon caught in the water" and "is the lane round it matte" are two
+        // means over the same light, from the same frame, at the same distances — a decal that is not reading
+        // cannot hide behind a highlight somewhere in a band.
+        if (_puddleT != null)
+        {
+            int waterN = 0, laneN = 0, waterBright = 0, laneBright = 0;
+            double waterSum = 0, laneSum = 0;
+            int waterNear = 0, laneNear = 0;                 // within 8 m: a fair comparison of like distances
+            double waterNearSum = 0, laneNearSum = 0;
+            for (int y = 0; y < h; y += 2)
+            {
+                for (int x = 0; x < w; x += 2)
+                {
+                    var ray = cam.ScreenPointToRay(new Vector3(x, y, 0f));
+                    if (ray.direction.y > -1e-4f) continue;                  // not pointing at the ground
+                    float t = (_groundY - ray.origin.y) / ray.direction.y;
+                    if (t <= 0f || t > 60f) continue;                        // behind us, or past the fog
+                    Vector3 wp = ray.origin + ray.direction * t;
+                    Vector3 lp = _puddleT.InverseTransformPoint(wp);
+                    bool water = Mathf.Abs(lp.x) <= PuddleDecals.PuddleLong * 0.5f &&
+                                 Mathf.Abs(lp.z) <= PuddleDecals.PuddleWide * 0.5f;
+                    byte g = px[y * w + x].g;
+                    if (water)
+                    {
+                        waterN++; waterSum += g; if (g > 140) waterBright++;
+                        if (t < 8f) { waterNear++; waterNearSum += g; }
+                    }
+                    else
+                    {
+                        laneN++; laneSum += g; if (g > 140) laneBright++;
+                        if (t < 8f) { laneNear++; laneNearSum += g; }
+                    }
+                }
+            }
+            float wm = (float)(waterSum / Mathf.Max(1, waterN));
+            float lm = (float)(laneSum / Mathf.Max(1, laneN));
+            float wnm = (float)(waterNearSum / Mathf.Max(1, waterNear));
+            float lnm = (float)(laneNearSum / Mathf.Max(1, laneNear));
+            Emit("  water vs lane, same frame, by the camera's own rays: the puddle is " + waterN + " px of the " +
+                 "frame, mean G " + wm.ToString("0.00") + " of 255; everything else that is ground is " + laneN +
+                 " px, mean " + lm.ToString("0.00") + " -> water/lane " + (lm > 0.01f ? (wm / lm).ToString("0.00") : "n/a") +
+                 "x. Within 8 m of the camera, where the comparison is fair: water " + wnm.ToString("0.00") +
+                 " over " + waterNear + " px vs lane " + lnm.ToString("0.00") + " over " + laneNear + " px. " +
+                 "Bright(>140) pixels: " + waterBright + " in the water, " + laneBright + " in the lane — " +
+                 "the moon caught in a puddle means the first number is not zero while the lane stays dark");
         }
 
         var path = Path.Combine(Application.persistentDataPath, file);

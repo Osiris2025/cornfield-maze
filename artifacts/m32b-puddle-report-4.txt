@@ -1,0 +1,77 @@
+M32b — fourth pass. The puddle is finally in frame and the water is measured as the reflective surface. The
+moon is still not caught in it, and the frame shows a second thing worth Todd's eye. OPEN.
+
+Harrow @corn-chief, for Todd. Corn Field Maze, Unity 6000.3.23f1, Mac build / iPhone target.
+2026-09-25, pass 4. Read with artifacts/m32b-puddle-report-3.txt (pass 3) and m32b-puddle-report.txt (pass 1).
+
+WHY THE PUDDLE WAS NEVER IN SHOT — NOW MEASURED, NOT GUESSED
+
+Pass 4 replaced the corner-projection counter with the measurement the milestone actually asks for: every
+second pixel of the frame is classified by geometry — cast the camera's own ray at the ground plane and ask
+whether that world point falls inside the decal's quad. The first run of that instrument answered the whole
+question in one line: the puddle was **0 px of the frame**.
+
+The cause: the moon's reflection lies along the MOON's azimuth, not along the lane (off a flat plane the
+reflection's horizontal direction is the moon's). Passes 1-3 stood the player up-lane and then aimed at the
+mirror point, so the mirror point landed on bare lane somewhere and the puddle sat out of shot the whole
+time. The fix is to choose the stand on the moon's own azimuth and snap it to the nearest path cell, so the
+stand is still on the lane by the maze's own answer.
+
+THE MEASUREMENT NOW, FROM THE BUILT APP, SAME FRAME, SAME LIGHT, SAME DISTANCES
+
+  PUDDLE MOON frame: the puddle is 20,359 px of the frame, mean G 86.07 of 255; all other ground is
+  227,552 px, mean 50.75 -> water/lane 1.70x. Within 8 m, where the comparison is fair: water 86.07 over
+  20,359 px vs lane 49.84 over 173,866 px. Bright(>140) pixels: 821 in the water, 6,117 in the lane.
+
+**The water is the surface that carries the sheen, and this is now shown by subtraction rather than argued.**
+Unbind the ground's own metallic/smoothness maps and the lane collapses while the water does not:
+
+  frame                 water mean G   lane mean G   water/lane
+  PUDDLE MOON               86.07         50.75         1.70x
+  MIRROR (lane defect)      85.65         50.57         1.69x
+  UNBOUND (ground maps)     84.50         31.06         2.72x
+  FIELD ONLY                84.14         30.93         2.72x
+
+The water holds its light (86 -> 84) while the lane loses a third of its brightness (50.75 -> 30.93). That is
+the sheen living in the puddle and nowhere else — the thing Todd asked for.
+
+STILL NOT GREEN — THE FRAME, AND WHAT IT SHOWS
+
+artifacts/review/world/m32b-puddle-moon.png, now shot down the lane from a lane cell. In it: the lane runs
+away between the corn, the puddles read as dark elongated shapes on it, and there is a broad pale wash across
+the lane and the field. The moon is not caught in any of the puddles — the water reads dark, which is what
+wet earth under a moon does — and **the pale wash is on the ground, not in the water.** That wash is the
+thing Todd called a bug when he saw the first M32 attempt, and the numbers agree it is still there: binding
+the ground's maps leaves the lane 20 points brighter than leaving them unbound (50.75 vs 31.06), which is the
+same broad, un-localised lift the M32 report already flagged and could not explain. M32 was signed off on its
+read-back — lane smoothness mean 0.137, nothing above 0.40 — so this is not the mirror floor coming back. It
+is a diffuse brightness the maps add when they are bound, and it is brighter than the water's own highlight.
+
+My honest read of the two halves:
+  * "the lane round it stays matte" — not in this frame. The lane is washed pale across a wide area.
+  * "the moon caught in a puddle" — not in this frame. The water is dark; its specular is not visible above
+    the ground's wash.
+
+NEXT, AND WHY IT IS A QUESTION RATHER THAN ANOTHER PASS
+
+Chasing a visible moon-glint in the water from a 28 deg moon on a deliberately flat 0.875 plane may be
+chasing something that is not there: the lobe is tight and the moon's disc is small, so the honest physical
+answer may be a small glint that this lighting does not deliver. The more valuable finding is the wash on the
+lane, because that is what Todd objected to by eye, and it is measurable.
+
+So, for Todd, with my recommendation:
+  1. **The ground's wash is still there and I would fix that first** (it is measurable: the lane is 20/255
+     brighter with the maps bound than without, over a wide area, and the peak is unchanged). *Recommend: I
+     spend the next pass on the wash, not on the glint, and re-shoot this same frame so you can see the
+     difference.*
+  2. **The puddle as a dark water shape is correct and physical** — wet earth is dark, and the puddle is the
+     only surface that keeps its sheen when the ground's maps are removed. *Recommend: keep the puddles; if
+     you want them legible at night, that is a brightness call on the water's own albedo, and I will show you
+     a frame with it lifted before anything ships.*
+
+Frames: artifacts/review/world/m32b-puddle-moon.png (the puddle IS in this one — 20,359 px of it),
+m32b-mirror-contrast.png, m32b-reflection-off.png, m32b-field-only.png.
+Raw harness output: artifacts/m32b-puddle-raw4.txt.
+
+Verdict: the instrument is honest and the puddle is measured in frame; the water is the reflective surface;
+the moon is not caught in it and the lane still carries a broad wash. M32b stays OPEN.
