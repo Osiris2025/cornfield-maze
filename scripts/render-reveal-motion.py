@@ -20,7 +20,8 @@ import math
 import random
 from mathutils import Vector
 
-ROOT = "/Volumes/files2/CornFieldMaze"
+# self-relative: derive the project root from this file so a move can never break it
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRAMES = int(os.environ.get("FRAMES", "72"))
 SAMPLES = int(os.environ.get("SAMPLES", "12"))
 RES = tuple(int(v) for v in os.environ.get("RES", "1280x590").lower().split("x"))
