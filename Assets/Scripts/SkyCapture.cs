@@ -135,6 +135,18 @@ public class SkyCapture : MonoBehaviour
             " (rule: 40 s OR " + DuskSky.NightCells + " cells in, whichever comes first)");
         Say("moonrise frames: husk instances observed alive during the rise = " + husksSeen +
             " (proves the renamed class spawns and is found by type at runtime)");
+        var camNow = Camera.main;
+        // M36: what the SCENE is actually lit and backed by, read off RenderSettings and the camera rather
+        // than reasoned about. The blue-sky-at-midnight defect survived several passes because the palette
+        // was being computed and nothing reported whether it reached the renderer.
+        Say("M36 scene: fog=" + RenderSettings.fogColor.ToString("0.000") +
+            " fogDensity=" + RenderSettings.fogDensity.ToString("0.0000") +
+            " ambientMode=" + RenderSettings.ambientMode +
+            " ambientSky=" + RenderSettings.ambientSkyColor.ToString("0.000") +
+            " skybox=" + (RenderSettings.skybox == null ? "NONE" : RenderSettings.skybox.name) +
+            " camClear=" + (camNow == null ? "?" : camNow.clearFlags.ToString()) +
+            " camBg=" + (camNow == null ? "?" : camNow.backgroundColor.ToString("0.000")) +
+            " skyBackground=" + DuskSky.SkyBackground.ToString("0.000"));
         Say(beats > 0
             ? "PASS: a cloud crossed the moon during the rise — the field loses its light for a beat"
             : "FAIL: no cloud crossed the moon in the first 40 s, so the occlusion beat never fired");

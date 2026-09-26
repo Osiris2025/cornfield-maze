@@ -39,6 +39,17 @@ public sealed class DuskSky : MonoBehaviour
     public static Color AmbientSky { get; private set; }
     public static Color AmbientEquator { get; private set; }
     public static Color AmbientGround { get; private set; }
+    /// <summary>
+    /// M36 (Todd, 2026-09-26): the colour of the sky itself — warm at dusk, deep blue-black by night.
+    ///
+    /// This exists because NOTHING DREW A SKY. NightSky draws 420 stars, DuskSky draws the moon, the warm
+    /// band and the clouds, and neither draws a background: the sky behind them was whatever
+    /// RenderSettings.skybox happened to be, and no script in this project ever assigned one. So it was
+    /// Unity's stock daytime skybox, which is the pale blue Todd photographed at `night01=1.00` — a night
+    /// sky graded like noon, with the corn lit to match. Install now clears the skybox and the camera
+    /// clears to this instead, off the same dusk->night ramp as the fog.
+    /// </summary>
+    public static Color SkyBackground { get; private set; } = new Color(0.30f, 0.16f, 0.13f);
     /// <summary>Seconds since the run was handed over to the player.</summary>
     public static float PlaySeconds { get; private set; }
 
@@ -189,6 +200,9 @@ public sealed class DuskSky : MonoBehaviour
         _mesh.MarkDynamic();
         filter.sharedMesh = _mesh;
 
+        // M36: clear the stock skybox. See SkyBackground for why this is the whole blue-sky defect.
+        RenderSettings.skybox = null;
+
         // Keep the §23.5 fog/ambient the tree already had as the dusk end of the ramp.
         FogColor = RenderSettings.fogColor;
         AmbientSky = RenderSettings.ambientSkyColor;
@@ -292,6 +306,7 @@ public sealed class DuskSky : MonoBehaviour
         MoonOcclusion = occlusion;
 
         DriveLights(moonEl);
+        ApplySkyBackground();
         Rebuild();
     }
 
@@ -346,7 +361,13 @@ public sealed class DuskSky : MonoBehaviour
                " elevation=" + l.transform.eulerAngles.x.ToString("0.0") + "deg" +
                " azimuth=" + l.transform.eulerAngles.y.ToString("0.0") + "deg" +
                " enabled=" + l.enabled +
-               " cloudVeil=" + Mathf.Lerp(1f, MoonCloudVeilMin, Mathf.Clamp01(sky._occlusion)).ToString("0.000");
+               " cloudVeil=" + Mathf.Lerp(1f, MoonCloudVeilMin, Mathf.Clamp01(sky._occlusion)).ToString("0.000") +
+               // M36 (Todd, "the shadows are opposite of the moon"): the shadow-direction proof. A
+               // directional light's forward is the direction the light TRAVELS, so measured against the
+               // direction TO the moon this must be NEGATIVE — the light arrives from the moon. A +1 here
+               // means the light came from the mirror image of the moon and every shadow in the field
+               // pointed at it. This number is what the +180 fix is asserted on, not the picture.
+               " lightToMoonDot=" + Vector3.Dot(l.transform.forward, MoonDirection).ToString("0.000");
     }
 
     /// <summary>
@@ -432,7 +453,11 @@ public sealed class DuskSky : MonoBehaviour
         {
             // Direction only. The colour and the intensity belong to whoever applies the sky palette
             // (StormWeather does, blending calm -> storm), so the two never write the same property.
-            _sun.transform.rotation = Quaternion.Euler(sunEl, 250f, 0f);
+            //
+            // M36: 250 + 180, the same defect as the moon's — see the moon light below. The warm band is
+            // drawn at DirOf(250, 5.5), so the sun must ARRIVE from 250 deg; at plain 250 it travelled
+            // toward 250 and therefore came from 70, the opposite horizon to its own band.
+            _sun.transform.rotation = Quaternion.Euler(sunEl, 250f + 180f, 0f);
         }
 
         // Warm band low in the west at dusk, gone by night.
@@ -440,6 +465,9 @@ public sealed class DuskSky : MonoBehaviour
         AmbientSky = Color.Lerp(new Color(0.72f, 0.52f, 0.34f), new Color(0.10f, 0.13f, 0.24f), n);
         AmbientEquator = Color.Lerp(new Color(0.44f, 0.32f, 0.20f), new Color(0.07f, 0.09f, 0.16f), n);
         AmbientGround = Color.Lerp(new Color(0.18f, 0.13f, 0.08f), new Color(0.03f, 0.04f, 0.07f), n);
+        // The sky's own background, on the same clock as the fog beside it: warm at dusk, near-black blue
+        // at night. Install cleared the stock skybox, so this is what is actually behind the stars now.
+        SkyBackground = Color.Lerp(new Color(0.32f, 0.17f, 0.14f), new Color(0.03f, 0.04f, 0.09f), n);
 
         // ---- the moon as LIGHT (M36) --------------------------------------------------------
         // Todd, 2026-09-26: "the moon MUST glow and give off light just like a regular halloween
@@ -461,8 +489,34 @@ public sealed class DuskSky : MonoBehaviour
             _moonLight.intensity = Mathf.Lerp(MoonIntensityFloor, MoonIntensityPeak, moonUp) * veil;
             // The lowest the light may sit. Below ~7 deg a directional light's shadows run to infinity
             // across the field and stop reading as shadows at all, so the lamp never goes flatter.
-            _moonLight.transform.rotation = Quaternion.Euler(Mathf.Max(7f, moonEl), _moonAzimuthDeg, 0f);
+            //
+            // M36 (Todd, 2026-09-26): "+ 180", and it is not a fudge. A Unity directional light's forward
+            // is the direction the light TRAVELS, not the direction it is aimed at, and Euler(x, y, 0)
+            // gives forward = (cos x·sin y, −sin x, cos x·cos y). DirOf(az, el) is
+            // (cos el·sin az, sin el, cos el·cos az) — the direction TO the moon. So Euler(el, az, 0)
+            // travels TOWARD the moon: the light arrived from the opposite side of the sky and every
+            // shadow in the field pointed at the moon. Todd: "the shadows are opposite of the moon."
+            // The elevation needs no flip (forward.y = −sin el is already the correct sign); only the
+            // azimuth does. MoonLightReport() prints the measured dot of forward against MoonDirection:
+            // −1 means the light comes from the moon, +1 meant it came from the mirror image.
+            _moonLight.transform.rotation = Quaternion.Euler(Mathf.Max(7f, moonEl), _moonAzimuthDeg + 180f, 0f);
         }
+    }
+
+    /// <summary>
+    /// M36: the camera clears to DuskSky's own background colour instead of Unity's stock skybox, so the
+    /// sky belongs to the game. Out here rather than in Install because the ramp moves every frame, and in
+    /// Update rather than LateUpdate because StormWeather's LateUpdate is deliberately last.
+    ///
+    /// Deliberately does NOT set clearFlags every frame if it is already right — toggling a camera's clear
+    /// mode per frame is a stall, and this ran at 100 Hz on Todd's display.
+    /// </summary>
+    void ApplySkyBackground()
+    {
+        var cam = _cam != null ? _cam : Camera.main;
+        if (cam == null) return;
+        if (cam.clearFlags != CameraClearFlags.SolidColor) cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = SkyBackground;
     }
 
     void BuildClouds()
