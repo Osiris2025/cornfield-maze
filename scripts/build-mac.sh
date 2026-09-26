@@ -77,11 +77,15 @@ else
   echo "writes AppleDouble ._* files that the linker reads as assemblies" >&2
   echo "(BadImageFormatException -> Burst failed)." >&2
   echo >&2
-  echo "Remedy: build from an APFS working copy (the VERIFIED fix -- see docs/DECISIONS.md)." >&2
+  echo "Remedy: build on APFS. The canonical tree already is --" >&2
+  echo "  /Volumes/files1/projects/cornmaze/CornFieldMaze   (APFS, verified good)" >&2
+  echo "so if you are seeing this, \$PROJ is pointed at a copy on a bad volume:" >&2
+  echo "move the PROJECT itself there (or point the build at the canonical tree)." >&2
   echo "CORN_BUILD_OUT alone is NOT enough: the junk that breaks the linker lands in the" >&2
   echo "PROJECT's Library/Bee/artifacts/, which stays on this volume." >&2
-  echo "  rsync -a --exclude '._*' --exclude Library/ --exclude Builds/ --exclude .git/ \\" >&2
-  echo "        \"$PROJ/\" /Users/toddadams/CornMazeWork/CornFieldMaze/" >&2
+  echo "Do NOT create a working copy under \$HOME (~/CornMazeWork was the exFAT-era" >&2
+  echo "workaround, retired 2026-09-24 -- see docs/DECISIONS.md). It splits the tree and" >&2
+  echo "leaves stale build products in two places; the canonical tree is the fix." >&2
   exit 4
 fi
 
