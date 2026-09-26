@@ -8,7 +8,15 @@ public sealed class FarmWalkerController : MonoBehaviour
     public float RunSpeed = 7.4f;
     public float Gravity = 18f;
     public float TurnSpeed = 12f;
-    public float MouseSensitivity = 2.1f;
+    /// <summary>
+    /// M36 (Todd, 2026-09-26): "the mouse takes a lot more work than it should to rotate the camera."
+    ///
+    /// Degrees turned per pixel of mouse travel is 0.1 * this — the legacy "Mouse X"/"Mouse Y" axes carry
+    /// sensitivity 0.1 in ProjectSettings/InputManager.asset. At 2.1 that made a 90-degree turn cost about
+    /// 430 px of drag, and the axis is smoothed on top of that (see Update). 6 puts a 90-degree turn at
+    /// roughly 150 px, which is in the region a first-person game normally sits in.
+    /// </summary>
+    public float MouseSensitivity = 6f;
 
     // ---- M36 (Todd, 2026-09-26): the mouse turns and zooms, the cursor is never captured ----------
     /// <summary>Scroll-wheel zoom rate, in zoom-fraction per unit of Unity's Mouse ScrollWheel axis
@@ -404,8 +412,12 @@ public sealed class FarmWalkerController : MonoBehaviour
 
             if (_lookDragging)
             {
-                _yaw += Input.GetAxis("Mouse X") * MouseSensitivity;
-                _pitch = Mathf.Clamp(_pitch - Input.GetAxis("Mouse Y") * MouseSensitivity, MinPitch, MaxPitch);
+                // M36: GetAxisRaw, not GetAxis. Unity low-passes the legacy mouse axes over several frames
+                // whatever gravity/dead are set to, and a drag read through that filter lags the hand —
+                // which is half of what "takes a lot more work than it should" means. Raw is the frame's
+                // own delta and nothing else.
+                _yaw += Input.GetAxisRaw("Mouse X") * MouseSensitivity;
+                _pitch = Mathf.Clamp(_pitch - Input.GetAxisRaw("Mouse Y") * MouseSensitivity, MinPitch, MaxPitch);
             }
 
             // Scroll wheel — zoom, in both camera modes. A step is clamped into 0..1 and LateUpdate turns
