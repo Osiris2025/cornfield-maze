@@ -172,6 +172,39 @@ public class M35ChaseSelfTest : MonoBehaviour
              huskCell + " — " + Vector3.Distance(huskAt, meet).ToString("0.0") +
              " m behind him on the same lane, walking at him");
 
+        // ---- the creature itself, CLOSE and from the FRONT ------------------------------------------
+        // The Husk is open on exactly one question: does its surface read as the supplied model IN THE
+        // GAME, and does the walk pose look like the clip. Neither is answerable from a distant, backlit
+        // view down a lane — that is all the frames below ever gave, and at 1300x820 the creature lands
+        // about 200 px tall, so there is nothing to zoom into after the fact. So the creature is held
+        // still here and the camera stands 3.1 m in front of its chest.
+        //
+        // `enabled = false` stops its MOVEMENT (the walking is in Update) but not its animation: the walk
+        // runs through an Animator output on a PlayableGraph, which evaluates independently. So the pose
+        // in these frames is still a walking one — it just is not walking out of the shot while the file
+        // is captured.
+        bool huskWalking = husk.enabled;
+        husk.enabled = false;
+        Vector3 face = huskAt + Vector3.up * 0.05f;
+        Vector3 towardPlayer = (meet - face).normalized;
+        yield return WorldShot(cam, face - towardPlayer * 3.1f + Vector3.up * 1.35f,
+                               face + Vector3.up * 1.25f, "m37-husk-front.png");
+        Vector3 flank = Vector3.Cross(Vector3.up, towardPlayer).normalized;
+        yield return WorldShot(cam, face + flank * 3.4f + Vector3.up * 1.35f,
+                               face + Vector3.up * 1.25f, "m37-husk-side.png");
+
+        // Three beats of the walk, IN THE GAME, on the creature being held still. A single still cannot tell
+        // a playing clip from a frozen bind pose — and "is it animating" is half of what the Husk is open
+        // on. If these three frames show three different strides, Unity's Animator is genuinely evaluating
+        // the 72-frame clip. If they come back identical, it is not, and no amount of texture work matters.
+        for (int i = 0; i < 3; i++)
+        {
+            yield return new WaitForSeconds(0.34f);
+            yield return WorldShot(cam, face + flank * 3.4f + Vector3.up * 1.35f,
+                                   face + Vector3.up * 1.25f, "m37-husk-walk-" + (i + 1) + ".png");
+        }
+        husk.enabled = huskWalking;
+
         // Third person draws the cookie, which is the only way Gingy is IN the frame at all.
         player.ToggleFirstPerson();
         yield return null;
@@ -186,9 +219,15 @@ public class M35ChaseSelfTest : MonoBehaviour
                               1.90f, 1.45f, "m35-chase-close.png");
 
         // ---- night, and the moon read as LIGHT rather than as a painted disc ----------------------
+        // M37: hold the creature still for this wait. Left loose it walks the whole 20 s, and now that it
+        // stands 2.30 m instead of 1.67 m it reaches the staged player and CATCHES him before the night
+        // lands — and a caught run restarts, which destroys the camera the remaining frames need. Pinned at
+        // huskCell it stays one cell beyond the player and IN FRAME (the walk clip still runs, so these
+        // night frames show it mid-stride), without ending the run.
         float nightWaited = 0f;
         while (!DuskSky.IsNight && nightWaited < 20f)
         {
+            husk.transform.position = huskAt + Vector3.up * 0.05f;
             nightWaited += Time.unscaledDeltaTime;
             yield return null;
         }
@@ -210,8 +249,36 @@ public class M35ChaseSelfTest : MonoBehaviour
     IEnumerator CellShot(Camera cam, MazeData maze, Vector2Int atCell, Vector2Int lookCell,
                          float atHeight, float lookHeight, string file)
     {
+        // M37: the camera can be GONE by the time a later frame is taken. The creature chases for real
+        // during the night wait below, and when it catches the player the run restarts — which destroys
+        // this camera, so `cam.transform` threw a NullReferenceException that took the entire report down
+        // with it. The symptom was quietly awful: no report was written at all, so every PNG in the folder
+        // stayed from an earlier run and looked like evidence.
+        if (cam == null) cam = Camera.main;
+        if (cam == null)
+        {
+            Emit("frame " + file + " -> SKIPPED: no camera left (the run restarted mid-harness)");
+            yield break;
+        }
         Vector3 at = maze.CellToWorld(atCell.x, atCell.y) + Vector3.up * atHeight;
         Vector3 look = maze.CellToWorld(lookCell.x, lookCell.y) + Vector3.up * lookHeight;
+        yield return AimAndShoot(cam, at, look, file);
+    }
+
+    /// <summary>
+    /// M37: a frame from a WORLD position, for a close-up the cell grid cannot express. "The creature's own
+    /// cell" is a place; "3 m in front of the creature's chest" is not. And the view from its own cell was
+    /// never enough to judge its surface — that is the one question the Husk is still open on, and the
+    /// creature lands about 200 px tall at that distance, so there is nothing to zoom into afterwards.
+    /// </summary>
+    IEnumerator WorldShot(Camera cam, Vector3 at, Vector3 look, string file)
+    {
+        yield return AimAndShoot(cam, at, look, file);
+    }
+
+    /// <summary>Aim the camera at a world point, shoot, and say whether the file is from THIS run.</summary>
+    IEnumerator AimAndShoot(Camera cam, Vector3 at, Vector3 look, string file)
+    {
         cam.transform.position = at;
         var d = look - at;
         if (d.sqrMagnitude < 0.0001f) d = Vector3.forward;

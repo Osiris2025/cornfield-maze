@@ -1,0 +1,12 @@
+M35 — the supplied scarecrow, imported
+source /Users/toddadams/Downloads/creepy-scarecrow-horror-stylized/source/textured_mesh (1).glb
+body char1: 39921 tris, 24 vertex groups
+armature Armature: 24 bones
+skin weights: 22/24 vertex groups carry weight; empty in the source: ['head_end', 'headfront']
+  -> an FBX cannot hold an empty cluster, so the export re-imports with 22 groups; no weight is dropped
+actions ['Armature|Unsteady_Walk|baselayer']
+authored height 1.535 units; scale to 2.30 m = 1.4984
+fbx Assets/Resources/Scarecrow/scarecrow.fbx
+texture Assets/Resources/Scarecrow/scarecrow_albedo.png written from the GLB's own embedded image (2048x2048)
+  the sibling textures/texture_0_0.png is that same atlas V-flipped; pairing it with these UVs samples the atlas upside down
+dropped: Icosphere (80 tris, no material, no skinning)

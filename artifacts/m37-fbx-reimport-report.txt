@@ -1,0 +1,27 @@
+======================================================================
+M37 — the EXPORTED FBX re-imported (does the export carry the pose intact?)
+======================================================================
+  source       Assets/Resources/Scarecrow/scarecrow.fbx  2208780 bytes
+  objects      2  meshes 1  armatures 1
+  mesh 'char1': 39921 tris, 33127 verts, uv ['UVMap'], vgroups 22, mods [('ARMATURE', 'Armature')]
+      materials: ['Material_1']
+      skin weights: 91969 (vertex,group) pairs; groups carrying weight 22/22; groups with NO weighted vertex: []
+  armature 'Armature': 24 bones
+      scale (0.01, 0.01, 0.01)  rot (-0.0, 0.0, 0.0)
+      bone Hips        head_local z= 87.4229   world xyz=( 0.0110, 0.0028, 0.8742)
+      bone Spine       head_local z=127.9835   world xyz=( 0.0055,-0.0366, 1.2798)
+      bone Spine01     head_local z=114.4633   world xyz=( 0.0073,-0.0234, 1.1446)
+      bone Spine02     head_local z=100.9432   world xyz=( 0.0092,-0.0103, 1.0094)
+      bone Head        head_local z=145.3666   world xyz=( 0.0000,-0.0534, 1.4537)
+      bone LeftFoot    head_local z= 12.3861   world xyz=( 0.1503, 0.0665, 0.1239)
+      bone RightFoot   head_local z= 12.3860   world xyz=(-0.1284, 0.0551, 0.1239)
+  actions      ['Armature|Armature|Armature|Unsteady_Walk|baselayer']
+      'Armature|Armature|Armature|Unsteady_Walk|baselayer' frames 1-72 animated curves 249  keyframes 15898  bone paths 27
+        bones: ['Head', 'Hips', 'LeftArm', 'LeftFoot', 'LeftForeArm', 'LeftHand', 'LeftLeg', 'LeftShoulder', 'LeftToeBase', 'LeftUpLeg', 'RightArm', 'RightFoot', 'RightForeArm', 'RightHand', 'RightLeg', 'RightShoulder', 'RightToeBase', 'RightUpLeg', 'Spine', 'Spine01', 'Spine02', 'head_end', 'headfront', 'location', 'neck', 'rotation_euler', 'scale']
+  bounds       0.959 x 0.903 x 1.533  -> 1.533 tall
+  REST pose: is the mesh upright at the action's first frame? (render below decides)
+  action bound to armature: Armature|Armature|Armature|Unsteady_Walk|baselayer
+  frame: m37-fbx-rest.png
+  frame: m37-fbx-walk-1.png
+  frame: m37-fbx-walk-2.png
+  frame: m37-fbx-walk-3.png

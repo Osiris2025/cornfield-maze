@@ -14,7 +14,6 @@
 # Run: Blender -b -noaudio --python scripts/m35_scarecrow_import.py
 import math
 import os
-import shutil
 import sys
 
 import bpy
@@ -55,6 +54,18 @@ print("=" * 70)
 print(f"  body mesh      {body.name}: {len(body.data.loop_triangles)} tris, "
       f"{len(body.data.vertices)} verts, {len(body.vertex_groups)} vertex groups")
 print(f"  armature       {arm.name}: {len(arm.data.bones)} bones")
+
+# Not every vertex group in the source carries weight: the GLB's skin names 24 joints but only
+# 22 of them are referenced by any vertex. FBX has no way to express an empty cluster, so the
+# exported file comes back with 22 groups. No weight is lost — measured, not assumed.
+_used = set()
+for _v in body.data.vertices:
+    for _g in _v.groups:
+        if _g.weight > 1e-6:
+            _used.add(_g.group)
+EMPTY_GROUPS = [g.name for g in body.vertex_groups if g.index not in _used]
+print(f"  skin weights   {len(_used)}/{len(body.vertex_groups)} vertex groups carry weight;"
+      f" empty in the source: {EMPTY_GROUPS}")
 print(f"  armature scale {tuple(round(v, 4) for v in arm.scale)}  "
       f"rotation {tuple(round(math.degrees(v), 2) for v in arm.rotation_euler)}")
 
@@ -159,9 +170,27 @@ if acts and anim is not None:
 
 # ---- export for Unity -----------------------------------------------------------------
 os.makedirs(DEST, exist_ok=True)
+
+# The texture must be the atlas the mesh's UVs were authored against — the one the GLB carries
+# inside it. The file that shipped beside the GLB, textures/texture_0_0.png, is that SAME atlas
+# with the V axis flipped (measured: flipping it vertically reproduces the GLB's embedded image
+# exactly, mean channel diff 0.00000). Blender's glTF importer flips V on the way in, so pairing
+# Blender's UVs with the un-flipped sibling file samples the atlas upside down: the creature
+# renders as a chaotic high-contrast quilt while its geometry, rig and bind pose are all perfect.
+# Write the GLB's own image out beside the FBX instead.
+ALBEDO = os.path.join(DEST, "scarecrow_albedo.png")
+glb_images = [i for i in bpy.data.images if i.size[0] and i.size[1]]
+if not glb_images:
+    raise SystemExit("FAIL: the GLB carries no image to write as the albedo")
+src_img = glb_images[0]
+src_img.filepath_raw = ALBEDO
+src_img.file_format = "PNG"
+src_img.save()
+print(f"  texture from the GLB's own image -> {os.path.relpath(ALBEDO, REPO)}"
+      f"  {src_img.size[0]}x{src_img.size[1]}  {os.path.getsize(ALBEDO)} bytes")
 if os.path.exists(TEX_IN):
-    shutil.copy2(TEX_IN, os.path.join(DEST, "scarecrow_albedo.png"))
-    print("  texture copied ->", os.path.relpath(os.path.join(DEST, "scarecrow_albedo.png"), REPO))
+    print(f"  (the sibling {os.path.relpath(TEX_IN, SRC_DIR)} is the V-flipped twin of it —"
+          f" not usable against these UVs)")
 
 # Repoint the material at the copy so the FBX exporter carries a file it can see.
 for mat in bpy.data.materials:
@@ -169,7 +198,7 @@ for mat in bpy.data.materials:
         continue
     for n in mat.node_tree.nodes:
         if n.type == "TEX_IMAGE" and n.image is not None:
-            n.image.filepath = os.path.join(DEST, "scarecrow_albedo.png")
+            n.image.filepath = ALBEDO
             n.image.name = "scarecrow_albedo"
 
 fbx = os.path.join(DEST, "scarecrow.fbx")
@@ -202,9 +231,17 @@ with open(os.path.join(BLIND, "m35-import-report.txt"), "w") as fh:
     fh.write(f"body {body.name}: {len(body.data.loop_triangles)} tris, "
              f"{len(body.vertex_groups)} vertex groups\n")
     fh.write(f"armature {arm.name}: {len(arm.data.bones)} bones\n")
+    fh.write(f"skin weights: {len(_used)}/{len(body.vertex_groups)} vertex groups carry weight; "
+             f"empty in the source: {EMPTY_GROUPS}\n")
+    fh.write("  -> an FBX cannot hold an empty cluster, so the export re-imports with "
+             f"{len(_used)} groups; no weight is dropped\n")
     fh.write(f"actions {[a.name for a in acts]}\n")
     fh.write(f"authored height {size.z:.3f} units; scale to {TARGET_HEIGHT:.2f} m = "
              f"{TARGET_HEIGHT / size.z:.4f}\n")
     fh.write(f"fbx {os.path.relpath(fbx, REPO)}\n")
+    fh.write(f"texture {os.path.relpath(ALBEDO, REPO)} written from the GLB's own embedded image "
+             f"({src_img.size[0]}x{src_img.size[1]})\n")
+    fh.write("  the sibling textures/texture_0_0.png is that same atlas V-flipped; pairing it "
+             "with these UVs samples the atlas upside down\n")
     fh.write("dropped: Icosphere (80 tris, no material, no skinning)\n")
 print("M35_IMPORT_DONE")
