@@ -9,12 +9,20 @@ public sealed class PathMudWetness : MonoBehaviour
     const float MudRainSeconds = 150f;
 
     /// <summary>
-    /// M32c: the most smoothness this script may hand the path surface, ever. The lane is matte by rule — any
-    /// highlight on it is a defect — and a per-frame writer that can raise smoothness is a way for the rule to be
-    /// broken without anything in the material read-back changing. 0.20 keeps the wet path well inside it whether
-    /// URP reads `_Smoothness` alone or multiplies it by the map's alpha.
+    /// The most smoothness this script may hand the path surface, ever: the lane's own MATTE constant.
+    ///
+    /// M32c set this to a literal 0.20 while the lane bound a metallic/smoothness map, and justified it as "well
+    /// inside" the matte rule. It was only inside because the map's alpha divided it back down: URP then read
+    /// smoothness as `metallicGloss.a * _Smoothness`, so the map's lane alpha (mean 0.137, measured — see the
+    /// committed `T_Ground_Lane_M.png`) turned a written 0.20 into ~0.027 of real smoothness. M37 unbinds that
+    /// map for the field and the lane, so URP now reads `_Smoothness` DIRECTLY and 0.20 is 0.20 — above the
+    /// 0.11 the lane holds. The writer would then walk the lane past the constant the material was just set to
+    /// within a minute of rain, which is exactly what the standing rule forbids ("THE GROUND IS MATTE ... Any
+    /// highlight on the field or the lane is a defect"), and a per-frame writer is the one place the rule can
+    /// be broken with every material read-back still looking correct. So the ceiling IS the lane's matte value:
+    /// rain darkens the path, it never grows a highlight on it.
     /// </summary>
-    public const float MatteSmoothCeiling = 0.20f;
+    public const float MatteSmoothCeiling = Materials.PreM32LaneSmoothness;
 
     static Material _gravel;
     static Color _baseColor = new Color(0.52f, 0.40f, 0.24f);
@@ -75,7 +83,12 @@ public sealed class PathMudWetness : MonoBehaviour
         // the lane's `_Smoothness` toward 0.42 as the storm ran, so the path could walk past that rule on its own
         // while the material read-back still showed the map's 0.137 — two different numbers for one surface.
         // Wet dirt darkens; it does not grow a highlight.
-        float smooth = Mathf.Min(Mathf.Lerp(_baseSmooth, 0.42f, mud), MatteSmoothCeiling);
+        //
+        // M37: the gloss target is removed, not merely clamped. M32c's clamp only worked because the bound map
+        // divided the written value down by its alpha (0.137 mean) — with that map unbound on the lane, any
+        // target above the ceiling is a real increase in smoothness. The lane is held at `MatteSmoothCeiling`
+        // (the M32 constant, 0.11) and the wetness rides on the albedo alone.
+        float smooth = Mathf.Min(_baseSmooth, MatteSmoothCeiling);
         if (_gravel.HasProperty("_Smoothness")) _gravel.SetFloat("_Smoothness", smooth);
         if (_gravel.HasProperty("_Glossiness")) _gravel.SetFloat("_Glossiness", smooth);
     }
@@ -86,13 +99,12 @@ public sealed class PathMudWetness : MonoBehaviour
     /// </summary>
     public static string DebugReport()
     {
-        float now = Mathf.Min(Mathf.Lerp(_baseSmooth, 0.42f, _mud), MatteSmoothCeiling);
-        float full = Mathf.Min(Mathf.Lerp(_baseSmooth, 0.42f, 1f), MatteSmoothCeiling);
+        float now = Mathf.Min(_baseSmooth, MatteSmoothCeiling);
         return "PathMudWetness: MatteSmoothCeiling " + MatteSmoothCeiling.ToString("0.00") +
                ", base _Smoothness at Register " + _baseSmooth.ToString("0.000") +
                ", mud now " + _mud.ToString("0.000") + " (max reachable 0.72)" +
-               " -> writes _Smoothness " + now.ToString("0.000") + " now, " + full.ToString("0.000") +
-               " at full mud " + (full <= MatteSmoothCeiling + 1e-4f
+               " -> writes _Smoothness " + now.ToString("0.000") + " at every mud level " +
+               (now <= MatteSmoothCeiling + 1e-4f
                    ? "(the ceiling holds: rain cannot walk the lane past the matte rule)"
                    : "(THE CEILING FAILS — the lane can exceed " + MatteSmoothCeiling.ToString("0.00") + ")");
     }

@@ -309,7 +309,7 @@ public sealed class Husk : MonoBehaviour
     /// imports as a SkinnedMeshRenderer, and a skinned renderer's own bounds are only written when it
     /// is drawn — read while it is off-screen they come back as a point, which is how a 2.30 m creature
     /// first measured 0.00 m and would have been left unscaled. So: live bounds when they are real,
-    /// the mesh's own AABB times the scale when they are not.
+    /// the mesh's own box carried into world space when they are not.
     /// </summary>
     static bool TryBounds(Transform root, out Bounds bounds)
     {
@@ -320,18 +320,35 @@ public sealed class Husk : MonoBehaviour
             if (r == null) continue;
             var b = r.bounds;
             if (b.size.sqrMagnitude < 1e-6f && r is SkinnedMeshRenderer smr && smr.sharedMesh != null)
-            {
-                var m = smr.sharedMesh.bounds;
-                var s = smr.transform.lossyScale;
-                b = new Bounds(
-                    smr.transform.TransformPoint(m.center),
-                    new Vector3(m.size.x * Mathf.Abs(s.x), m.size.y * Mathf.Abs(s.y),
-                                m.size.z * Mathf.Abs(s.z)));
-            }
+                b = MeshBoxInWorld(smr.sharedMesh.bounds, smr.transform.localToWorldMatrix);
             if (!any) { bounds = b; any = true; }
             else bounds.Encapsulate(b);
         }
         return any;
+    }
+
+    /// <summary>
+    /// A mesh's own box carried into world space, corner by corner.
+    ///
+    /// The fallback that used to sit here multiplied the box's x/y/z by the renderer's scale, which reads
+    /// the wrong axis as "height" on a mesh that arrives Z-up — and the supplied scarecrow does. Its FBX is
+    /// exported with `bakeAxisConversion: 0` (Assets/Resources/Scarecrow/scarecrow.fbx.meta), so Unity
+    /// leaves the vertices in Blender's Z-up space (the FBX's mesh box is 0..170 cm in Z) and stands the
+    /// model up with the -90 deg X rotation on the root. Measuring `size.y` off that box would have reported
+    /// the creature's DEPTH — 0.48 m — and scaled it by 4.8x, which is the mirror image of the same mistake
+    /// that first made a 2.30 m creature measure 0.00 m. Transforming all eight corners is right whatever
+    /// axis convention the file happens to use.
+    /// </summary>
+    static Bounds MeshBoxInWorld(Bounds box, Matrix4x4 local)
+    {
+        var world = new Bounds(local.MultiplyPoint3x4(box.center), Vector3.zero);
+        for (int i = 0; i < 8; i++)
+        {
+            var sign = new Vector3((i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f,
+                                   (i & 4) == 0 ? -1f : 1f);
+            world.Encapsulate(local.MultiplyPoint3x4(box.center + Vector3.Scale(box.extents, sign)));
+        }
+        return world;
     }
 
     /// <summary>A burst of dry straw — neck, cuffs, hem. Named, so the report can count it.</summary>
@@ -620,9 +637,10 @@ public sealed class Husk : MonoBehaviour
     ///
     /// Three things are handled here rather than in the asset, because they cannot be authored from a
     /// batch build and the glTF -> FBX hop does not carry them reliably:
-    ///   * SCALE — measured off the model's own live renderers and divided into the stated height. The
-    ///     conversion carries the armature's 0.01 scale, so a constant baked in here would be silently
-    ///     wrong the day the importer's unit handling changes. Measure, do not assume.
+    ///   * SCALE — measured off the model's own meshes and divided into the stated height. The conversion
+    ///     carries the armature's 0.01 scale, so a constant baked in here would be silently wrong the day
+    ///     the importer's unit handling changes. Measure, do not assume — and measure the MESH, not a
+    ///     SkinnedMeshRenderer's live bounds, which are only written for a renderer that has been drawn.
     ///   * MATERIAL — one URP/Lit material with the supplied albedo bound from the PNG shipped beside
     ///     the FBX. The FBX's own material export is not what this project's night lighting is tuned for.
     ///   * ANIMATION — the 72-frame walk is played straight off the model with a Playables graph. An
@@ -642,6 +660,19 @@ public sealed class Husk : MonoBehaviour
         var inst = Instantiate(prefab, parent, false);
         inst.name = "ScarecrowModel";
 
+        // M36: what this divisor is doing, and why it is measured off the MESH and not off the renderer.
+        //
+        // The build that shipped applied x0.985 here (artifacts/m35-chase-report.txt line 8 reads the live
+        // `smr.transform.lossyScale`), which only adds up if this divisor came back as 2.335 m — and no
+        // axis-aligned extent of this model can be 2.335 m. Its mesh box is 1.18 x 0.48 x 1.70 m and the top
+        // bone of its rig (`head_end`) is bound at 170.854 cm in the FBX's own Pose node, so the model is
+        // 1.708 m tall and the creature shipped at 1.67 m — SHORTER than the 1.80 m cookie and nowhere near
+        // the 2.30 m this constant exists to hold, which means it does not break the lane line at all.
+        //
+        // The culprit is reading a SkinnedMeshRenderer's live bounds at Instantiate time: those are the
+        // SKINNED bounds, and Unity only writes them for a renderer it has drawn. The mesh's own box is in
+        // the file and does not move, so `MeasuredHeight` reads that instead and the divisor is the model's
+        // real height every run.
         float native = MeasuredHeight(inst);
         if (native > 0.05f)
             inst.transform.localScale = Vector3.one * (ModelHeightMeters / native);
@@ -649,17 +680,37 @@ public sealed class Husk : MonoBehaviour
         var albedo = Resources.Load<Texture2D>(ModelAlbedoPath);
         var mat = Materials.Lit(Color.white, 0.05f);
         if (albedo != null) Materials.ApplyAlbedo(mat, albedo, 1f);
+        // M36: the supplied material renders double sided (`doubleSided: true` in the GLB's only material)
+        // and a URP/Lit material is built culled, so the tattered cards of the coat lose their far side the
+        // moment they reach Unity. Guarded, because the property only exists on some URP versions.
+        if (mat.HasProperty("_Cull")) mat.SetFloat("_Cull", 0f);
 
         // A rigged FBX comes in as a SkinnedMeshRenderer, not a MeshFilter — counting only MeshFilters
         // reported the creature as 0 tris while it was standing in the lane, drawn and animated.
+        //
+        // M36: `mesh.triangles` is the other half of that same bug. The FBX ships with Read/Write off
+        // (Assets/Resources/Scarecrow/scarecrow.fbx.meta `isReadable: 0`), and on a mesh with no CPU copy
+        // `triangles` comes back EMPTY — which is why M35's report printed "0 tris" for a body that has
+        // 39921 of them (its PolygonVertexIndex carries 119763 indices). Index counts come off the import
+        // data with no readable copy, and the neighbours in this folder already count triangles that way
+        // (M20FieldSelfTest.cs:82, Editor/CornMazeCornSetup.cs:125).
         int tris = 0;
         var counted = new HashSet<Mesh>();
+        var meshes = new List<Mesh>();
         foreach (var mf in inst.GetComponentsInChildren<MeshFilter>(true))
-            if (mf.sharedMesh != null && counted.Add(mf.sharedMesh))
-                tris += mf.sharedMesh.triangles.Length / 3;
+            if (mf.sharedMesh != null) meshes.Add(mf.sharedMesh);
         foreach (var smr in inst.GetComponentsInChildren<SkinnedMeshRenderer>(true))
-            if (smr.sharedMesh != null && counted.Add(smr.sharedMesh))
-                tris += smr.sharedMesh.triangles.Length / 3;
+            if (smr.sharedMesh != null) meshes.Add(smr.sharedMesh);
+        foreach (var mesh in meshes)
+        {
+            if (!counted.Add(mesh)) continue;
+            for (int s = 0; s < Mathf.Max(1, mesh.subMeshCount); s++)
+                tris += (int)(mesh.GetIndexCount(s) / 3);
+        }
+        // One material slot is the right shape for this mesh: the FBX's LayerElementMaterial is `AllSame`
+        // with a single material index, so subMeshCount is 1 and `sharedMaterial` covers every triangle.
+        // (The "materials 2" an earlier Blender pass recorded was the scene's material count — the model's
+        // plus the look-check script's own `M_ground` — not a second slot on char1.)
         foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
             r.sharedMaterial = mat;
 
@@ -685,6 +736,18 @@ public sealed class Husk : MonoBehaviour
                              " — it will stand in its bind pose");
         }
 
+        // M36: what the model actually builds. The M28 fields were left at zero by the model path, which is
+        // why the built app reported this creature as "0.00 m tall, widest 0.00 m across" while its own
+        // frames showed it standing in the lane — a number nobody could check, on the one property the level
+        // depends on (it has to read over the lane line). Same convention as the primitives path below:
+        // height is measured from the ground the Husk stands on, not from the model's origin.
+        if (TryBounds(inst.transform, out var built))
+        {
+            HeightMeters = built.max.y - transform.position.y;
+            SilhouetteWidthMeters = built.size.x;
+        }
+        PartCount = inst.GetComponentsInChildren<Renderer>(true).Length;
+
         UsingModel = true;
         ModelTriangles = tris;
         Debug.Log("Husk: built from the supplied model — " + native.ToString("0.000") +
@@ -693,10 +756,31 @@ public sealed class Husk : MonoBehaviour
         return true;
     }
 
-    /// <summary>World height of a built object off its own parts — not off its origin or its scale.</summary>
+    /// <summary>
+    /// World height of a built object off its own parts — not off its origin or its scale.
+    ///
+    /// M36: off the MESHES, specifically. The divisor this returns decides how big the creature stands, and
+    /// a SkinnedMeshRenderer's live bounds are not a measurement of the model — they are its SKINNED bounds,
+    /// written for a renderer that has been drawn. Read at Instantiate time they returned 2.335 m for a model
+    /// that is 1.708 m, which is how the shipped creature ended up scaled x0.985 and standing 1.67 m against
+    /// a 2.30 m intent (its rig's top bone `head_end` binds at 170.854 cm, and its mesh box is 1.18 x 0.48 x
+    /// 1.70 m). Each mesh's own box is in the file, so this reads the same number however the frame is timed.
+    /// </summary>
     static float MeasuredHeight(GameObject go)
     {
-        return TryBounds(go.transform, out var b) ? b.size.y : 0f;
+        bool any = false;
+        var bounds = new Bounds(go.transform.position, Vector3.zero);
+        foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+        {
+            if (r == null) continue;
+            var mesh = r is SkinnedMeshRenderer smr ? smr.sharedMesh : r.GetComponent<MeshFilter>()?.sharedMesh;
+            if (mesh == null) continue;
+            var b = MeshBoxInWorld(mesh.bounds, r.transform.localToWorldMatrix);
+            if (!any) { bounds = b; any = true; }
+            else bounds.Encapsulate(b);
+        }
+        if (any) return bounds.size.y;
+        return TryBounds(go.transform, out var live) ? live.size.y : 0f;
     }
 
     void OnDestroy()

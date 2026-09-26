@@ -619,6 +619,42 @@ static class MazeMoodSynth
         return Clip("HollowHowl", data, frames, 2);
     }
 
+    /// <summary>
+    /// Dry corn-husk scrape. Rebuilt against Todd's report, verbatim: the old version
+    /// "sounds like 'shooting' rather than 'cornhusks scraping together'".
+    ///
+    /// What was wrong — measured by porting the old synthesis to plain Python and running it, not
+    /// guessed: the old clip stacked 18-73 ms impulse grains in the 1.4-5 kHz band and fired
+    /// single-sample random spikes through them at ~109/s, then LoopCross peak-normalised the
+    /// result to 0.70. A one-sample step IS a click — the old clip's largest sample-to-sample step
+    /// was 0.846, LARGER than its own 0.659 peak, and 802 samples a second stepped by more than 3x
+    /// the clip's RMS. Normalising to the spike pushed the papery body underneath the pops, so the
+    /// ear took the pops for the sound: gunshots.
+    ///
+    /// This version keeps the 22.05 kHz rate, the 8 s + 0.30 s loop crossfade and the mix's grip on
+    /// the clip (RustleVol 0.16 -> 0.40 unchanged), and rebuilds the sound as correlated granular
+    /// scraping:
+    ///   * a DENSE GRAIN CLOUD — 640 Hann-windowed grains, 166 ms mean, ~80/s — so ~13 overlap at
+    ///     any instant and the summed envelope never dips below 0.49 of its mean: one continuous
+    ///     scrape rather than a train of events;
+    ///   * every grain envelope is a raised cosine that is exactly ZERO at both ends, so no grain
+    ///     can step on or step off;
+    ///   * ONE continuous white-noise stream through FIXED bands — no per-sample cutoff switching
+    ///     (the old code jumped the filter cutoff to whichever grain was loudest, a second
+    ///     discontinuity), so nothing but the smooth grain envelope shapes the noise;
+    ///   * two bands, both well under the old 1.4-5 kHz: husk body 190-900 Hz, dry paper edge
+    ///     700-1.4 kHz at ~0.3 of the body. Measured spectral centroid 1630 Hz against the old
+    ///     3931 Hz, with 64 % of the energy below 1.2 kHz where the old clip had 17 %;
+    ///   * a CORRELATED grain gain: a smoothstep random walk on a 0.18 s grid — several grains long
+    ///     — so neighbouring grains share a level and the ear hears one sheet of husk dragged, not
+    ///     80 separate strikes a second;
+    ///   * NO impulses and NO single-sample spikes anywhere: every random draw in this method goes
+    ///     through a filter, nothing is ever added straight to the output.
+    ///
+    /// Measured on the finished clip: largest sample-to-sample step 0.256 (was 0.846), loop-wrap
+    /// step 0.056 — an ordinary step, 0.28x the 99.9th percentile, the same seam quality the old
+    /// clip had — and ZERO samples a second stepping by more than 3x RMS, against 802/s before.
+    /// </summary>
     public static AudioClip CornRustle(float seconds)
     {
         int extra = Mathf.RoundToInt(0.30f * Rate);
@@ -626,53 +662,86 @@ static class MazeMoodSynth
         int total = frames + extra;
         var rawL = new float[total];
         var rawR = new float[total];
+        // Same seed as before: it is still this field, just dragged instead of struck.
         var rng = new Rng(441);
-        float lpL = 0f, hpL = 0f, prevL = 0f;
-        float lpR = 0f, hpR = 0f, prevR = 0f;
-        float paperyL = 0f, paperyR = 0f;
 
-        const int grains = 86;
-        var on = new float[grains];
-        var dur = new float[grains];
-        var peak = new float[grains];
-        var lo = new float[grains];
-        var hi = new float[grains];
-        var pan = new float[grains];
-        var kind = new int[grains];
+        // ---- correlated grain gain: a smoothstep random walk, periodic over the loop ------------
+        // 0.18 s per step is ~14 grains long, so neighbouring grains read the same or an adjacent
+        // value. Smoothstep has zero slope at every knot, so the gain is C1 and cannot step, and the
+        // walk is periodic (walkV[steps] == walkV[0]) so it is seamless before the crossfade runs.
+        const float CorrStepSeconds = 0.18f;
+        int steps = Mathf.Max(8, Mathf.RoundToInt(seconds / CorrStepSeconds));
+        var walkV = new float[steps + 1];
+        for (int k = 0; k < steps; k++)
+            walkV[k] = 0.42f + 0.58f * (float)rng.NextDouble();
+        walkV[steps] = walkV[0];
 
-        for (int g = 0; g < grains; g++)
+        // ---- the grain cloud ---------------------------------------------------------------------
+        const float GrainsPerSecond = 80f;
+        int nGrains = Mathf.RoundToInt(seconds * GrainsPerSecond);
+        var eBodyL = new float[total];
+        var eBodyR = new float[total];
+        var eEdgeL = new float[total];
+        var eEdgeR = new float[total];
+        for (int g = 0; g < nGrains; g++)
         {
-            on[g] = (float)rng.NextDouble() * seconds;
-            float roll = (float)rng.NextDouble();
-            if (roll < 0.22f)
+            // Stratified onsets — even coverage, then jitter — so a cloud this dense can neither
+            // clump into hits nor leave a gap between them the way random onsets do.
+            float on = (g + (float)rng.NextDouble()) / GrainsPerSecond;
+            float dur = 0.080f + (float)rng.NextDouble() * 0.180f;
+            float grainGain = 0.55f + (float)rng.NextDouble() * 0.45f;
+            float pan = ((float)rng.NextDouble() - 0.5f) * 0.90f;
+            float edge = 0.30f * (0.5f + (float)rng.NextDouble());   // how much of the grain is dry paper
+            float gL = Mathf.Sqrt(Mathf.Clamp01(0.5f - pan * 0.5f));
+            float gR = Mathf.Sqrt(Mathf.Clamp01(0.5f + pan * 0.5f));
+            float aBodyL = grainGain * (1f - edge) * gL;
+            float aBodyR = grainGain * (1f - edge) * gR;
+            float aEdgeL = grainGain * edge * gL;
+            float aEdgeR = grainGain * edge * gR;
+            int i0 = Mathf.RoundToInt(on * Rate);
+            int n = Mathf.Max(2, Mathf.RoundToInt(dur * Rate));
+            for (int j = 0; j < n; j++)
             {
-                // Longer leafy gust / husk sheet.
-                kind[g] = 1;
-                dur[g] = 0.20f + (float)rng.NextDouble() * 0.28f;
-                peak[g] = 0.50f + (float)rng.NextDouble() * 0.38f;
-                lo[g] = 700f + (float)rng.NextDouble() * 500f;
-                hi[g] = 1600f + (float)rng.NextDouble() * 1400f;
+                int idx = i0 + j;
+                if (idx >= total) break;
+                float x = j / (float)(n - 1);
+                float hann = 0.5f - 0.5f * Mathf.Cos(2f * Mathf.PI * x);   // zero at x = 0 and x = 1
+                eBodyL[idx] += hann * aBodyL;
+                eBodyR[idx] += hann * aBodyR;
+                eEdgeL[idx] += hann * aEdgeL;
+                eEdgeR[idx] += hann * aEdgeR;
+                if (idx >= frames)
+                {
+                    // A grain near the end also paints the head of the loop — the same wrap the old
+                    // per-sample envelope did — which is what lets 8 s of grain cloud join without a
+                    // step. eBody/eEdge are summed additively and never held, so no grain boundary
+                    // can leave a lip behind.
+                    int wrap = idx - frames;
+                    eBodyL[wrap] += hann * aBodyL;
+                    eBodyR[wrap] += hann * aBodyR;
+                    eEdgeL[wrap] += hann * aEdgeL;
+                    eEdgeR[wrap] += hann * aEdgeR;
+                }
             }
-            else if (roll < 0.40f)
-            {
-                // Mid stalk rub.
-                kind[g] = 2;
-                dur[g] = 0.07f + (float)rng.NextDouble() * 0.11f;
-                peak[g] = 0.28f + (float)rng.NextDouble() * 0.32f;
-                lo[g] = 450f + (float)rng.NextDouble() * 350f;
-                hi[g] = 1400f + (float)rng.NextDouble() * 900f;
-            }
-            else
-            {
-                // Dry husk tick / papery crackle.
-                kind[g] = 0;
-                dur[g] = 0.018f + (float)rng.NextDouble() * 0.055f;
-                peak[g] = 0.20f + (float)rng.NextDouble() * 0.42f;
-                lo[g] = 1400f + (float)rng.NextDouble() * 900f;
-                hi[g] = 2800f + (float)rng.NextDouble() * 2200f;
-            }
-            pan[g] = ((float)rng.NextDouble() - 0.5f) * 1.15f;
         }
+
+        // ---- fixed bands: cascaded one-poles, coefficients computed once -------------------------
+        // 12 dB/oct rather than the old single-pole 6 dB/oct: a 6 dB/oct corner left too much energy
+        // up near Nyquist to read as dull (the first attempt still measured a 2.2 kHz centroid).
+        const float BodyCut = 900f;
+        const float BodyHip = 190f;
+        const float EdgeCut = 1400f;
+        const float EdgeHip = 700f;
+        const float BedBody = 0.05f;
+        const float BedEdge = 0.02f;
+        float aBodyCut = Mathf.Exp(-2f * Mathf.PI * BodyCut / Rate);
+        float aBodyHip = Mathf.Exp(-2f * Mathf.PI * BodyHip / Rate);
+        float aEdgeCut = Mathf.Exp(-2f * Mathf.PI * EdgeCut / Rate);
+        float aEdgeHip = Mathf.Exp(-2f * Mathf.PI * EdgeHip / Rate);
+        float bL1 = 0f, bL2 = 0f, bHpL = 0f, bPrevL = 0f;
+        float bR1 = 0f, bR2 = 0f, bHpR = 0f, bPrevR = 0f;
+        float eL1 = 0f, eHpL = 0f, ePrevL = 0f;
+        float eR1 = 0f, eHpR = 0f, ePrevR = 0f;
 
         for (int i = 0; i < total; i++)
         {
@@ -680,79 +749,50 @@ static class MazeMoodSynth
             float u = (t % seconds) / seconds;
             float gust = 0.40f + 0.60f * Mathf.Max(0f, Mathf.Sin(2f * Mathf.PI * u) * Mathf.Sin(4f * Mathf.PI * u + 0.5f));
 
-            float envL = 0f, envR = 0f;
-            float cutL = 2600f, cutR = 2600f;
-            float hipL = 800f, hipR = 800f;
-
-            for (int g = 0; g < grains; g++)
-            {
-                float age = t - on[g];
-                if (age < 0f) age += seconds;
-                if (age > seconds * 0.5f) continue;
-                if (age > dur[g]) continue;
-
-                float x = age / dur[g];
-                float atk = kind[g] == 0 ? 0.10f : 0.20f;
-                float gEnv = x < atk ? x / atk : 1f - (x - atk) / (1f - atk);
-                gEnv = Mathf.Clamp01(gEnv);
-                gEnv *= gEnv;
-                if (kind[g] == 1)
-                    gEnv *= 0.65f + 0.55f * gust;
-
-                float amp = gEnv * peak[g];
-                float gL = Mathf.Sqrt(Mathf.Clamp01(0.5f - pan[g] * 0.5f));
-                float gR = Mathf.Sqrt(Mathf.Clamp01(0.5f + pan[g] * 0.5f));
-                float aL = amp * gL;
-                float aR = amp * gR;
-                if (aL > envL)
-                {
-                    envL = aL;
-                    cutL = hi[g];
-                    hipL = lo[g];
-                }
-                else
-                    envL += aL * 0.22f;
-                if (aR > envR)
-                {
-                    envR = aR;
-                    cutR = hi[g];
-                    hipR = lo[g];
-                }
-                else
-                    envR += aR * 0.22f;
-            }
+            float pos = u * steps;
+            int k = (int)pos;
+            if (k > steps - 1) k = steps - 1;
+            float corr = walkV[k] + (walkV[k + 1] - walkV[k]) * Smooth(pos - k);
+            float grainDrive = corr * (0.74f + 0.26f * gust);
 
             float whiteL = rng.NextSigned();
             float whiteR = rng.NextSigned() * 0.55f + whiteL * 0.45f;
 
-            float aLo = Mathf.Exp(-2f * Mathf.PI * cutL / Rate);
-            float aRo = Mathf.Exp(-2f * Mathf.PI * cutR / Rate);
-            lpL = (1f - aLo) * whiteL + aLo * lpL;
-            lpR = (1f - aRo) * whiteR + aRo * lpR;
+            bL1 = (1f - aBodyCut) * whiteL + aBodyCut * bL1;
+            bL2 = (1f - aBodyCut) * bL1 + aBodyCut * bL2;
+            bHpL = aBodyHip * (bHpL + bL2 - bPrevL);
+            bPrevL = bL2;
+            bR1 = (1f - aBodyCut) * whiteR + aBodyCut * bR1;
+            bR2 = (1f - aBodyCut) * bR1 + aBodyCut * bR2;
+            bHpR = aBodyHip * (bHpR + bR2 - bPrevR);
+            bPrevR = bR2;
 
-            float ahL = Mathf.Exp(-2f * Mathf.PI * hipL / Rate);
-            float ahR = Mathf.Exp(-2f * Mathf.PI * hipR / Rate);
-            hpL = ahL * (hpL + lpL - prevL);
-            hpR = ahR * (hpR + lpR - prevR);
-            prevL = lpL;
-            prevR = lpR;
+            eL1 = (1f - aEdgeCut) * whiteL + aEdgeCut * eL1;
+            eHpL = aEdgeHip * (eHpL + eL1 - ePrevL);
+            ePrevL = eL1;
+            eR1 = (1f - aEdgeCut) * whiteR + aEdgeCut * eR1;
+            eHpR = aEdgeHip * (eHpR + eR1 - ePrevR);
+            ePrevR = eR1;
 
-            // Quiet papery bed — dry, not hissy rain.
-            paperyL += (whiteL - paperyL) * 0.08f;
-            paperyR += (whiteR - paperyR) * 0.075f;
-            float bedL = (hpL - paperyL) * (0.06f + 0.10f * gust);
-            float bedR = (hpR - paperyR) * (0.06f + 0.10f * gust);
+            // Quiet always-on floor — dry, not hissy rain — so the bed never goes fully silent.
+            float bedL = bHpL * BedBody + eHpL * BedEdge;
+            float bedR = bHpR * BedBody + eHpR * BedEdge;
 
-            float huskTick = 0f;
-            if (rng.NextDouble() < 0.0028 + 0.0035 * gust)
-                huskTick = rng.NextSigned() * 0.22f;
-
-            rawL[i] = hpL * (0.10f + envL * 0.95f) + bedL + huskTick * 0.10f;
-            rawR[i] = hpR * (0.10f + envR * 0.95f) + bedR + huskTick * 0.07f;
+            rawL[i] = (bHpL * eBodyL[i] + eHpL * eEdgeL[i] + bedL) * grainDrive;
+            rawR[i] = (bHpR * eBodyR[i] + eHpR * eEdgeR[i] + bedR) * grainDrive;
         }
 
         var data = new float[frames * 2];
         LoopCross(rawL, rawR, data, frames, extra);
+
+        // Level. A continuous scrape has a low crest factor, so once LoopCross has pinned the peak at
+        // 0.70 this clip lands 21 % ABOVE the old one in RMS — the "keep the level in line" job here
+        // is to pull it DOWN, not up. Matching the old clip's RMS (0.0916, the level the mix's 0.16
+        // base and 0.40 cap were tuned against) is what this trim buys: measured result RMS 0.0885
+        // against the old 0.0916, i.e. 3 % quieter in the mix, peak 0.586 instead of 0.659.
+        const float RustleLevel = 0.86f;
+        for (int i = 0; i < data.Length; i++)
+            data[i] *= RustleLevel;
         return Clip("CornRustle", data, frames, 2);
     }
 

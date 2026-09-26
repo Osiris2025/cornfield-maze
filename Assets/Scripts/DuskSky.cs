@@ -53,9 +53,28 @@ public sealed class DuskSky : MonoBehaviour
     /// <summary>Seconds since the run was handed over to the player.</summary>
     public static float PlaySeconds { get; private set; }
 
-    /// <summary>§25.5: the rise takes 40 s. Night takes over at whichever comes first, this or 2 cells.</summary>
+    /// <summary>§25.5: the rise takes 40 s. Night takes over on this clock.</summary>
     public const float RiseSeconds = 40f;
-    public const float NightCells = 2f;
+
+    /// <summary>
+    /// M36 (Todd, 2026-09-26): how far the player must walk for distance to bring the night on, and how
+    /// much of the ramp distance alone may account for.
+    ///
+    /// This was 2 cells — about 8 m — and it was not an assist, it was the rule: _night01 was
+    /// Max(byTime, byCells), so eight paces into the maze snapped the sky to full night and walking back
+    /// over that line snapped it straight back to dusk. THAT is the "light switches back and forth
+    /// between 3 lighting modes" Todd reported. Not three modes: one threshold, crossed in both
+    /// directions. Measured on the harness — night arrived at t=12.3 s and t=16.2 s on runs where
+    /// RiseSeconds is 40.
+    ///
+    /// Distance is a gentler assist now: at NightCells it contributes CellAssistMax of the ramp and the
+    /// clock finishes the rest, so walking deeper hurries the dusk along without ever owning it.
+    /// </summary>
+    public const float NightCells = 10f;
+
+    /// <summary>M36: the most of the night ramp that distance alone can account for. The clock owns the
+    /// rest, which is what keeps night arriving as a sunset rather than as a line on the ground.</summary>
+    public const float CellAssistMax = 0.55f;
     /// <summary>
     /// How far into the night the moon stays below the horizon. The moon rides the NIGHT's clock
     /// (see ApplyPalette), and this is the lag before it clears the corn: dusk is still the sun's.
@@ -260,14 +279,18 @@ public sealed class DuskSky : MonoBehaviour
         {
             var cell = _maze.WorldToCell(_follow.position);
             var from = _maze.WorldToCell(_startCell);
-            byCells = Mathf.Clamp01(Mathf.Max(Mathf.Abs(cell.x - from.x), Mathf.Abs(cell.y - from.y)) / NightCells);
+            byCells = Mathf.Clamp01(Mathf.Max(Mathf.Abs(cell.x - from.x), Mathf.Abs(cell.y - from.y)) / NightCells)
+                      * CellAssistMax;
         }
-        _night01 = Mathf.Max(byTime, byCells);
-        // The moon rides the NIGHT's clock, not one of its own. Night arrives by time OR by distance
-        // (NightCells is 2 cells — a few paces), so on two separate clocks the field goes fully dark
-        // in the first seconds of a walk and stays unlit: the moon is painted in the sky and casting
-        // nothing on the maze, which is what a run into the deep corn looked like. One clock, so night
-        // always has its moon — still climbing through it, just never absent from it.
+        // M36: LATCHED, and that is the point. This takes the max against the PREVIOUS value rather than
+        // against this frame's two terms, so the sky is a one-way trip: walking back toward the gate can
+        // no longer rewind dusk over a field that is already night. Reach night once and it stays night.
+        _night01 = Mathf.Max(_night01, Mathf.Max(byTime, byCells));
+        // The moon rides the NIGHT's clock, not one of its own. When night and moonrise ran on two
+        // separate clocks the field went fully dark in the first seconds of a walk and stayed unlit:
+        // the moon painted into the sky and casting nothing on the maze, which is what a run into the
+        // deep corn looked like. One clock, so night always has its moon — still climbing through it,
+        // just never absent from it.
         _moonElev01 = Mathf.Clamp01((_night01 - MoonLag01) / (1f - MoonLag01));
         IsNight = _night01 >= 0.999f;
 

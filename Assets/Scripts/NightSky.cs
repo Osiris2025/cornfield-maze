@@ -14,6 +14,12 @@ public sealed class NightSky : MonoBehaviour
     const float FieldSize = 0.62f;
     const float HintSize = 0.88f;
     const float GoldTipSize = 1.12f;
+    // M36b: the gold tip is the largest star this file is allowed to draw. Field stars are built as
+    // FieldSize * (0.65 .. 1.20) = 0.40 .. 0.74 units and the hint stars as HintSize * (0.92 .. 1.07) =
+    // 0.81 .. 0.94, so this ceiling never bites on the current tables — it exists so that no future
+    // table (or a stray edit) can put a star an order of magnitude larger than the rest, which is the
+    // one way a single entry here could read as a line rather than a point across the sky.
+    const float MaxStarSize = GoldTipSize;
 
     Transform _follow;
     Transform _gold;
@@ -250,6 +256,31 @@ public sealed class NightSky : MonoBehaviour
         Camera cam = _cam != null ? _cam : Camera.main;
         Vector3 camRight = cam != null ? cam.transform.right : Vector3.right;
         Vector3 camUp = cam != null ? cam.transform.up : Vector3.up;
+        // M36b: the billboard pair is orthonormalised before it is used.
+        //
+        // WHY: `Transform.right` and `Transform.up` are normalised INDEPENDENTLY, so they stop being
+        // perpendicular as soon as anything above the camera carries a non-uniform scale. That is not
+        // hypothetical here: the camera rig is parented to the walker (FarmWalkerController builds
+        // `_camRig.SetParent(transform, false)` and hangs the camera under it), and the walker's model is
+        // scaled non-uniformly every frame — `_model.localScale = new Vector3(squash * 1.04f, sink,
+        // squash * 1.04f)` — with its Y driving the eye height. Nothing in this file can see whether a
+        // future root scale follows the model, so the billboard does not depend on it. A star quad built
+        // from a non-perpendicular pair is a sheared parallelogram whose in-plane normal is no longer
+        // the camera's forward: it tilts away from the screen, foreshortens, and at the extreme reads as
+        // a thin line instead of a point. That is the only way `size` in this file can produce a streak,
+        // because a quad built with one `size` on both axes cannot: at Radius 58 a field star subtends
+        // 0.62/58 rad and the largest star here (GoldTipSize 1.12) only 1.12/58 rad, which is 6 px and
+        // 11 px of the frame at 70 deg FOV (measured: the round point stars in the night capture are
+        // 3-6 px blobs, while the defect's streaks are 1 px wide and up to 148 px long — a 150:1 aspect
+        // no single-size quad can make).
+        //
+        // HOW: keep the camera's forward, make the up perpendicular to it, and take right from the pair
+        // so the three are orthogonal and unit-length whatever the transform carries. Cross(up, forward)
+        // reproduces `cam.transform.right` exactly for the normal case (identity basis -> (1,0,0)), so
+        // the quads' winding and facing are unchanged; the quad's plane is now exactly the camera plane.
+        Vector3 camFwd = cam != null ? cam.transform.forward : Vector3.forward;
+        Vector3.OrthoNormalize(ref camFwd, ref camUp);
+        camRight = Vector3.Cross(camUp, camFwd);
 
         int n = 0;
         for (int i = 0; i < FieldCount; i++)
@@ -291,9 +322,15 @@ public sealed class NightSky : MonoBehaviour
         _mesh.bounds = new Bounds(Vector3.zero, Vector3.one * (Radius * 2.2f));
     }
 
+    /// <summary>
+    /// One star, as a camera-facing SQUARE: both axes are `size` long, so a star is a point of constant
+    /// angular size (size / Radius) in every direction and at every camera orientation. The hint stars
+    /// and the gold tip differ from the field stars only in size and colour; none of them is elongated,
+    /// and none is bigger than MaxStarSize.
+    /// </summary>
     void WriteStar(int index, Vector3 center, float size, Color color, Vector3 camRight, Vector3 camUp)
     {
-        float h = size * 0.5f;
+        float h = Mathf.Clamp(size, 0.05f, MaxStarSize) * 0.5f;
         Vector3 r = camRight * h;
         Vector3 u = camUp * h;
         int v = index * 4;

@@ -38,10 +38,32 @@ public static class Materials
     /// </summary>
     public const float GroundTileMetres = 2f;
 
+    /// <summary>
+    /// M37 (Todd: "the ground arond the corn is still REFLECTIVE. we agreed that was bad") — THE FIELD IS
+    /// STRUCTURALLY MATTE AGAIN.
+    ///
+    /// M32 passed `Ground/T_Ground_Field_M` here and that argument was the defect, not a tuning knob. On a
+    /// URP/Lit material a bound metallic/smoothness map makes the shader read smoothness from the map's ALPHA
+    /// channel, so `BindReflection` has to force the scalar `_Smoothness` to 1.0 (URP takes
+    /// `metallicGloss.a * _Smoothness`; leave the scalar at 0.05 and the map is multiplied into nothing).
+    /// The consequence is that the field's matte-ness stopped being a value this file owns and became a
+    /// texture alpha that must be imported, compressed and sampled correctly for the floor to stay matte —
+    /// exactly the class of bug the M32 close-out recorded: `alphaSource=None` threw that alpha away, the
+    /// shader fell back to the white default, and the floor shipped looking "reflective" while every number
+    /// said otherwise. `MakeMatte` still turns the lobe and the environment reflection off by KEYWORD, but a
+    /// keyword is a shader VARIANT, and a material built at runtime of `Shader.Find` cannot guarantee its
+    /// variant survived the build's stripping — which is why the value has to be the floor, not the keyword.
+    ///
+    /// So the field passes NO gloss map and carries the M32 constant itself: `_Smoothness` 0.05, no
+    /// `_MetallicGlossMap` bound, `_METALLICSPECGLOSSMAP` off. There is nothing left to override it, and the
+    /// standing rule holds — "THE GROUND IS MATTE ... Any highlight on the field or the lane is a defect".
+    /// The water is the only surface in this game allowed to reflect, and it is built by `GroundPuddle`, which
+    /// keeps its map.
+    /// </summary>
     public static Material GroundField()
     {
         var mat = Ground("Ground/T_Ground_Field", "Ground/T_Ground_Field_N",
-                         new Color(0.88f, 0.83f, 0.72f), PreM32FieldSmoothness, "Ground/T_Ground_Field_M");
+                         new Color(0.88f, 0.83f, 0.72f), PreM32FieldSmoothness, null);
         MakeMatte(mat);
         return mat;
     }
@@ -95,6 +117,15 @@ public static class Materials
     /// from the strip Todd shipped) and the material is set to Alpha Blend, so URP/Lit's own base-map alpha
     /// drives opacity. That is what keeps the lit shader on the lane: it still gets the moon, the normal map
     /// and the PathMudWetness wetness path. No in-house shader, no second texture sampled per pixel.
+    ///
+    /// M37 (Todd: "the ground arond the corn is still REFLECTIVE. we agreed that was bad") — the lane is
+    /// STRUCTURALLY MATTE for the same reason the field is, and by the same change: M32 passed
+    /// `Ground/T_Ground_Lane_M` here, the bound metallic/smoothness map made `BindReflection` force
+    /// `_Smoothness` to 1.0 (URP reads `metallicGloss.a * _Smoothness`), and the lane's matte-ness became a
+    /// texture alpha rather than a value. Pass no gloss map and the lane holds `_Smoothness` 0.11 itself. The
+    /// standing rule is explicit and was never contingent on a map — "THE GROUND IS MATTE ... Any highlight on
+    /// the field or the lane is a defect" — and note the authority for 0.11: `PreM32LaneSmoothness` below is
+    /// the number the material carried before the maps were wired, so this is a restoration, not a new tune.
     /// </summary>
     public static Material GroundLane()
     {
@@ -107,7 +138,7 @@ public static class Materials
         const float LaneTintScale = 0.90f;
         var mat = Ground("Ground/T_Ground_LaneA", "Ground/T_Ground_Lane_N",
                          new Color(0.94f * LaneTintScale, 0.92f * LaneTintScale, 0.88f * LaneTintScale),
-                         PreM32LaneSmoothness, "Ground/T_Ground_Lane_M");
+                         PreM32LaneSmoothness, null);
         MakeAlphaBlend(mat);
         MakeMatte(mat);
         return mat;
@@ -254,6 +285,11 @@ public static class Materials
     ///
     /// `preM32Smoothness` is the constant this material carried before the maps were wired; it is the value
     /// the A/B restores.
+    ///
+    /// M37: `glossMap` is now passed by the PUDDLE ONLY. The field and the lane pass null and take
+    /// `preM32Smoothness` as a real, enforced smoothness — binding the map there forced `_Smoothness` to 1.0
+    /// and moved the matte value into a texture alpha (see `GroundField`). Everything below still runs for
+    /// every ground material; only the presence of the map decides which branch `BindReflection` takes.
     /// </summary>
     static Material Ground(string albedo, string normal, Color tint, float preM32Smoothness, string glossMap)
     {
@@ -279,7 +315,10 @@ public static class Materials
         }
 
         var g = glossMap == null ? null : Resources.Load<Texture2D>(glossMap);
-        if (g == null)
+        // M37: a null `glossMap` is a DELIBERATELY unbound surface (the matte field and lane), not a broken
+        // path. Only warn when a map was asked for and could not be loaded, or every field and lane build
+        // would print a false "map missing" and train the next reader to ignore the one warning that matters.
+        if (g == null && glossMap != null)
         {
             Debug.LogWarning("M32: ground metallic/smoothness map missing: Resources/" + glossMap +
                              " — this material falls back to a constant smoothness of " + preM32Smoothness);
