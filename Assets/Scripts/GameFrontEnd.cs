@@ -174,7 +174,7 @@ public sealed class GameFrontEnd : MonoBehaviour
         Label(move.transform, "MoveBody",
             MobileControls.ShouldShow
                 ? "Left stick — walk the lanes\nDrag the right half of the screen — look\nRUN (hold) — sprint\nPAUSE (top right) — stop and think"
-                : "WASD or the arrow keys — walk the lanes\nMouse — look        Shift — sprint\nEsc — pause        R — restart",
+                : "WASD or the arrow keys — walk the lanes\nLeft-drag the mouse — look        Scroll — zoom\nShift — sprint        Esc — pause        R — restart",
             28, TextAnchor.UpperLeft, new Color(0.95f, 0.92f, 0.86f), new Vector2(38f, -110f), new Vector2(680f, 320f));
 
         var threat = Box(safe, "ThreatBox", new Vector2(430f, 40f), new Vector2(760f, 460f));
@@ -329,10 +329,16 @@ public sealed class GameFrontEnd : MonoBehaviour
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
+    /// <summary>
+    /// M36 (Todd, 2026-09-26): the cursor is never captured any more. The look is a left-drag (see
+    /// FarmWalkerController.Update) and Todd's ask is that the mouse not be bound to the scene, so
+    /// there is no lock left to set. Kept as a named call so the two transitions in Show() still read
+    /// as intent rather than as a missing line.
+    /// </summary>
     static void LockCursor(bool locked)
     {
-        Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
-        Cursor.visible = !locked;
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     // ---- frame -------------------------------------------------------------

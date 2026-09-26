@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 public sealed class FarmWalkerController : MonoBehaviour
 {
@@ -8,6 +9,19 @@ public sealed class FarmWalkerController : MonoBehaviour
     public float Gravity = 18f;
     public float TurnSpeed = 12f;
     public float MouseSensitivity = 2.1f;
+
+    // ---- M36 (Todd, 2026-09-26): the mouse turns and zooms, the cursor is never captured ----------
+    /// <summary>Scroll-wheel zoom rate, in zoom-fraction per unit of Unity's Mouse ScrollWheel axis
+    /// (a standard notch is 0.1, so one notch is 0.4 of the zoom range).</summary>
+    public float ZoomStep = 4f;
+
+    /// <summary>Field of view at zoom 0 (wide) and zoom 1 (tight). Applied in BOTH camera modes.</summary>
+    public float WideFov = 70f;
+    public float TightFov = 30f;
+
+    /// <summary>How far the third-person boom is pulled in at full zoom, so a tight lens is not a long
+    /// lens on a camera still parked 5 m behind the cookie.</summary>
+    public float ZoomBoomScale = 0.6f;
     public float TouchLookSensitivity = 0.14f;
     public float CameraDistance = 5.2f;
     public float CameraHeight = 2.1f;
@@ -148,6 +162,11 @@ public sealed class FarmWalkerController : MonoBehaviour
     bool _eating;
     float _rainExposure;
     float _dissolve;
+    /// <summary>M36: 0 = wide, 1 = tight. Driven by the scroll wheel, read by LateUpdate.</summary>
+    float _zoom;
+    /// <summary>M36: true only for a drag that BEGAN off the UI, so a click on a menu button is still a
+    /// click and a drag that passes over the pause button does not stop turning the head.</summary>
+    bool _lookDragging;
     List<Material> _cookieMats;
     List<Color> _cookieBaseCols;
     List<bool> _icingFlags;
@@ -252,16 +271,11 @@ public sealed class FarmWalkerController : MonoBehaviour
         _camRig = new GameObject("CameraRig").transform;
         _camRig.SetParent(transform, false);
         camGo.transform.SetParent(_camRig, false);
-        if (MobileControls.ShouldShow)
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-        else
-        {
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-        }
+        // M36 (Todd, 2026-09-26): the cursor is NEVER captured. He asked for the mouse to turn and zoom
+        // the camera but "not be bound to the scene", and a locked cursor is exactly that binding. The
+        // look is a left-drag now (Update), so a free Mac cursor costs nothing.
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     public void SetWon(bool won) => _won = won;
@@ -377,18 +391,27 @@ public sealed class FarmWalkerController : MonoBehaviour
     {
         UpdateDissolveFromRain();
 
-        // M21 (§25.1): while the run is live, Esc belongs to the front end (it opens the pause menu).
-        if (!GameFrontEnd.IsPlaying && !MobileControls.ShouldShow && Input.GetKeyDown(KeyCode.Escape))
+        // M36 (Todd, 2026-09-26): the Mac look is a LEFT-DRAG and the cursor is never captured. Before
+        // this, the look was read only while Cursor.lockState was Locked, and Esc toggled that lock —
+        // the mouse was bound to the scene, which is the thing Todd asked to stop. The drag is latched
+        // on the button-down so that (a) a click on PLAY is still a click, and (b) a drag that wanders
+        // over the pause button keeps turning the head instead of being cut off mid-turn.
+        if (!MobileControls.ShouldShow)
         {
-            bool locked = Cursor.lockState == CursorLockMode.Locked;
-            Cursor.lockState = locked ? CursorLockMode.None : CursorLockMode.Locked;
-            Cursor.visible = locked;
-        }
+            if (Input.GetMouseButtonDown(0))
+                _lookDragging = EventSystem.current == null || !EventSystem.current.IsPointerOverGameObject();
+            if (!Input.GetMouseButton(0)) _lookDragging = false;
 
-        if (!MobileControls.ShouldShow && Cursor.lockState == CursorLockMode.Locked)
-        {
-            _yaw += Input.GetAxis("Mouse X") * MouseSensitivity;
-            _pitch = Mathf.Clamp(_pitch - Input.GetAxis("Mouse Y") * MouseSensitivity, MinPitch, MaxPitch);
+            if (_lookDragging)
+            {
+                _yaw += Input.GetAxis("Mouse X") * MouseSensitivity;
+                _pitch = Mathf.Clamp(_pitch - Input.GetAxis("Mouse Y") * MouseSensitivity, MinPitch, MaxPitch);
+            }
+
+            // Scroll wheel — zoom, in both camera modes. A step is clamped into 0..1 and LateUpdate turns
+            // it into the field of view, so there is one zoom state and two readers, never two zooms.
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scroll) > 0.0001f) _zoom = Mathf.Clamp01(_zoom + scroll * ZoomStep);
         }
 
         if (MobileControls.Instance != null)
@@ -574,6 +597,10 @@ public sealed class FarmWalkerController : MonoBehaviour
     {
         if (_camRig == null || _camera == null) return;
 
+        // M36: one zoom state, read here, applied in both camera modes. In first person there is no boom
+        // to shorten, so the field of view IS the zoom; in third person it is the lens and the boom.
+        _camera.fieldOfView = Mathf.Lerp(WideFov, TightFov, _zoom);
+
         float lookUp = Mathf.Clamp01((-_pitch) / 87f);
         float pivotY = 1.15f + lookUp * 0.95f;
         _camRig.position = transform.position + Vector3.up * pivotY;
@@ -600,7 +627,7 @@ public sealed class FarmWalkerController : MonoBehaviour
 
         _camRig.rotation = Quaternion.Euler(_pitch + nod, _yaw, roll);
 
-        float boom = Mathf.Lerp(CameraDistance, CameraDistance * 0.62f, lookUp);
+        float boom = Mathf.Lerp(CameraDistance, CameraDistance * 0.62f, lookUp) * Mathf.Lerp(1f, ZoomBoomScale, _zoom);
         float heightOff = (CameraHeight - 1.15f) + lookUp * 0.55f;
         var desired = _camRig.position - _camRig.forward * boom + Vector3.up * heightOff;
 

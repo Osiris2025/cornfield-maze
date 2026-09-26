@@ -52,6 +52,32 @@ public sealed class DuskSky : MonoBehaviour
     public const float MoonLag01 = 0.30f;
 
     /// <summary>
+    /// M36 (Todd, 2026-09-26): "the moon MUST glow and give off light just like a regular halloween
+    /// moon — it must light up the scene with proper shadows." Absolute requirement.
+    ///
+    /// The pair that used to sit inline in DriveLights was 0.30 -> 0.52, then multiplied by
+    /// (1 - occlusion * 0.92). BuildClouds deliberately lays three strips straight across the moon's
+    /// climb, so for most of the rise the moon's own light came out at ~0.03 — a field lit by nothing.
+    /// The moon is the light source of the night now, and these are named so the number is arguable in
+    /// one place instead of buried in an expression.
+    /// </summary>
+    public const float MoonIntensityFloor = 0.70f;
+    public const float MoonIntensityPeak = 1.45f;
+
+    /// <summary>M36: the most of the moon's light a cloud may take. A cloud dims the moon; it never
+    /// switches it off, which is what (1 - occlusion * 0.92) used to do.</summary>
+    public const float MoonCloudVeilMin = 0.67f;
+
+    /// <summary>M36: how far the additive glow spills past the disc, as a multiple of the disc's own
+    /// quad. The disc itself is sized A / DiscFraction, so 2.6 puts the halo's soft edge a good way out
+    /// while its brightest part stays under the disc and never washes the maria.</summary>
+    public const float HaloScale = 2.6f;
+
+    /// <summary>M36: peak alpha of the additive halo. Deliberately modest — it is added to the sky,
+    /// not composited over it, so a large number reads as a blown-out white blob, not a glow.</summary>
+    public const float HaloStrength = 0.55f;
+
+    /// <summary>
     /// M25b (§25.5): the moon's DISC is this fraction of T_Moon_Full.png's width — scripts/moon_build.py's
     /// DISC_FRACTION, and the two must move together. A quad that should subtend angle A is therefore sized
     /// A / DiscFraction: only the middle 62 % of the quad is the disc and the rest is the baked amber glow.
@@ -134,7 +160,16 @@ public sealed class DuskSky : MonoBehaviour
         _moonLight.type = LightType.Directional;
         _moonLight.color = new Color(1f, 0.86f, 0.70f);
         _moonLight.intensity = 0f;
-        _moonLight.shadows = LightShadows.None;   // one shadow-casting light is enough on the phone
+        // M36 (Todd, 2026-09-26): "the moon MUST glow and give off light just like a regular halloween
+        // moon — it must light up the scene with proper shadows." Absolute requirement, so the old
+        // phone-first `LightShadows.None` is gone: it was the single reason the corn could never cast a
+        // shadow off the moon. Nothing downstream needed changing — the URP asset already ships
+        // m_MainLightShadowsSupported 1, a 2048 main shadowmap, 4 cascades and m_SoftShadowsSupported 1.
+        _moonLight.shadows = LightShadows.Soft;
+        _moonLight.shadowStrength = 0.9f;
+        _moonLight.shadowBias = 0.05f;
+        _moonLight.shadowNormalBias = 0.4f;
+        _moonLight.shadowNearPlane = 0.2f;
         moonGo.transform.rotation = Quaternion.Euler(2f, _moonAzimuthDeg, 0f);
 
         BuildClouds();
@@ -290,6 +325,31 @@ public sealed class DuskSky : MonoBehaviour
     }
 
     /// <summary>
+    /// M36 (Todd, 2026-09-26): what the moon's LIGHT actually is, read off the live Light rather than
+    /// what DriveLights intended. Shadows are exactly the kind of setting that reports as "on" in a diff
+    /// while being off in the build — the old line read `LightShadows.None` with a comment saying one
+    /// shadow-casting light was enough on the phone, so the intent was never in doubt and the picture
+    /// was still shadowless. So this names the mode, the strength, the intensity and the cloud veil,
+    /// off the component itself.
+    /// </summary>
+    public static string MoonLightReport()
+    {
+        var sky = Instance;
+        if (sky == null) return "FAIL: no DuskSky instance";
+        var l = sky._moonLight;
+        if (l == null) return "FAIL: there is no moon light";
+        return "shadows=" + l.shadows +
+               " shadowStrength=" + l.shadowStrength.ToString("0.00") +
+               " intensity=" + l.intensity.ToString("0.000") +
+               " colour=(" + l.color.r.ToString("0.00") + "," + l.color.g.ToString("0.00") + "," +
+               l.color.b.ToString("0.00") + ")" +
+               " elevation=" + l.transform.eulerAngles.x.ToString("0.0") + "deg" +
+               " azimuth=" + l.transform.eulerAngles.y.ToString("0.0") + "deg" +
+               " enabled=" + l.enabled +
+               " cloudVeil=" + Mathf.Lerp(1f, MoonCloudVeilMin, Mathf.Clamp01(sky._occlusion)).ToString("0.000");
+    }
+
+    /// <summary>
     /// M25b: M25b: where the moon is drawn, in world terms — its quad centre, and its angular offset from
     /// the camera's forward direction. The evidence needs this because the moon is 28 degrees up at the end
     /// of the rise and a third-person camera pitched at the lane can have it above the frame entirely; then
@@ -381,14 +441,27 @@ public sealed class DuskSky : MonoBehaviour
         AmbientEquator = Color.Lerp(new Color(0.44f, 0.32f, 0.20f), new Color(0.07f, 0.09f, 0.16f), n);
         AmbientGround = Color.Lerp(new Color(0.18f, 0.13f, 0.08f), new Color(0.03f, 0.04f, 0.07f), n);
 
-        // Moon light: the field is lit by the moon once it is up, and a crossing cloud takes that away
-        // for a beat — that interruption is the "brilliant" part of §25.5.
-        float moonUp = Mathf.Clamp01(moonEl / 18f);
+        // ---- the moon as LIGHT (M36) --------------------------------------------------------
+        // Todd, 2026-09-26: "the moon MUST glow and give off light just like a regular halloween
+        // moon — it must light up the scene with proper shadows." Three faults sat in the four lines
+        // that used to be here, and this block is the fix for all three:
+        //   1. NO SHADOWS  — LightShadows.None was set at build time (see Install), so the corn could
+        //      not cast a shadow from the moon under any intensity. Fixed there, not here.
+        //   2. TOO DIM      — 0.30 -> 0.52 peak, and moonUp held it down until 18 deg of elevation.
+        //      A night field lit by its own moon has to be readable, not merely not-black.
+        //   3. THE CLOUDS ATE IT — (1 - occlusion * 0.92) let one passing strip remove 92 % of the
+        //      light, and BuildClouds deliberately lays three strips across the moon's climb. The
+        //      moon's light came out ~0.03 for most of the rise: the unlit field Todd rejected.
+        // A cloud now veils the moon to at worst MoonCloudVeilMin; it can never switch it off.
+        float moonUp = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(moonEl / 12f));
         if (_moonLight != null)
         {
-            _moonLight.color = Color.Lerp(new Color(1f, 0.66f, 0.38f), new Color(0.76f, 0.82f, 1f), _moonElev01);
-            _moonLight.intensity = moonUp * (0.30f + 0.22f * n) * (1f - _occlusion * 0.92f);
-            _moonLight.transform.rotation = Quaternion.Euler(Mathf.Max(1f, moonEl), _moonAzimuthDeg, 0f);
+            _moonLight.color = Color.Lerp(new Color(1f, 0.72f, 0.44f), new Color(0.88f, 0.92f, 1f), _moonElev01);
+            float veil = Mathf.Lerp(1f, MoonCloudVeilMin, Mathf.Clamp01(_occlusion));
+            _moonLight.intensity = Mathf.Lerp(MoonIntensityFloor, MoonIntensityPeak, moonUp) * veil;
+            // The lowest the light may sit. Below ~7 deg a directional light's shadows run to infinity
+            // across the field and stop reading as shadows at all, so the lamp never goes flatter.
+            _moonLight.transform.rotation = Quaternion.Euler(Mathf.Max(7f, moonEl), _moonAzimuthDeg, 0f);
         }
     }
 
@@ -471,8 +544,8 @@ public sealed class DuskSky : MonoBehaviour
 
     void AllocateMesh()
     {
-        // moon + warm band + clouds + 1 sun glow disc
-        _quadCount = 1 + 1 + ScrapCount + StripCount + ScudCount;
+        // M36: moon + the moon's additive glow + warm band + clouds
+        _quadCount = 2 + 1 + ScrapCount + StripCount + ScudCount;
         _verts = new Vector3[_quadCount * 4];
         _uvs = new Vector2[_quadCount * 4];
         _colors = new Color[_quadCount * 4];
@@ -502,9 +575,34 @@ public sealed class DuskSky : MonoBehaviour
         // Oblate near the horizon: atmospheric flattening, exaggerated for the Halloween read.
         float oblate = Mathf.Lerp(0.62f, 1f, Mathf.Clamp01(moonEl / 10f));
         Color moonCol = Color.Lerp(new Color(1f, 0.58f, 0.26f), new Color(1f, 0.90f, 0.74f), Mathf.Clamp01(moonEl / 16f));
-        moonCol.a = Mathf.Lerp(0.92f, 0.80f, Mathf.Clamp01(moonEl / 10f)) * (1f - _occlusion * 0.85f)
-                    * Mathf.Clamp01(0.25f + _moonElev01 * 2f);
+        // M36 (Todd, 2026-09-26): "the moon MUST glow… just like a regular halloween moon." The old
+        // alpha was Lerp(0.92, 0.80, …) * (1 - occlusion * 0.85) * Clamp01(0.25 + moonElev01 * 2):
+        // 0.23 at the horizon, and any cloud near it drove that to 0.15. A moon you cannot see. A
+        // halloween moon is the brightest thing in its frame, so the disc is effectively opaque and a
+        // cloud may take only a little of it — matching the light's own veil, so the picture and the
+        // illumination agree instead of disagreeing.
+        float moonVeil = Mathf.Lerp(1f, 0.82f, Mathf.Clamp01(_occlusion));
+        moonCol.a = Mathf.Lerp(0.99f, 0.94f, Mathf.Clamp01(moonEl / 10f)) * moonVeil;
         WriteQuad(n++, _moonDir * Radius, size, size * oblate, moonCol, camRight, camUp, FullUv);
+
+        // ---- the moon's glow, spilling past its limb --------------------------------------
+        // A wide soft falloff rather than a fatter disc: atlas region 2 is a radial ramp, drawn at
+        // HaloScale × the disc so the drop-off lives outside the limb and the maria stay clean. Written
+        // here, before the disc, because submesh 0 draws first — the disc then lands on top and the halo
+        // reads as spill around it.
+        //
+        // MEASURED, NOT INTENDED: the harness reports `atlasShader=Sprites/Default dstBlend=none` in the
+        // shipped build, so the additive `_DstBlend` this material asks for is a no-op — Sprites/Default
+        // has no such property and never did. The halo is therefore alpha-composited, not added, and on a
+        // near-black sky those read almost the same; it is NOT a true additive bloom, and calling it one
+        // here would be the same class of lie as the `LightShadows.None` line that started this.
+        {
+            float haloSize = size * HaloScale;
+            Color halo = Color.Lerp(new Color(1f, 0.52f, 0.20f), new Color(1f, 0.86f, 0.62f),
+                                    Mathf.Clamp01(moonEl / 16f));
+            halo.a = HaloStrength * moonVeil * Mathf.Clamp01(0.35f + _moonElev01);
+            WriteQuad(n++, _moonDir * Radius, haloSize, haloSize * oblate, halo, camRight, camUp, 2f);
+        }
 
         // ---- the warm band low in the west at dusk ----------------------------------------
         Vector3 bandDir = DirOf(250f, 5.5f);
@@ -552,7 +650,7 @@ public sealed class DuskSky : MonoBehaviour
     /// </summary>
     static readonly int[] MoonTriangles = { 0, 2, 1, 2, 3, 1 };
 
-    const float RegionCount = 2f;      // atlas columns: 0 = warm band, 1 = torn cloud
+    const float RegionCount = 3f;      // atlas columns: 0 = warm band, 1 = torn cloud, 2 = moon glow
     const float FullUv = -1f;          // regionU meaning "sample the whole texture, 0..1"
 
     /// <summary>Every quad except the moon (quad 0), for the atlas material.</summary>
@@ -654,20 +752,24 @@ public sealed class DuskSky : MonoBehaviour
     }
 
     /// <summary>
-    /// 128 px atlas, two columns — warm band, torn cloud. Built in code, no assets.
+    /// 128 px atlas, THREE columns — warm band, torn cloud, moon glow. Built in code, no assets.
     /// M25b: the moon's column is gone. It was a perlin patch pretending to be a disc; the moon is a
     /// photograph now (MoonMaterial), and nothing here paints it any more, so the blob cannot creep back.
+    /// M36: a third column arrives that is not the moon either — it is the RADIAL FALLOFF the additive
+    /// halo quad needs. It could not be done with column 0: that is a horizontal band, and WriteQuad maps
+    /// it along the quad's own axis, so it would have drawn a soft bar across the sky instead of a glow.
     /// </summary>
     static Texture2D SkyAtlas(int size)
     {
-        var tex = new Texture2D(size * 2, size, TextureFormat.RGBA32, false)
+        const int cols = 3;
+        var tex = new Texture2D(size * cols, size, TextureFormat.RGBA32, false)
         {
             wrapMode = TextureWrapMode.Clamp,
             filterMode = FilterMode.Bilinear,
             name = "DuskSkyAtlas"
         };
 
-        var pix = new Color[size * 2 * size];
+        var pix = new Color[size * cols * size];
         var rng = new System.Random(MazeGenerator.Seed + 991);
 
         // column 0: soft horizontal band
@@ -677,7 +779,7 @@ public sealed class DuskSky : MonoBehaviour
                 float dy = Mathf.Abs((y - (size - 1) * 0.5f)) / ((size - 1) * 0.5f);
                 float a = Mathf.Clamp01(1f - dy);
                 a = a * a * a;
-                pix[y * size * 2 + x] = new Color(1f, 1f, 1f, a);
+                pix[y * size * cols + x] = new Color(1f, 1f, 1f, a);
             }
 
         // column 1: torn cloud — fbm with a hard ragged edge
@@ -698,7 +800,22 @@ public sealed class DuskSky : MonoBehaviour
                 float body = Mathf.Clamp01(1f - r * 1.15f);
                 float a = Mathf.Clamp01(body * (0.55f + n));
                 a = Mathf.SmoothStep(0f, 1f, a);
-                pix[y * size * 2 + size + x] = new Color(1f, 1f, 1f, a);
+                pix[y * size * cols + size + x] = new Color(1f, 1f, 1f, a);
+            }
+
+        // column 2 (M36): radial glow for the moon's halo. A soft, wide falloff rather than a hard
+        // disc — the moon's own quad supplies the hard edge, this only supplies the spill. Squared
+        // twice so the centre is dense and the tail is long, which is what a bright object in haze
+        // actually looks like; a linear ramp reads as a flat grey ball behind the moon.
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x - (size - 1) * 0.5f) / ((size - 1) * 0.5f);
+                float dy = (y - (size - 1) * 0.5f) / ((size - 1) * 0.5f);
+                float r = Mathf.Min(1f, Mathf.Sqrt(dx * dx + dy * dy));
+                float a = 1f - r;
+                a = a * a * a * a;
+                pix[y * size * cols + size * 2 + x] = new Color(1f, 1f, 1f, a);
             }
 
         tex.SetPixels(pix);

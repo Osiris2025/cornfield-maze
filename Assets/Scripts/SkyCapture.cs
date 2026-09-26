@@ -73,6 +73,10 @@ public class SkyCapture : MonoBehaviour
         string geoHow;
         float expectedPx = ExpectedDiscPixels(out geoHow);
         Say("M25b moon: " + DuskSky.MoonTextureReport());
+        // M36: Todd's requirement is that the moon lights the scene with proper shadows, so the harness
+        // reports the LIGHT's own state next to the texture's — mode, strength and intensity off the
+        // component, not off the code that set it.
+        Say("M25b light: " + DuskSky.MoonLightReport());
         Say("M25b geometry: discAngularSize=" + MoonAngularDegrees().ToString("0.00") + "deg" +
             " quadAngularSize=" + (MoonAngularDegrees() / DuskSky.DiscFraction).ToString("0.00") + "deg" +
             " discFraction=" + DuskSky.DiscFraction.ToString("0.00") +
@@ -118,6 +122,7 @@ public class SkyCapture : MonoBehaviour
         yield return AimAtMoon(player);
         yield return CaptureFrame("moon-t40.png");
         Say("M25b view: " + DuskSky.MoonViewReport());
+        Say("M25b light: " + DuskSky.MoonLightReport());
         Say("t=" + DuskSky.PlaySeconds.ToString("0.0") + "s NIGHT night01=" + DuskSky.Night01.ToString("0.00") +
             " sunColour=" + DuskSky.SunColor.ToString("0.00") + " sunIntensity=" + DuskSky.SunIntensity.ToString("0.00") +
             " sunElevation=" + SunElevationDegrees().ToString("0.0") + "deg" +
