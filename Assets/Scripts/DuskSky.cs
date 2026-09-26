@@ -45,6 +45,11 @@ public sealed class DuskSky : MonoBehaviour
     /// <summary>§25.5: the rise takes 40 s. Night takes over at whichever comes first, this or 2 cells.</summary>
     public const float RiseSeconds = 40f;
     public const float NightCells = 2f;
+    /// <summary>
+    /// How far into the night the moon stays below the horizon. The moon rides the NIGHT's clock
+    /// (see ApplyPalette), and this is the lag before it clears the corn: dusk is still the sun's.
+    /// </summary>
+    public const float MoonLag01 = 0.30f;
 
     /// <summary>
     /// M25b (§25.5): the moon's DISC is this fraction of T_Moon_Full.png's width — scripts/moon_build.py's
@@ -209,7 +214,12 @@ public sealed class DuskSky : MonoBehaviour
             byCells = Mathf.Clamp01(Mathf.Max(Mathf.Abs(cell.x - from.x), Mathf.Abs(cell.y - from.y)) / NightCells);
         }
         _night01 = Mathf.Max(byTime, byCells);
-        _moonElev01 = Mathf.Clamp01(PlaySeconds / RiseSeconds);
+        // The moon rides the NIGHT's clock, not one of its own. Night arrives by time OR by distance
+        // (NightCells is 2 cells — a few paces), so on two separate clocks the field goes fully dark
+        // in the first seconds of a walk and stays unlit: the moon is painted in the sky and casting
+        // nothing on the maze, which is what a run into the deep corn looked like. One clock, so night
+        // always has its moon — still climbing through it, just never absent from it.
+        _moonElev01 = Mathf.Clamp01((_night01 - MoonLag01) / (1f - MoonLag01));
         IsNight = _night01 >= 0.999f;
 
         Night01 = _night01;

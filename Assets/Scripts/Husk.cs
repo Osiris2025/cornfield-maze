@@ -1,4 +1,7 @@
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Animations;
+using UnityEngine.Playables;
 
 /// <summary>
 /// THE HUSK — the thing that chases Gingy. What is left of a corn plant once it is stripped.
@@ -10,6 +13,36 @@ using UnityEngine;
 public sealed class Husk : MonoBehaviour
 {
     public const string DisplayName = "the Husk";
+
+    // ---- M35: Todd's supplied scarecrow replaces the primitives ----------------------------------
+    // He dropped a rigged GLB (24 bones, one 72-frame "Unsteady_Walk" clip) in ~/Downloads and said
+    // "I have a better scary scarecrow — put him in the scene". It is imported to FBX beside its
+    // albedo by scripts/m35_scarecrow_import.py, and it SUPERSEDES the M28 primitive build as the
+    // creature's body. The primitives stay in this file as the fallback: if the model is missing from
+    // the build the chaser still exists and still catches, which is the thing the level depends on.
+    public const string ModelResourcePath = "Scarecrow/scarecrow";
+    public const string ModelAlbedoPath = "Scarecrow/scarecrow_albedo";
+    /// <summary>Folder the walk clips are loaded from — the same one the model lives in.</summary>
+    public const string ModelClipFolder = "Scarecrow";
+    /// <summary>Height the model is scaled to stand. It has to break the lane line (corn is 2.90-3.20 m).</summary>
+    public const float ModelHeightMeters = 2.30f;
+
+    /// <summary>True when the supplied mesh built the body rather than the primitives.</summary>
+    public bool UsingModel { get; private set; }
+    /// <summary>Triangles in the body as built — off the live renderers, not off the plan.</summary>
+    public int ModelTriangles { get; private set; }
+    /// <summary>The walk clip actually playing, or "" when the model's animation did not survive import.</summary>
+    public string ModelClipName { get; private set; } = "";
+
+    /// <summary>
+    /// M35: how far INTO the maze the meeting is meant to happen. The Husk used to spawn a cell or two
+    /// behind the start, so the opening move of every run was a creature already on the player's
+    /// doorstep. Todd: "Gingy should be nearer the other end of the current path or he should encounter
+    /// the scarecrow deeper in the maze". It now spawns this many cells along the route to the gold, so
+    /// the first stretch is quiet and the encounter lands deep.
+    /// </summary>
+    public const int SpawnCellsDeeper = 9;
+
     const float SpawnDelay = 5f;
     /// <summary>Base chaser speed. §25.3 derives the ground a thrown cob buys from this number.</summary>
     public const float MoveSpeed = 2.35f;
@@ -75,6 +108,7 @@ public sealed class Husk : MonoBehaviour
     Quaternion _sleeveRestL;
     Quaternion _sleeveRestR;
     float _lurchPhase;
+    PlayableGraph _walkGraph;         // M35: the supplied walk clip, played straight off the model
 
     /// <summary>M28: the measured height of the built creature, from its own renderer bounds.</summary>
     public float HeightMeters { get; private set; }
@@ -103,42 +137,40 @@ public sealed class Husk : MonoBehaviour
         beast._maze = maze;
         beast._player = player;
 
-        // Spawn behind the start on a side path when possible (not on the gold-bound first step).
-        Vector3 spawn = maze.StartWorld;
+        // ---- M35: spawn DEEP on the route, not on the player's doorstep ------------------------------
+        // Walk the gold route SpawnCellsDeeper cells in and stand there. This is the change Todd asked
+        // for: the encounter happens deep in the maze instead of at the start. Everything else about the
+        // chase is untouched — same speed, same repath, same catch range, so §25.3's balance holds and
+        // the player still meets it on the way to the gold rather than being ambushed at the gate.
         var start = maze.StartCell;
-        var goldStep = maze.NextStepTowardGold(start);
-        var steps = new[]
-        {
-            new Vector2Int(0, -1), new Vector2Int(-1, 0), new Vector2Int(1, 0), new Vector2Int(0, 1)
-        };
         Vector2Int spawnCell = start;
-        bool found = false;
-        foreach (var step in steps)
+        int walked = 0;
+        var cursor = start;
+        while (walked < SpawnCellsDeeper)
         {
-            var c = start + step;
-            if (!maze.IsPath(c.x, c.y) || c == goldStep) continue;
-            spawnCell = c;
-            found = true;
-            // Walk one more cell away from start if available.
-            foreach (var step2 in steps)
+            var next = maze.NextStepTowardGold(cursor);
+            if (next == cursor || !maze.IsPath(next.x, next.y) || next == maze.GoldCell) break;
+            cursor = next;
+            walked++;
+            spawnCell = cursor;
+        }
+        if (walked == 0)
+        {
+            // Nowhere to walk (the start already adjoins the gold): fall back to the old side-step.
+            var goldStep = maze.NextStepTowardGold(start);
+            var steps = new[]
             {
-                var c2 = c + step2;
-                if (maze.IsPath(c2.x, c2.y) && c2 != start)
-                {
-                    spawnCell = c2;
-                    break;
-                }
+                new Vector2Int(0, -1), new Vector2Int(-1, 0), new Vector2Int(1, 0), new Vector2Int(0, 1)
+            };
+            foreach (var step in steps)
+            {
+                var c = start + step;
+                if (!maze.IsPath(c.x, c.y) || c == goldStep) continue;
+                spawnCell = c;
+                break;
             }
-            break;
         }
-        if (!found)
-        {
-            // Fallback: two cells opposite the gold step.
-            var away = start - (goldStep - start);
-            if (maze.IsPath(away.x, away.y))
-                spawnCell = away;
-        }
-        spawn = maze.CellToWorld(spawnCell.x, spawnCell.y);
+        Vector3 spawn = maze.CellToWorld(spawnCell.x, spawnCell.y);
         go.transform.position = spawn + Vector3.up * 0.05f;
         beast.BuildMesh();
         if (beast._model != null)
@@ -151,6 +183,15 @@ public sealed class Husk : MonoBehaviour
 
     void BuildMesh()
     {
+        // ---- M35: the creature gets its body here ------------------------------------------------
+        // The supplied mesh wins when it is present. The M28 primitives below are kept as the fallback
+        // and are what runs if Resources has no Scarecrow — a missing art file must not delete the
+        // chaser, because the level's threat is the thing the maze is built around.
+        _model = new GameObject("ScarecrowMesh").transform;
+        _model.SetParent(transform, false);
+        if (TryBuildModel(_model))
+            return;
+
         // ---- M28 (§25.8): the scarecrow. Primitives and procedural materials, like everything else
         // (§17) — no third-party model, so no licence question. Named parts, so the report can count them.
         var timber    = Materials.Lit(new Color(0.34f, 0.29f, 0.22f), 0.06f);   // weathered wood
@@ -165,9 +206,6 @@ public sealed class Husk : MonoBehaviour
         _mouthMat     = Materials.Lit(new Color(0.15f, 0.05f, 0.04f), 0.05f);   // the dark behind the seam
         var socketMat = Materials.Lit(new Color(0.02f, 0.02f, 0.02f), 0.02f);
         var glowMat   = GlowMat(new Color(0.95f, 0.58f, 0.18f), 3.2f);         // the only light on it
-
-        _model = new GameObject("ScarecrowMesh").transform;
-        _model.SetParent(transform, false);
 
         // The cross. The upright runs from the ground up into the head and the crossbar is set on a skew;
         // both show wherever the coat does not cover them — below the torn hem and past the sleeves.
@@ -258,21 +296,42 @@ public sealed class Husk : MonoBehaviour
         if (_sleeveR != null) _sleeveRestR = _sleeveR.localRotation;
 
         // What it actually measures, for the report — read off the built renderers, not off the plan.
-        var bounds = new Bounds(transform.position, Vector3.zero);
-        bool anyBounds = false;
-        var renderers = _model.GetComponentsInChildren<Renderer>(true);
-        foreach (var r in renderers)
-        {
-            if (r == null) continue;
-            if (!anyBounds) { bounds = r.bounds; anyBounds = true; }
-            else bounds.Encapsulate(r.bounds);
-        }
-        if (anyBounds)
+        if (TryBounds(_model, out var bounds))
         {
             HeightMeters = bounds.max.y - transform.position.y;
             SilhouetteWidthMeters = bounds.size.x;
         }
-        PartCount = renderers.Length;
+        PartCount = _model.GetComponentsInChildren<Renderer>(true).Length;
+    }
+
+    /// <summary>
+    /// Bounds of a built hierarchy, in world space, off whatever the parts actually ARE. A rigged FBX
+    /// imports as a SkinnedMeshRenderer, and a skinned renderer's own bounds are only written when it
+    /// is drawn — read while it is off-screen they come back as a point, which is how a 2.30 m creature
+    /// first measured 0.00 m and would have been left unscaled. So: live bounds when they are real,
+    /// the mesh's own AABB times the scale when they are not.
+    /// </summary>
+    static bool TryBounds(Transform root, out Bounds bounds)
+    {
+        bounds = new Bounds(root.position, Vector3.zero);
+        bool any = false;
+        foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+        {
+            if (r == null) continue;
+            var b = r.bounds;
+            if (b.size.sqrMagnitude < 1e-6f && r is SkinnedMeshRenderer smr && smr.sharedMesh != null)
+            {
+                var m = smr.sharedMesh.bounds;
+                var s = smr.transform.lossyScale;
+                b = new Bounds(
+                    smr.transform.TransformPoint(m.center),
+                    new Vector3(m.size.x * Mathf.Abs(s.x), m.size.y * Mathf.Abs(s.y),
+                                m.size.z * Mathf.Abs(s.z)));
+            }
+            if (!any) { bounds = b; any = true; }
+            else bounds.Encapsulate(b);
+        }
+        return any;
     }
 
     /// <summary>A burst of dry straw — neck, cuffs, hem. Named, so the report can count it.</summary>
@@ -554,6 +613,95 @@ public sealed class Husk : MonoBehaviour
         }
 
         return pos;
+    }
+
+    /// <summary>
+    /// M35: build the body from Todd's supplied scarecrow, or return false so the primitives take over.
+    ///
+    /// Three things are handled here rather than in the asset, because they cannot be authored from a
+    /// batch build and the glTF -> FBX hop does not carry them reliably:
+    ///   * SCALE — measured off the model's own live renderers and divided into the stated height. The
+    ///     conversion carries the armature's 0.01 scale, so a constant baked in here would be silently
+    ///     wrong the day the importer's unit handling changes. Measure, do not assume.
+    ///   * MATERIAL — one URP/Lit material with the supplied albedo bound from the PNG shipped beside
+    ///     the FBX. The FBX's own material export is not what this project's night lighting is tuned for.
+    ///   * ANIMATION — the 72-frame walk is played straight off the model with a Playables graph. An
+    ///     AnimatorController asset is the other route and it cannot be authored headlessly; a clip
+    ///     played directly needs none.
+    /// </summary>
+    bool TryBuildModel(Transform parent)
+    {
+        var prefab = Resources.Load<GameObject>(ModelResourcePath);
+        if (prefab == null)
+        {
+            Debug.LogWarning("Husk: no model at Resources/" + ModelResourcePath +
+                             " — building the M28 primitives instead");
+            return false;
+        }
+
+        var inst = Instantiate(prefab, parent, false);
+        inst.name = "ScarecrowModel";
+
+        float native = MeasuredHeight(inst);
+        if (native > 0.05f)
+            inst.transform.localScale = Vector3.one * (ModelHeightMeters / native);
+
+        var albedo = Resources.Load<Texture2D>(ModelAlbedoPath);
+        var mat = Materials.Lit(Color.white, 0.05f);
+        if (albedo != null) Materials.ApplyAlbedo(mat, albedo, 1f);
+
+        // A rigged FBX comes in as a SkinnedMeshRenderer, not a MeshFilter — counting only MeshFilters
+        // reported the creature as 0 tris while it was standing in the lane, drawn and animated.
+        int tris = 0;
+        var counted = new HashSet<Mesh>();
+        foreach (var mf in inst.GetComponentsInChildren<MeshFilter>(true))
+            if (mf.sharedMesh != null && counted.Add(mf.sharedMesh))
+                tris += mf.sharedMesh.triangles.Length / 3;
+        foreach (var smr in inst.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            if (smr.sharedMesh != null && counted.Add(smr.sharedMesh))
+                tris += smr.sharedMesh.triangles.Length / 3;
+        foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
+            r.sharedMaterial = mat;
+
+        var animator = inst.GetComponentInChildren<Animator>();
+        if (animator == null) animator = inst.AddComponent<Animator>();
+        animator.applyRootMotion = false;
+
+        var clips = Resources.LoadAll<AnimationClip>(ModelClipFolder);
+        if (clips != null && clips.Length > 0)
+        {
+            var clip = clips[0];
+            _walkGraph = PlayableGraph.Create("HuskWalk");
+            var play = AnimationClipPlayable.Create(_walkGraph, clip);
+            AnimationPlayableOutput.Create(_walkGraph, "walk", animator).SetSourcePlayable(play);
+            _walkGraph.Play();
+            ModelClipName = clip.name;
+            // Desync the phase: a chaser that steps in lock with the world's clock reads as clockwork.
+            play.SetTime(Time.timeSinceLevelLoad % Mathf.Max(0.01f, clip.length));
+        }
+        else
+        {
+            Debug.LogWarning("Husk: model loaded but no AnimationClip under Resources/" + ModelClipFolder +
+                             " — it will stand in its bind pose");
+        }
+
+        UsingModel = true;
+        ModelTriangles = tris;
+        Debug.Log("Husk: built from the supplied model — " + native.ToString("0.000") +
+                  " units native, scaled x" + (ModelHeightMeters / Mathf.Max(0.05f, native)).ToString("0.000") +
+                  ", " + tris + " tris, clip '" + ModelClipName + "'");
+        return true;
+    }
+
+    /// <summary>World height of a built object off its own parts — not off its origin or its scale.</summary>
+    static float MeasuredHeight(GameObject go)
+    {
+        return TryBounds(go.transform, out var b) ? b.size.y : 0f;
+    }
+
+    void OnDestroy()
+    {
+        if (_walkGraph.IsValid()) _walkGraph.Destroy();
     }
 
     static Transform Joint(Transform parent, string name, Vector3 localPos)

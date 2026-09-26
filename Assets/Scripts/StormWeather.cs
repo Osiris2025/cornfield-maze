@@ -101,7 +101,17 @@ public sealed class StormWeather : MonoBehaviour
         _ambGndNow = _gndCalm;
         _fogNow = _fogCalm;
 
-        _sun = Object.FindFirstObjectByType<Light>();
+        // The SUN, by the same rule DuskSky uses to find it — not "the first directional light", which
+        // is what this was. DuskSky adds a MoonLight and the storm adds a Lightning, so the first hit
+        // can be the MOON: the storm then drove the moon with the sun's palette and its own dimming,
+        // and the field went dark at the exact moment the moon was supposed to light it.
+        _sun = null;
+        foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+            if (l.type == LightType.Directional && l.name == "Sun") { _sun = l; break; }
+        if (_sun == null)
+            foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+                if (l.type == LightType.Directional && l.name != "MoonLight" && l.name != "Lightning")
+                { _sun = l; break; }
         if (_sun != null)
         {
             _sunCalm = _sun.color;

@@ -1,0 +1,29 @@
+M35 the supplied scarecrow in the maze — measured on the built Mac app, 2026-09-26 16:57:12Z
+maze 25 x 21 cells; start cell (1, 19), gold cell (23, 19); cell size 4.00 m, lane 2.00 m wide
+the route start->gold is 171 cells (684.0 m of walking)
+staging the encounter 114 cells in of 171 — 456.0 m along the route, 57 cells short of the gold
+the Husk spawned at cell (1, 10), which is 9 of 171 cells along the route and 36.0 m from the start (Husk.SpawnCellsDeeper = 9)
+the body is built from THE SUPPLIED MODEL — 0 tris, clip 'Armature|Armature|Unsteady_Walk|baselayer'
+it measures 0.00 m tall (corn stands 2.90-3.20 m), widest 0.00 m across; hit volume still capsule 2.60 x r0.50
+the creature's mesh: char1, 0 tris, bind box (1.18, 0.48, 1.70) m, world scale (0.985, 0.985, 0.985)
+the creature's renderer is a SkinnedMeshRenderer wearing Universal Render Pipeline/Lit, base map scarecrow_albedo, alpha 1.00
+lane pieces found in the running maze: 825
+lane material on the built mesh: renderQueue=3000 renderType=Transparent _Surface=1 (0 opaque, 1 transparent) _SrcBlend=5 _DstBlend=10 _ZWrite=0 keyword _SURFACE_TYPE_TRANSPARENT=True baseMap=T_Ground_LaneA
+lane base map: T_Ground_LaneA 1024x1024, renderQueue=3000, alpha on _BaseMap=1.00
+the fade lives in that map's ALPHA (baked by scripts/m31b_lane_edge_bake.py): interior opaque, a 0.167 m transition, edge displaced +/-0.04 m around a constant 1.000 m half-width, alpha 0.000 at the mesh edge. M31's haze measured a 0.84 m fade at 0.867 centre-line alpha.
+frame m35-lane-dusk.png -> written this run (1730198 bytes)
+sky dusk, at the start: night01=0.00 moonElev01=0.00 starGate=0.00 sunIntensity=0.55 fog=RGBA(0.86, 0.58, 0.34, 1.00)
+the moon as LIGHT: intensity 0.00 (THE FIELD IS UNLIT), colour RGBA(1.00, 0.66, 0.38, 1.00), aimed -1.0 deg, shadows None; disc at elevation -1.5 deg
+  directional light 'MoonLight': intensity 0.00, colour RGBA(1.00, 0.66, 0.38, 1.00), elevation -1.0 deg
+  directional light 'Directional Light': intensity 0.55, colour RGBA(1.00, 0.62, 0.30, 1.00), elevation 2.0 deg
+  directional light 'Lightning': intensity 0.00, colour RGBA(0.82, 0.90, 1.00, 1.00), elevation 0.0 deg
+staged: the player stands at cell (17, 5) (456.0 m along the route), the creature at cell (19, 3) — 11.3 m behind him on the same lane, walking at him
+frame m35-chase-deep.png -> written this run (1527408 bytes)
+frame m35-chase-close.png -> written this run (1674605 bytes)
+sky deep in the maze after 0.0 s of waiting: night01=1.00 moonElev01=1.00 starGate=1.00 sunIntensity=0.05 fog=RGBA(0.09, 0.11, 0.19, 1.00)
+the moon as LIGHT: intensity 0.49 (the field is lit), colour RGBA(0.76, 0.82, 1.00, 1.00), aimed -28.0 deg, shadows None; disc at elevation 28.0 deg
+  directional light 'MoonLight': intensity 0.49, colour RGBA(0.76, 0.82, 1.00, 1.00), elevation -28.0 deg
+  directional light 'Directional Light': intensity 0.05, colour RGBA(0.34, 0.40, 0.58, 1.00), elevation 13.0 deg
+  directional light 'Lightning': intensity 0.00, colour RGBA(0.82, 0.90, 1.00, 1.00), elevation 0.0 deg
+frame m35-lane-night.png -> written this run (1966280 bytes)
+frame m35-chase-night.png -> written this run (1544576 bytes)

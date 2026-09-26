@@ -18,12 +18,12 @@
 set -u
 REPO="/Volumes/files1/projects/cornmaze/CornFieldMaze"   # fixed 2026-09-23: files2 tree is gone (retired in the files1 move); a stale REPO made `cd || exit 1` kill the supervisor on startup
 CHIEF_SESSION="20260917_203359_dcd37b"     # first pass; continuation order resumes it
-ORDER="/tmp/corn-order-m32c.txt"   # M32c the puddle reads as water. Stops there: M33/M34 wait on Todd's models.
+ORDER="/tmp/corn-order-m34.txt"   # M34 the legged shambling scarecrow (P1 mesh -> P5 integration). Five phases, one per pass.
 NOTIFY="$REPO/scripts/notify-todd.sh"
 DONE=/tmp/corn-crew-done
 BLOCKED=/tmp/corn-crew-blocked
 STOPF=/tmp/corn-supervisor-stop
-MAX_ITER=8
+MAX_ITER=10
 STALL_MIN=20          # minutes of no log growth before a live process counts as hung
 STALL_TOLD=no
 WAITING=no            # MUST be initialised: this script runs under set -u, so an unset
