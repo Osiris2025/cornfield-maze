@@ -30,3 +30,5 @@ __pycache__/
 artifacts/corn-blocks/blocks/
 artifacts/corn-blocks/src/
 *.fbm/
+mono_crash.*.json
+artifacts/

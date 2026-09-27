@@ -756,13 +756,9 @@ public sealed class Husk : MonoBehaviour
             band.y = 0f;
             if (band.magnitude > CatchDistance) return;
         }
-        var myCell = _maze.NearestPathCell(transform.position);
-        var theirCell = _maze.NearestPathCell(_player.transform.position);
         Vector3 flat = _player.transform.position - transform.position;
         flat.y = 0f;
-        bool sameCell = myCell == theirCell;
-        bool close = flat.magnitude <= CatchDistance;
-        if (!sameCell && !close) return;
+        if (flat.magnitude > CatchDistance) return;   // M38: bite only at contact — same-cell is not enough
 
         // ---- M38 (Todd): a catch is a BITE, not the end of the run ----------------------------------
         // Before this it was `_caughtPlayer = true; _eating = true; EatPlayer()` — instant and
