@@ -124,7 +124,12 @@ public sealed class GameFrontEnd : MonoBehaviour
         BuildIntro();
         BuildPause();
 
-        if (_autoPlayNextLoad)
+        if (IntroFlyby.CaptureWanted)
+        {
+            // Auto-start the intro flyby for capture; skip the title screen
+            AdvanceFromTitle();
+        }
+        else if (_autoPlayNextLoad)
         {
             _autoPlayNextLoad = false;
             BeginRun();
@@ -191,9 +196,9 @@ public sealed class GameFrontEnd : MonoBehaviour
 
     void BuildIntro()
     {
-        // The intro is now a cinematic flyby (M42), not text pages. This panel stays as a dim
-        // backdrop while the flyby camera runs, dismissed when the flyby completes or is skipped.
-        _introPanel = Panel("IntroScreen", 0.94f);
+        // M42: the intro is a cinematic flyby — no dim overlay, just a skip hint.
+        // The subtitles render on their own canvas from IntroFlyby.
+        _introPanel = Panel("IntroScreen", 0.0f);
         var safe = Safe(_introPanel.transform);
         Label(safe, "IntroHint", MobileControls.ShouldShow ? "tap to skip" : "press Space or click to skip", 24,
             TextAnchor.MiddleCenter, new Color(0.70f, 0.66f, 0.58f), new Vector2(0f, -420f), new Vector2(1200f, 50f));
@@ -247,7 +252,10 @@ public sealed class GameFrontEnd : MonoBehaviour
 
         bool playing = stage == Stage.Playing;
         IsPlaying = playing;
-        if (_player != null) _player.Frozen = !playing;
+        // M42: the intro flyby has its own camera — don't freeze the player during it.
+        // The player can't see where they're going (flyby cam replaces theirs), but Frozen
+        // blocks ALL input including the skip key, which is the lockout the user reports.
+        if (_player != null) _player.Frozen = !playing && stage != Stage.Intro;
         MobileControls.Suppressed = !playing;
 
         // Only the pause screen stops the world. The title, help and introduction must stay alive.
@@ -275,7 +283,6 @@ public sealed class GameFrontEnd : MonoBehaviour
 
     void AdvanceIntro()
     {
-        // Skip the flyby
         if (_flyby != null)
         {
             Destroy(_flyby.gameObject);

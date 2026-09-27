@@ -1375,9 +1375,9 @@ public static class GingerbreadMesh
 
         var go = new GameObject("CookieMouth");
         go.transform.SetParent(head, false);
-        go.transform.localPosition = new Vector3(0f, -0.045f, 0.028f);
+        go.transform.localPosition = new Vector3(0f, 0.18f, 0.04f);   // top of torso ≈ head, pushed forward
         go.transform.localRotation = Quaternion.identity;
-        go.transform.localScale = new Vector3(0.032f, 0.008f, 0.002f);
+        go.transform.localScale = new Vector3(0.05f, 0.014f, 0.002f);   // larger and wider
 
         var mf = go.AddComponent<MeshFilter>();
         mf.sharedMesh = MouthMesh();
