@@ -1085,8 +1085,29 @@ public sealed class Husk : MonoBehaviour
     // ---- M42: arm grasp when close -------------------------------------------------
     void FindArmBones(Transform root)
     {
+        // Debug: dump all transforms in the hierarchy to find arm bone names
+        var all = new System.Collections.Generic.List<string>();
+        DumpTransforms(root, "", all);
+        Debug.Log("Husk: model hierarchy bones:\n" + string.Join("\n", all));
+
         FindArmBone(root, ref _lArm, "left");
         FindArmBone(root, ref _rArm, "right");
+
+        // Fallback: try common Mixamo/Blender naming
+        if (_lArm == null) FindArmBone(root, ref _lArm, ".l");
+        if (_rArm == null) FindArmBone(root, ref _rArm, ".r");
+        if (_lArm == null) FindArmBone(root, ref _lArm, "_l");
+        if (_rArm == null) FindArmBone(root, ref _rArm, "_r");
+
+        Debug.Log("Husk: arm bones found — L=" + (_lArm != null ? _lArm.name : "NULL") +
+                  " R=" + (_rArm != null ? _rArm.name : "NULL"));
+    }
+
+    void DumpTransforms(Transform t, string indent, System.Collections.Generic.List<string> list)
+    {
+        list.Add(indent + t.name);
+        foreach (Transform child in t)
+            DumpTransforms(child, indent + "  ", list);
     }
 
     void FindArmBone(Transform node, ref Transform found, string side)
