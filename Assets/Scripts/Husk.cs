@@ -51,6 +51,18 @@ public sealed class Husk : MonoBehaviour
     const float LaneHalf = 0.42f;
     const float TurnSpeed = 7f;
 
+    /// <summary>
+    /// M38 (Todd): how long the Husk stops to work over what it just bit.
+    ///
+    /// "we need to work on some kind of combat system.. we have to be able to not trapped completey by
+    /// the husk or the game ends prematurely". A dead-end corner used to be the run over. Now the bite
+    /// costs 1/10 of the dough and shoves the cookie clear, and this recoil is the window he spends
+    /// getting out — at MoveSpeed that is 4.70 m of ground the player takes for free, against the
+    /// 1.10 s stagger a thrown cob buys (§25.3), so a corner is survivable without the throw becoming
+    /// pointless.
+    /// </summary>
+    public const float BiteRecoilSeconds = 2.0f;
+
     /// <summary>§25.3: a thrown cob takes one third of this — 6 dough of 18.</summary>
     public const float MaxHealth = 18f;
     /// <summary>
@@ -94,6 +106,10 @@ public sealed class Husk : MonoBehaviour
     bool _active;
     bool _eating;
     bool _caughtPlayer;
+    /// <summary>M38: seconds left of the chewing jaw animation after a bite. It runs on the same clock as
+    /// StaggerLeft (the walk freeze, which is the real escape window) but is tracked separately so the
+    /// cob's own flinch is not mistaken for a feed and vice versa.</summary>
+    float _chewLeft;
     float _reformAt;
     float _flinch;
     // ---- M28 (§25.8): the scarecrow's own materials, built here rather than in Materials.cs ---------
@@ -406,6 +422,14 @@ public sealed class Husk : MonoBehaviour
             StaggerLeft -= Time.deltaTime;
             _flinch = 1f;
             ApplyFlinch();
+            // M38: if this stagger is a feed recoil, the seam works over the bite instead of holding the
+            // cob's flinch snap. ApplyFlinch has just written the jaw, so this override comes after it.
+            if (_chewLeft > 0f)
+            {
+                _chewLeft -= Time.deltaTime;
+                if (_jaw != null)
+                    _jaw.localRotation = Quaternion.Euler(26f + Mathf.Sin(Time.time * 13.5f) * 11f, 0f, 0f);
+            }
             return;
         }
         if (_flinch > 0f)
@@ -510,6 +534,7 @@ public sealed class Husk : MonoBehaviour
     {
         Scattered = true;
         StaggerLeft = 0f;
+        _chewLeft = 0f;
         _reformAt = Time.timeSinceLevelLoad + ReformSeconds;
         if (_model != null) _model.gameObject.SetActive(false);
     }
@@ -520,6 +545,7 @@ public sealed class Husk : MonoBehaviour
         Health = MaxHealth;
         HitsTaken = 0;
         _flinch = 0f;
+        _chewLeft = 0f;
         if (_model != null)
         {
             _model.gameObject.SetActive(true);
@@ -543,7 +569,7 @@ public sealed class Husk : MonoBehaviour
 
     void TryCatch()
     {
-        if (_caughtPlayer || _player == null) return;
+        if (_caughtPlayer || _eating || _player == null) return;
         var myCell = _maze.NearestPathCell(transform.position);
         var theirCell = _maze.NearestPathCell(_player.transform.position);
         Vector3 flat = _player.transform.position - transform.position;
@@ -551,6 +577,28 @@ public sealed class Husk : MonoBehaviour
         bool sameCell = myCell == theirCell;
         bool close = flat.magnitude <= CatchDistance;
         if (!sameCell && !close) return;
+
+        // ---- M38 (Todd): a catch is a BITE, not the end of the run ----------------------------------
+        // Before this it was `_caughtPlayer = true; _eating = true; EatPlayer()` — instant and
+        // unconditional, which is exactly the "trapped completey by the husk / the game ends
+        // prematurely" he reported. The dough pool is now the only fail state: this spends 1/10 of it
+        // and shoves him down the lane away from the Husk, and BeginEaten is reached only when the pool
+        // is empty.
+        Vector3 away = flat.sqrMagnitude > 0.0001f ? flat.normalized : -transform.forward;
+        bool doughGone = _player.TakeBite(FarmWalkerController.DoughBiteCost, away);
+
+        if (!doughGone)
+        {
+            // The feed recoil. Reusing StaggerLeft rather than inventing a parallel timer means the
+            // existing Update path already freezes the walk AND skips TryCatch for the whole window, so
+            // it cannot catch again mid-chew — which is the thing that stops a dead end being an instant
+            // loss. TakeHit does not consult the timer, so a thrown cob still lands while it is chewing.
+            StaggerLeft = Mathf.Max(StaggerLeft, BiteRecoilSeconds);
+            _chewLeft = BiteRecoilSeconds;
+            // LastStaggerSeconds is deliberately NOT written here: M23 reads it as the COB's stagger, and
+            // a bite that overwrote it would make that measurement lie.
+            return;
+        }
 
         _caughtPlayer = true;
         _eating = true;

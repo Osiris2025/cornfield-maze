@@ -17,9 +17,29 @@ public sealed class GameBootstrap : MonoBehaviour
         go.AddComponent<GameBootstrap>();
     }
 
+    /// <summary>Is this command-line switch present? For the capture-only flags scripts/shoot.sh passes.</summary>
+    static bool HasArg(string flag)
+    {
+        var args = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length; i++)
+            if (args[i] == flag) return true;
+        return false;
+    }
+
     void Start()
     {
         MobileAudioSession.Apply();
+
+        // ---- a CAPTURE run is silent ------------------------------------------------------------------
+        // scripts/shoot.sh launches the player hidden so no window lands on Todd's screen, but a HIDDEN app
+        // still PLAYS: he heard the soundtrack carrying on for a minute after the window vanished. The
+        // script passes -silent; honour it by muting the listener for the whole run. A launch without the
+        // flag — his own double-click — is completely untouched.
+        if (HasArg("-silent"))
+        {
+            AudioListener.volume = 0f;
+            Debug.Log("Corn Field Maze: -silent capture run — audio muted for the whole run.");
+        }
 
         if (MobileControls.ShouldShow)
         {

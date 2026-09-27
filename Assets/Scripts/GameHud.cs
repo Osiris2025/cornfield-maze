@@ -5,6 +5,13 @@ public sealed class GameHud : MonoBehaviour
 {
     Text _hint;
     Text _win;
+
+    /// <summary>
+    /// M38 (Todd, 2026-09-26): "i have no idea how to attack.   I think jumping should be a thing too".
+    /// The 24 s <see cref="_hint"/> cannot answer that — it is gone before the player has found a cob —
+    /// so the attack and the jump also get a permanent, quiet line that stays up for the whole run.
+    /// </summary>
+    Text _prompt;
     float _hintTimer = 24f;
     bool _ended;
     bool _held;   // M21: the front end holds the hint until the player leaves the introduction (§25.1)
@@ -55,6 +62,7 @@ public sealed class GameHud : MonoBehaviour
             _hint.text =
                 "You are a gingerbread cookie. Find the pot of gold in the corn maze.\n" +
                 "Stay on the gravel paths. Left stick walks the lanes. Drag the right side to look. Hold RUN to sprint.\n" +
+                "PICK UP / THROW takes or throws a cob.\n" +
                 "VIEW switches between first person and third person.\n" +
                 "When the sky darkens, look straight up — a faint star arrow overhead points along the next correct turn.\n" +
                 "Watch out for the Husk. It hunts the lanes and it cannot corner at speed — keep moving and turn hard.";
@@ -64,6 +72,7 @@ public sealed class GameHud : MonoBehaviour
             _hint.text =
                 "You are a gingerbread cookie. Find the pot of gold in the corn maze.\n" +
                 "Stay on the gravel paths. WASD / arrows follow the lanes.  Mouse  look    V  view    Shift  run    Esc  cursor\n" +
+                "Left-click or F  take or throw a cob    Space  jump    R  restart\n" +
 #if UNITY_EDITOR
                 "Editor: Game tab → Maximize On Play, then Play.  Built Mac app: F11 / Cmd+F (or the green button) for fullscreen.\n" +
 #else
@@ -72,6 +81,20 @@ public sealed class GameHud : MonoBehaviour
                 "When the sky darkens, look straight up — a faint star arrow overhead points along the next correct turn.\n" +
                 "Watch out for the Husk — it hunts the lanes and cannot corner at speed. R restarts.";
         }
+
+        // M38: the persistent control prompt. Bottom edge, centred (§ see MakeText for why the anchor
+        // is the bottom edge and not an offset from the top, which would drift with aspect ratio).
+        // Quiet on purpose: 22 pt (20 on the phone) and 0.55 alpha, under the hint's 30/26, so it reads
+        // as a prompt and not as a banner. Todd hates clutter, so there is no animation and no fade.
+        _prompt = MakeText("ControlPrompt", new Vector2(0f, 60f), new Vector2(1200f, 34f), mobile ? 20 : 22,
+            TextAnchor.LowerCenter, font);
+        _prompt.color = new Color(0.93f, 0.90f, 0.84f, 0.55f);
+        _prompt.raycastTarget = false;   // it must never eat a left-click meant for the attack
+        // The phone prompt names only what a phone has: there is no touch jump button, so the jump is
+        // left off this line rather than advertised and missing.
+        _prompt.text = mobile
+            ? "PICK UP / THROW — take or throw a cob"
+            : "Left-click or F — take or throw a cob        Space — jump";
 
         BuildDoughMeter(font);
 
@@ -85,6 +108,8 @@ public sealed class GameHud : MonoBehaviour
         // title screen, and its 24 s must not be spent there).
         if (_held && _hint != null) _hint.gameObject.SetActive(false);
         if (_held && _doughRoot != null) _doughRoot.SetActive(false);
+        // M38: the prompt is a run control line, so it waits behind the title with the rest of the run.
+        if (_held && _prompt != null) _prompt.gameObject.SetActive(false);
     }
 
     /// <summary>
@@ -151,6 +176,14 @@ public sealed class GameHud : MonoBehaviour
     public string DoughLabelForTest => _doughLabel != null ? _doughLabel.text : "(none)";
     public bool DoughMeterVisible => _doughRoot != null && _doughRoot.activeSelf;
 
+    /// <summary>
+    /// M38 (test only): the persistent control prompt, the same idea as DoughLabelForTest. This prompt is
+    /// the whole answer to Todd's "i have no idea how to attack", so a capture run has to be able to prove
+    /// it is on screen and says the right thing instead of trusting the build.
+    /// </summary>
+    public string ControlPromptForTest => _prompt != null ? _prompt.text : "(none)";
+    public bool ControlPromptVisible => _prompt != null && _prompt.gameObject.activeInHierarchy;
+
     Text MakeText(string name, Vector2 anchored, Vector2 size, int fontSize, TextAnchor align, Font font)
     {
         var go = new GameObject(name);
@@ -162,6 +195,13 @@ public sealed class GameHud : MonoBehaviour
         if (name == "Win")
         {
             rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+        }
+        // M38: the control prompt is pinned to the BOTTOM edge. Anchoring it there (rather than
+        // offsetting it down from the top anchor) is what keeps it on the bottom edge at any height or
+        // aspect ratio; a y offset from the top would slide off a tall canvas and into the win text.
+        else if (name == "ControlPrompt")
+        {
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0f);
         }
         rect.anchoredPosition = anchored;
         rect.sizeDelta = size;
@@ -184,6 +224,7 @@ public sealed class GameHud : MonoBehaviour
         _held = true;
         if (_hint != null) _hint.gameObject.SetActive(false);
         if (_doughRoot != null) _doughRoot.SetActive(false);
+        if (_prompt != null) _prompt.gameObject.SetActive(false);
     }
 
     /// <summary>The run has started — show the hint and the dough meter, and start the hint's clock.</summary>
@@ -192,6 +233,8 @@ public sealed class GameHud : MonoBehaviour
         _held = false;
         _hintTimer = 24f;
         if (_doughRoot != null) _doughRoot.SetActive(true);
+        // M38: the prompt does not fade — it is the answer to "how do I attack", asked at any point.
+        if (_prompt != null) _prompt.gameObject.SetActive(true);
         if (_hint == null) return;
         var c = _hint.color;
         c.a = 1f;
@@ -241,6 +284,7 @@ public sealed class GameHud : MonoBehaviour
         if (_ended) return;
         _ended = true;
         if (_hint != null) _hint.gameObject.SetActive(false);
+        if (_prompt != null) _prompt.gameObject.SetActive(false);   // the run is over; drop the prompt
         _win.gameObject.SetActive(true);
         _win.color = new Color(1f, 0.86f, 0.25f);
         _win.text = MobileControls.ShouldShow
@@ -255,6 +299,7 @@ public sealed class GameHud : MonoBehaviour
         if (_ended) return;
         _ended = true;
         if (_hint != null) _hint.gameObject.SetActive(false);
+        if (_prompt != null) _prompt.gameObject.SetActive(false);   // the run is over; drop the prompt
         _win.gameObject.SetActive(true);
         _win.color = new Color(1f, 0.55f, 0.35f);
         _win.text = MobileControls.ShouldShow

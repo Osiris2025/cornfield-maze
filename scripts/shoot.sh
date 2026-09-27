@@ -32,29 +32,52 @@ sleep 1
 BEFORE=0
 [ -f "$REPORT" ] && BEFORE=$(stat -f %m "$REPORT" 2>/dev/null || echo 0)
 
-echo "shoot: launching for $FLAG (one window, cornered, killed as soon as a FRESH $REPORT_NAME lands)"
-open -n "$APP" --args "$FLAG" -ApplePersistenceIgnoreState YES -screen-fullscreen 0
+# The player PERSISTS the screen args below as the USER's saved window state: after a capture run the next
+# double-click opens windowed at 1300x820 instead of full screen ("why does the window drop to taskbar every
+# time you start it up?"). Save his own prefs first and hand them back after the kill.
+PREFS_BACKUP="$SUPPORT/.screen-prefs-backup.plist"
+defaults export com.arl480.cornfieldmaze "$PREFS_BACKUP" 2>/dev/null
 
-# Park the window out of the way as soon as it exists.
-sleep 6
-osascript <<'EOS' 2>&1 | sed 's/^/shoot: window /'
+echo "shoot: launching for $FLAG (one window, parked off-screen, killed as soon as a FRESH $REPORT_NAME lands)"
+# -j: launch HIDDEN, so no window is ever on his screen (not even for the seconds the old parking took).
+# -g: do NOT bring it to the foreground — a capture has no business stealing his focus.
+# -silent: the game reads this and silences the AudioListener. A hidden app still PLAYS: that is the
+# "sound is still there for a minute" after the window vanished.
+open -j -g -n "$APP" --args "$FLAG" -silent -ApplePersistenceIgnoreState YES -screen-fullscreen 0
+
+# Belt and braces: a hidden launch is a request, not a guarantee. Park any window that still materialises
+# off-screen and re-hide it at once — POLLING, because the old fixed `sleep 6` was precisely the window in
+# which Todd could see it appear and reach for the mouse.
+for i in $(seq 1 40); do
+  pgrep -f "Corn Field Maze.app/Contents/MacOS" >/dev/null 2>&1 && break
+  sleep 0.5
+done
+hide_window() {
+  osascript <<'EOS' 2>&1 | sed 's/^/shoot: window /'
 tell application "System Events"
   if exists (process "Corn Field Maze") then
     tell process "Corn Field Maze"
       try
-        set position of window 1 to {1200, 900}
+        set position of window 1 to {-4000, -4000}
         set size of window 1 to {420, 260}
       end try
+      -- NOT minimised: a minimised window parks a THUMBNAIL IN THE DOCK, which is still on his screen.
+      -- That thumbnail was the original "why does the window drop to taskbar" complaint.
       try
-        set value of attribute "AXMinimized" of window 1 to true
+        set value of attribute "AXMinimized" of window 1 to false
       end try
     end tell
-    return "cornered and minimised"
+    set visible of process "Corn Field Maze" to false
+    return "parked off-screen and hidden (nothing in the Dock)"
   else
-    return "no process yet"
+    return "no window yet"
   end if
 end tell
 EOS
+}
+hide_window
+sleep 2
+hide_window
 
 WAITED=0
 FRESH=0
@@ -71,8 +94,35 @@ while [ "$WAITED" -lt "$TIMEOUT" ]; do
   WAITED=$((WAITED + 5))
 done
 
+# The app is HIDDEN, not minimised, so killing it leaves nothing in the Dock and nothing on his screen.
 pkill -f "Corn Field Maze.app/Contents/MacOS" 2>/dev/null
-sleep 1
+
+# Wait for the player to actually exit BEFORE restoring: it flushes PlayerPrefs on the way out, so an import
+# that lands first is simply overwritten — diffing the domain around a run proved the screen keys come
+# straight back. Then restore and DIFF against the backup, retrying until Todd's own state is on disk.
+WAIT_DEAD=0
+while pgrep -f "Corn Field Maze.app/Contents/MacOS" >/dev/null 2>&1 && [ "$WAIT_DEAD" -lt 20 ]; do
+  sleep 1
+  WAIT_DEAD=$((WAIT_DEAD + 1))
+done
+sleep 2
+
+RESTORED=0
+for attempt in 1 2 3 4 5; do
+  defaults import com.arl480.cornfieldmaze "$PREFS_BACKUP" 2>/dev/null
+  sleep 1
+  defaults export com.arl480.cornfieldmaze /tmp/.pp-verify.plist 2>/dev/null
+  if diff -q "$PREFS_BACKUP" /tmp/.pp-verify.plist >/dev/null 2>&1; then
+    RESTORED=1
+    break
+  fi
+done
+rm -f /tmp/.pp-verify.plist "$PREFS_BACKUP"
+if [ "$RESTORED" = "1" ]; then
+  echo "shoot: Todd's window/screen state handed back intact"
+else
+  echo "shoot: WARNING — could not hand his screen state back (tried 5x)"
+fi
 
 if [ "$FRESH" = "1" ]; then
   echo "shoot: fresh report landed after ~${WAITED}s — app closed, window gone"

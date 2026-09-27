@@ -14,7 +14,9 @@ using UnityEngine.UI;
 ///  · The front end states are NOT paused (Time.timeScale stays 1): the world must live behind the
 ///    title. Only the pause screen stops time.
 ///  · Nothing is advertised that does not exist yet. The help screen describes the controls the build
-///    actually has — walk, look, run — and gains the cane and the cob when M10 and M23 land.
+///    actually has. Cob, attack and jump have now landed ("i have no idea how to attack.   I think
+///    jumping should be a thing too" — Todd, 2026-09-26), so the help lists them; the cane joins the
+///    list when M10 lands.
 /// </summary>
 public sealed class GameFrontEnd : MonoBehaviour
 {
@@ -171,10 +173,14 @@ public sealed class GameFrontEnd : MonoBehaviour
         var move = Box(safe, "MoveBox", new Vector2(-430f, 40f), new Vector2(760f, 460f));
         Label(move.transform, "MoveHeading", "MOVE", 38, TextAnchor.UpperLeft, new Color(1f, 0.83f, 0.32f),
             new Vector2(38f, -30f), new Vector2(680f, 60f));
+        // Both variants list only what the build has. The mobile string names the touch control the
+        // phone actually carries (MobileControls' PICK UP / THROW button, M23) rather than a mouse — and
+        // it does NOT advertise a jump: the jump is a Space-bar control and there is no touch button for
+        // it, so a phone line claiming one would be this file advertising something that does not exist.
         Label(move.transform, "MoveBody",
             MobileControls.ShouldShow
-                ? "Left stick — walk the lanes\nDrag the right half of the screen — look\nRUN (hold) — sprint\nPAUSE (top right) — stop and think"
-                : "WASD or the arrow keys — walk the lanes\nLeft-drag the mouse — look        Scroll — zoom\nShift — sprint        Esc — pause        R — restart",
+                ? "Left stick — walk the lanes\nDrag the right half — look\nRUN (hold) — sprint\nPICK UP / THROW — take or throw a cob\nPAUSE (top right) — pause"
+                : "WASD or the arrow keys — walk the lanes\nLeft-drag the mouse — look        Scroll — zoom\nLeft-click or F — take or throw a cob\nSpace — jump        Shift — sprint\nEsc — pause        R — restart",
             28, TextAnchor.UpperLeft, new Color(0.95f, 0.92f, 0.86f), new Vector2(38f, -110f), new Vector2(680f, 320f));
 
         var threat = Box(safe, "ThreatBox", new Vector2(430f, 40f), new Vector2(760f, 460f));

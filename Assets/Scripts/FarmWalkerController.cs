@@ -7,6 +7,33 @@ public sealed class FarmWalkerController : MonoBehaviour
     public float WalkSpeed = 4.4f;
     public float RunSpeed = 7.4f;
     public float Gravity = 18f;
+
+    // ---- M39 (Todd, 2026-09-26): SPACE jumps ---------------------------------------------------
+    /// <summary>
+    /// First Todd: "i have no idea how to attack. I think jumping should be a thing too". A jump is a
+    /// DODGE, not a safe zone — he chose "Space jumps. The Husks can still catch you mid-air — a jump
+    /// is a dodge to break away, not a safe zone."
+    ///
+    /// The apex — not the launch velocity — is the number that gets tuned. 0.85 m is a gingerbread
+    /// man's hop: it clears a lane obstruction and reads clearly as a jump without clearing the corn.
+    /// Launch speed is DERIVED from the gravity already in this file, v = sqrt(2 * g * h), so the arc
+    /// stays physically real if Gravity is ever retuned: at Gravity = 18, v = sqrt(2 * 18 * 0.85) =
+    /// sqrt(30.6) = 5.53 m/s. Airtime is 2v/g = 2 * 5.53 / 18 = 0.61 s, so at WalkSpeed 4.4 the hop
+    /// buys 4.4 * 0.61 = 2.70 m of ground, and at RunSpeed 7.4 it buys 7.4 * 0.61 = 4.55 m.
+    /// </summary>
+    public const float JumpApexMetres = 0.85f;
+
+    /// <summary>The launch speed for that apex, from the gravity that is already here. A property, not
+    /// a const, because Gravity is a tunable field — this keeps the two from ever drifting apart.</summary>
+    public float JumpLaunchSpeed => Mathf.Sqrt(2f * Gravity * JumpApexMetres);
+
+    /// <summary>
+    /// Harness hook, the InjectInput pattern: when set the jump fires without a keyboard, so the arc
+    /// can be measured on the built app by M22FeelSelfTest (or a sibling) rather than needing a human
+    /// holding Space. ORed into the jump condition below; cleared by the caller each frame it drives.
+    /// </summary>
+    public bool InjectJumpNow;
+
     public float TurnSpeed = 12f;
     /// <summary>
     /// M36 (Todd, 2026-09-26): "the mouse takes a lot more work than it should to rotate the camera."
@@ -123,16 +150,61 @@ public sealed class FarmWalkerController : MonoBehaviour
     /// </summary>
     void ApplyModelVisibility()
     {
-        if (_modelRenderers == null) return;
         bool hide = FirstPerson && !_eating && !_caught;
         var mode = hide ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly
                         : UnityEngine.Rendering.ShadowCastingMode.On;
-        foreach (var r in _modelRenderers)
+        if (_modelRenderers != null)
+            foreach (var r in _modelRenderers)
+                if (r != null) r.shadowCastingMode = mode;
+        // M38: the bite wounds are children of the TORSO, so they are not in _modelRenderers — without
+        // this they stay full-drawn in front of the first-person camera while the cookie he does not
+        // see is shadows-only, which is a ring of icing blobs floating in his own face.
+        foreach (var r in _woundRenderers)
             if (r != null) r.shadowCastingMode = mode;
     }
 
-    /// <summary>Seconds of full-storm rain to reach near-full dissolve (atmospheric, not instant).</summary>
-    public const float DissolveRainSeconds = 210f;
+    /// <summary>
+    /// Seconds of full storm to soak the whole 100-point dough pool.
+    ///
+    /// Todd: "well rain could do 1/20 damage per minute?" — 1/20 of the pool per minute is 5 dough/min,
+    /// so 100 dough takes 100 / 5 = 20 minutes of full storm = 1200 s. It scales linearly with
+    /// StormWeather.Intensity, so a quarter-strength drizzle is 1.25 dough/min and takes 80 minutes.
+    /// This used to be 210 s (28.6 dough/min), which soaked the cookie through in three and a half
+    /// minutes — an order of magnitude faster than what he asked for.
+    /// </summary>
+    public const float DissolveRainSeconds = 1200f;
+
+    /// <summary>The dough pool, in points. DoughIntegrity is this times (1 - dissolve).</summary>
+    public const float MaxDough = 100f;
+
+    /// <summary>
+    /// Todd: "Make it only 1/10". One bite takes 1/10 of the 100-point pool. Nothing else about the
+    /// bite is on the Husk's side of the line: the pool and its units live here.
+    /// </summary>
+    public const float DoughBiteCost = 10f;
+
+    /// <summary>
+    /// How far a bite shoves the cookie down the lane, away from the Husk — about one body length.
+    /// The shove goes through ConstrainToPath, so he lands on a lane and can run rather than being
+    /// planted inside the corn. Todd: "we have to be able to not trapped completey by the husk".
+    /// </summary>
+    public const float BiteKnockbackMetres = 1.8f;
+
+    /// <summary>
+    /// Visible bite wounds. Six is where the cookie still reads as a gingerbread man rather than a
+    /// colander; past this the dough keeps falling and the bleed keeps growing, the silhouette just
+    /// stops gaining new holes.
+    /// </summary>
+    public const int MaxBiteWounds = 6;
+
+    /// <summary>
+    /// Todd's "bleeding icing". ONE line to change — he has not named the hue yet, so this is a
+    /// placeholder: icing-white with the strawberry in it.
+    /// </summary>
+    public static readonly Color IcingBleedColour = new Color(1.00f, 0.80f, 0.86f, 1f);
+
+    /// <summary>The exposed interior of a bitten-through cookie, behind the icing at each wound.</summary>
+    static readonly Color WoundInteriorColour = new Color(0.33f, 0.17f, 0.08f, 1f);
 
     /// <summary>
     /// M22 (§25.2): the lane half-width. A BOUND, not a rail — the player may stand anywhere across
@@ -177,7 +249,26 @@ public sealed class FarmWalkerController : MonoBehaviour
     bool _lookDragging;
     List<Material> _cookieMats;
     List<Color> _cookieBaseCols;
+    /// <summary>M38: each cookie material's pre-damage gloss, so "soggier" can be a lerp DOWN from
+    /// whatever the asset shipped with instead of a hard-coded 0.18..0.55 curve.</summary>
+    List<float> _cookieBaseGloss;
     List<bool> _icingFlags;
+    // ---- M38 (Todd): bite marks and bleeding icing ------------------------------------------------
+    /// <summary>Wounds built in code and parented onto the cookie's joints, so they ride the walk
+    /// animation instead of hanging in the world where he was bitten.</summary>
+    readonly List<Transform> _woundRoots = new List<Transform>();
+    /// <summary>The ooze at each wound: base scale and base local position, so the dribble can grow
+    /// DOWNWARD from a fixed top as the dough falls.</summary>
+    readonly List<Transform> _bleedDrips = new List<Transform>();
+    readonly List<Vector3> _bleedDripScale = new List<Vector3>();
+    readonly List<Vector3> _bleedDripPos = new List<Vector3>();
+    /// <summary>Wound renderers, kept so first person can drop them to shadows-only with the cookie —
+    /// otherwise the bite marks hang in front of his own camera.</summary>
+    readonly List<Renderer> _woundRenderers = new List<Renderer>();
+    Material _woundMat;
+    Material _bleedMat;
+    /// <summary>How many bites he has taken. Public so the report can be read rather than believed.</summary>
+    public int BitesTaken { get; private set; }
     // The FBX rig carries a real rest pose (its bones are NOT identity at rest), so the walk is
     // authored as a swing composed ONTO each joint's rest rotation, about the character's own
     // sideways axis. Writing an absolute rotation would snap the skeleton out of its pose.
@@ -240,6 +331,10 @@ public sealed class FarmWalkerController : MonoBehaviour
         player._cookieBaseCols = new List<Color>(mats.Count);
         for (int i = 0; i < mats.Count; i++)
             player._cookieBaseCols.Add(ReadColor(mats[i]));
+        // M38: and the gloss the asset shipped with, so rain can lerp it DOWN toward matte.
+        player._cookieBaseGloss = new List<float>(mats.Count);
+        for (int i = 0; i < mats.Count; i++)
+            player._cookieBaseGloss.Add(ReadGloss(mats[i]));
         player._hips = rig.Hips;
         player._torso = rig.Torso;
         player._armL = rig.ArmL;
@@ -497,6 +592,14 @@ public sealed class FarmWalkerController : MonoBehaviour
         if (_body.isGrounded) _vertical = -1f;
         else _vertical -= Gravity * Time.deltaTime;
 
+        // M39 (Todd, 2026-09-26): SPACE jumps. Read HERE — below the frozen/won/caught returns above —
+        // so a jump cannot fire in the front end or on a dead run; those paths call ApplyGravityOnly and
+        // never reach this line. GetKeyDown (not GetKey) is what makes it a single launch: holding Space
+        // cannot re-trigger it, and the isGrounded gate forbids a double jump. Nothing else about the
+        // movement or the gravity above changes — this only seeds _vertical for this frame's Move.
+        if (_body.isGrounded && (Input.GetKeyDown(KeyCode.Space) || InjectJumpNow))
+            _vertical = JumpLaunchSpeed;
+
         Vector3 gust = PathGust(move);
         Vector3 before = transform.position;
         Vector3 intended = before + (move * speed + gust) * Time.deltaTime;
@@ -524,10 +627,13 @@ public sealed class FarmWalkerController : MonoBehaviour
         if (storm > 0.02f)
             _rainExposure += storm * Time.deltaTime;
 
+        // Todd: "well rain could do 1/20 damage per minute?" — a FLAT 1/20 of the pool per minute, which
+        // is DissolveRainSeconds (1200 s) at full storm. The smoothstep that used to sit here (eased =
+        // t*t*(3-2t)) made early rain barely count and the last stretch lurch, which contradicts a
+        // stated per-minute rate. Exposure still scales with storm intensity, so a drizzle is
+        // proportionally gentler, and rain does nothing at all below 0.02.
         float target = Mathf.Clamp01(_rainExposure / DissolveRainSeconds);
-        // Ease so early rain only softens icing; late storm soaks the cookie.
-        float eased = target * target * (3f - 2f * target);
-        _dissolve = Mathf.MoveTowards(_dissolve, eased, Time.deltaTime * 0.35f);
+        _dissolve = Mathf.MoveTowards(_dissolve, target, Time.deltaTime * 0.35f);
         ApplyDissolve(_dissolve);
     }
 
@@ -536,10 +642,16 @@ public sealed class FarmWalkerController : MonoBehaviour
         amount = Mathf.Clamp01(amount);
         if (_model != null)
         {
-            float squash = Mathf.Lerp(1f, 0.78f, amount);
-            float sink = Mathf.Lerp(1f, 0.88f, amount);
-            _model.localScale = new Vector3(squash * 1.04f, sink, squash * 1.04f);
+            // Todd's standing objection: "we also have to have something better than becoming
+            // transparent". The cookie SAGS as he soaks — he never goes see-through. The squash is also
+            // pulled in from 0.78/0.88 to 0.88/0.94: with the fade gone this is now the only whole-body
+            // read of damage, and it has to stay subtle enough that the bite wounds are still the story.
+            float squash = Mathf.Lerp(1f, 0.88f, amount);
+            float sink = Mathf.Lerp(1f, 0.94f, amount);
+            _model.localScale = new Vector3(squash * 1.03f, sink, squash * 1.03f);
         }
+
+        RefreshBleed(amount);
 
         if (_cookieMats == null) return;
         for (int i = 0; i < _cookieMats.Count; i++)
@@ -549,21 +661,22 @@ public sealed class FarmWalkerController : MonoBehaviour
             Color baseCol = _cookieBaseCols[i];
             bool icing = _icingFlags != null && i < _icingFlags.Count && _icingFlags[i];
 
+            // Wet, not gone. Icing darkens and greys off a little, dough goes a shade darker still —
+            // both stay fully OPAQUE, and no alpha is written at all.
             Color soggy = icing
-                ? Color.Lerp(baseCol, new Color(0.72f, 0.74f, 0.76f, baseCol.a), amount * 0.85f)
-                : Color.Lerp(baseCol, new Color(0.28f, 0.16f, 0.08f, baseCol.a), amount * 0.55f);
-
-            // Icing washes off first; body fades later but leaves a crumb of opacity.
-            float alpha = icing
-                ? Mathf.Lerp(1f, 0.05f, Mathf.Clamp01(amount * 1.35f))
-                : Mathf.Lerp(1f, 0.22f, amount);
-            soggy.a = alpha;
+                ? Color.Lerp(baseCol, new Color(0.70f, 0.71f, 0.73f, baseCol.a), amount * 0.45f)
+                : Color.Lerp(baseCol, new Color(0.28f, 0.16f, 0.08f, baseCol.a), amount * 0.40f);
+            soggy.a = 1f;
             WriteColor(mat, soggy);
-            SetTransparent(mat, alpha < 0.98f);
+
+            // Soggier reads as LESS glossy, not more: the old code lerped gloss UP toward 0.55, which
+            // made a soaked cookie look wetter and shinier than a dry one. The materials are never put
+            // back into transparent mode — that was the see-through look, and it is gone.
+            float baseGloss = _cookieBaseGloss != null && i < _cookieBaseGloss.Count ? _cookieBaseGloss[i] : 0.5f;
             if (mat.HasProperty("_Smoothness"))
-                mat.SetFloat("_Smoothness", Mathf.Lerp(0.18f, 0.55f, amount));
+                mat.SetFloat("_Smoothness", Mathf.Lerp(baseGloss, 0.04f, amount));
             if (mat.HasProperty("_Glossiness"))
-                mat.SetFloat("_Glossiness", Mathf.Lerp(0.18f, 0.55f, amount));
+                mat.SetFloat("_Glossiness", Mathf.Lerp(baseGloss, 0.04f, amount));
         }
     }
 
@@ -580,16 +693,198 @@ public sealed class FarmWalkerController : MonoBehaviour
         if (mat.HasProperty("_Color")) mat.SetColor("_Color", c);
     }
 
-    static void SetTransparent(Material mat, bool on)
+    /// <summary>M38: a cookie material's gloss, from whichever URP/Lit property it carries.</summary>
+    static float ReadGloss(Material mat)
     {
-        if (!on) return;
-        if (mat.HasProperty("_Surface")) mat.SetFloat("_Surface", 1f);
-        if (mat.HasProperty("_Blend")) mat.SetFloat("_Blend", 0f);
-        if (mat.HasProperty("_SrcBlend")) mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        if (mat.HasProperty("_DstBlend")) mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        if (mat.HasProperty("_ZWrite")) mat.SetFloat("_ZWrite", 0f);
-        mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        mat.renderQueue = 3000;
+        if (mat.HasProperty("_Smoothness")) return mat.GetFloat("_Smoothness");
+        if (mat.HasProperty("_Glossiness")) return mat.GetFloat("_Glossiness");
+        return 0.5f;
+    }
+
+    // --------------------------------------------------------------------------------------------
+    // M38 (Todd): the bite
+    //
+    //   "we need to work on some kind of combat system.. we have to be able to not trapped completey
+    //    by the husk or the game ends prematurely"
+    //   "Make it only 1/10.. we also have to have something better than becoming treanparent also...
+    //    masybe bite marks and bleeding icing?"
+    //
+    // A catch used to end the run on the first contact. Now it costs DoughBiteCost off the one pool
+    // the rain also spends and shoves him clear, and only an empty pool ends the run.
+    // --------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The Husk got to him. Costs 1/10 of the dough, leaves a wound, and shoves him down the lane away
+    /// from the Husk. Returns TRUE only when the pool is empty, which is the single fail state.
+    /// </summary>
+    public bool TakeBite(float doughCost, Vector3 awayFromHusk)
+    {
+        if (_caught || _won || _eating) return false;
+
+        float fraction = Mathf.Clamp01(doughCost / MaxDough);
+        // The bite advances the SAME clock the rain does, deliberately. UpdateDissolveFromRain pulls
+        // _dissolve toward _rainExposure every frame, so a bite written only to _dissolve would be
+        // quietly dragged back out again over the next second.
+        _rainExposure += fraction * DissolveRainSeconds;
+        _dissolve = Mathf.Clamp01(_dissolve + fraction);
+        BitesTaken++;
+        AddBiteWound();
+        ApplyDissolve(_dissolve);
+
+        if (_dissolve >= 1f) return true;   // the dough is gone — the fail, and the ONLY fail
+
+        Knockback(awayFromHusk);
+        return false;
+    }
+
+    void Knockback(Vector3 awayFromHusk)
+    {
+        Vector3 flat = awayFromHusk;
+        flat.y = 0f;
+        if (flat.sqrMagnitude < 0.0001f) flat = -transform.forward;
+        flat.Normalize();
+
+        Vector3 p = transform.position;
+        Vector3 want = new Vector3(p.x + flat.x * BiteKnockbackMetres, p.y, p.z + flat.z * BiteKnockbackMetres);
+        // ConstrainToPath, always. A shove that is not lane-aware plants the cookie inside the crop,
+        // which is a worse trap than the one Todd asked to remove. The disable/enable around the write
+        // is the same pattern Update uses for a path snap, so the CharacterController is not fighting it.
+        Vector3 onPath = ConstrainToPath(want);
+        onPath.y = p.y;
+        if (_body != null)
+        {
+            _body.enabled = false;
+            transform.position = onPath;
+            _body.enabled = true;
+        }
+        else
+        {
+            transform.position = onPath;
+        }
+        // He keeps whatever travel he had. The shove moves him; it does not stun him — "he must end up
+        // able to run" is the whole point of the change.
+    }
+
+    /// <summary>
+    /// One more visible bite. Wounds are built from primitives in code, the house idiom for a prop with
+    /// no asset, and parented to the joint nearest them so they ride the walk.
+    /// </summary>
+    void AddBiteWound()
+    {
+        if (_model == null) return;
+        int index = _woundRoots.Count;
+        if (index >= MaxBiteWounds) return;   // cap: the silhouette stops gaining holes, the bleeding does not
+
+        if (_woundMat == null) _woundMat = Materials.Lit(WoundInteriorColour, 0.05f);
+        if (_bleedMat == null) _bleedMat = Materials.Lit(IcingBleedColour, 0.04f);
+
+        WoundSpot(index, out Vector3 point, out Vector3 outward, out Transform anchor);
+
+        var root = new GameObject("BiteWound" + index).transform;
+        root.SetParent(anchor, false);
+        root.position = point;
+        // The wound's own frame: +z out of the body, +y up. Everything below is written in it.
+        root.rotation = Quaternion.LookRotation(outward, Vector3.up);
+        // The joints sit under the model's 0.335 scale, so a local metre is 0.335 of a world metre.
+        // Dividing it out once here lets every child below be written in plain metres.
+        float inv = 1f / Mathf.Max(0.0001f, anchor.lossyScale.x);
+        root.localScale = Vector3.one * inv;
+        _woundRoots.Add(root);
+
+        // The chunk that is gone: a dark, shallow plug just inside the surface, so the mouth of the
+        // wound reads as a hole rather than as a lump of something stuck on the outside.
+        WoundPart(root, PrimitiveType.Cube, "Chunk", new Vector3(0f, 0f, -0.012f),
+                  new Vector3(0.085f, 0.075f, 0.045f), Quaternion.identity, _woundMat);
+
+        // The bite rim: five icing beads on a crescent below the centre — the shape a set of teeth
+        // actually leaves, which is the crescent Todd asked for.
+        const int beads = 5;
+        for (int b = 0; b < beads; b++)
+        {
+            float a = Mathf.Lerp(-70f, 70f, b / (float)(beads - 1)) * Mathf.Deg2Rad;
+            var local = new Vector3(Mathf.Sin(a) * 0.055f, -Mathf.Cos(a) * 0.050f, 0.010f);
+            WoundPart(root, PrimitiveType.Sphere, "Bead" + b, local,
+                      Vector3.one * (0.030f + (b % 2) * 0.006f), Quaternion.identity, _bleedMat);
+        }
+
+        // Two ribbons of icing running out of the wound. RefreshBleed stretches them downward as the
+        // dough falls — this is Todd's "bleeding icing".
+        for (int d = 0; d < 2; d++)
+        {
+            var pos = new Vector3(Mathf.Lerp(-0.03f, 0.03f, d), -0.055f, 0.014f);
+            var scale = new Vector3(0.016f, 0.055f, 0.016f);
+            var drip = WoundPart(root, PrimitiveType.Cube, "Drip" + d, pos, scale, Quaternion.identity, _bleedMat);
+            _bleedDrips.Add(drip);
+            _bleedDripPos.Add(pos);
+            _bleedDripScale.Add(scale);
+        }
+
+        // A fresh primitive defaults to fully drawn. In first person the cookie is shadows-only, so
+        // without this the bite he cannot see leaves a ring of icing hanging in front of his camera.
+        ApplyModelVisibility();
+    }
+
+    /// <summary>
+    /// Where the next wound goes: six fixed spots spread over the chest, belly, both shoulders and a
+    /// thigh, so the marks do not stack in one place. Offsets are metres from the cookie's own root
+    /// along his OWN axes, so they do not care which way he is facing.
+    /// </summary>
+    void WoundSpot(int index, out Vector3 point, out Vector3 outward, out Transform anchor)
+    {
+        float x, y, z;
+        switch (index)
+        {
+            case 0:  x = 0.10f;  y = 1.12f; z = 0.13f;  anchor = _torso; break;
+            case 1:  x = -0.14f; y = 0.92f; z = 0.12f;  anchor = _hips;  break;
+            case 2:  x = 0.16f;  y = 1.24f; z = -0.02f; anchor = _torso; break;
+            case 3:  x = -0.16f; y = 1.27f; z = 0.02f;  anchor = _torso; break;
+            case 4:  x = 0.07f;  y = 0.66f; z = 0.10f;  anchor = _hips;  break;
+            default: x = -0.05f; y = 1.38f; z = 0.09f;  anchor = _torso; break;
+        }
+        // A spot off the side of the body faces sideways; everything else faces front.
+        outward = Mathf.Abs(x) > 0.12f && Mathf.Abs(z) < 0.06f ? Mathf.Sign(x) * transform.right : transform.forward;
+        if (anchor == null) anchor = _model != null ? _model : transform;
+        point = transform.position + transform.right * x + Vector3.up * y + transform.forward * z;
+    }
+
+    /// <summary>
+    /// Todd: "masybe bite marks and bleeding icing?" The ooze grows as the dough falls — driven off the
+    /// WHOLE pool, so rain soaks it out as well as bites do. Each ribbon stretches downward from a fixed
+    /// top, so the wound does not creep down the body as it grows.
+    /// </summary>
+    void RefreshBleed(float amount)
+    {
+        if (_bleedDrips.Count == 0) return;
+        float grow = Mathf.Lerp(0.7f, 3.4f, Mathf.Clamp01(amount));
+        for (int i = 0; i < _bleedDrips.Count; i++)
+        {
+            var drip = _bleedDrips[i];
+            if (drip == null) continue;
+            Vector3 baseScale = _bleedDripScale[i];
+            Vector3 basePos = _bleedDripPos[i];
+            float half = baseScale.y * 0.5f;
+            float newHalf = half * grow;
+            drip.localScale = new Vector3(baseScale.x, baseScale.y * grow, baseScale.z);
+            drip.localPosition = new Vector3(basePos.x, basePos.y - (newHalf - half), basePos.z);
+        }
+    }
+
+    /// <summary>A wound primitive: no collider (it must never touch the CharacterController), the house
+    /// pattern Husk.Part uses, plus the renderer is kept for the first-person shadow swap.</summary>
+    Transform WoundPart(Transform parent, PrimitiveType type, string name, Vector3 localPos,
+                        Vector3 scale, Quaternion localRot, Material mat)
+    {
+        var go = GameObject.CreatePrimitive(type);
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPos;
+        go.transform.localScale = scale;
+        go.transform.localRotation = localRot;
+        var rend = go.GetComponent<Renderer>();
+        rend.sharedMaterial = mat;
+        Object.Destroy(go.GetComponent<Collider>());
+        _woundRenderers.Add(rend);
+        return go.transform;
     }
 
     /// <summary>
