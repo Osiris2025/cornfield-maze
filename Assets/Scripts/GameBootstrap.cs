@@ -37,6 +37,7 @@ public sealed class GameBootstrap : MonoBehaviour
         // flag — his own double-click — is completely untouched.
         if (HasArg("-silent"))
         {
+            MobileAudioSession.Silent = true;   // M40: stops Reactivate() putting the volume back to 1
             AudioListener.volume = 0f;
             Debug.Log("Corn Field Maze: -silent capture run — audio muted for the whole run.");
         }

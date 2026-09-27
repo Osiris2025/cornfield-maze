@@ -25,6 +25,13 @@ using UnityEngine;
 ///   * what the bite marks and the bleeding icing actually LOOK like. Shot in THIRD PERSON: in first
 ///     person the controller draws the cookie ShadowsOnly, so his wounds cannot be photographed there
 ///     at all, and a frame of nothing would read as "the wounds are missing".
+///   * M41: the Husk's ARM SWIPE — 1-3 dough off the same pool, telegraphed, dodgeable, no wound, and
+///     never in the same frame as a bite. Measured with the game's own attack path firing, in both
+///     views, with a dodge proven by walking out of the windup.
+///
+/// M41 TUNE: the jump-frame capture is bounded to two shots with freshness-bounded waits (the old
+/// fixed waits ate the bite budget), and the bite counter separates real bites (drop >= half the
+/// bite cost) from rain drips, so the pool actually empties and the numbers diff against prior runs.
 /// </summary>
 public class M38BiteSelfTest : MonoBehaviour
 {
@@ -97,6 +104,24 @@ public class M38BiteSelfTest : MonoBehaviour
         else
             Emit("the HUD control prompt: visible=" + hud.ControlPromptVisible + ", text=\"" +
                  hud.ControlPromptForTest + "\"");
+
+        // ---- M40: does a capture run STAY silent? ---------------------------------------------------
+        // Todd: "it isnt muted. I hear it." The -silent flag DID mute at Start, and then
+        // MobileAudioSession's Reactivate() — which the first keypress, a focus change and a resume all
+        // call — put the volume straight back to 1. Checking that the mute FIRED was the wrong check. This
+        // calls the very same Reactivate() a keypress triggers, twice, and reads the volume back, so
+        // "silent" is proven rather than assumed.
+        {
+            float volBefore = AudioListener.volume;
+            MobileAudioSession.Reactivate();
+            MobileAudioSession.Reactivate();
+            float volAfter = AudioListener.volume;
+            Emit("capture audio: volume " + volBefore.ToString("0.00") + " -> " + volAfter.ToString("0.00") +
+                 " after the same Reactivate() a keypress triggers, twice — " +
+                 (volAfter <= 0.001f
+                     ? "STILL SILENT (the mute holds)"
+                     : "NOT SILENT (the mute is being undone — this is the bug)"));
+        }
 
         // ---- the Husk ------------------------------------------------------------------------------
         Husk husk = null;
@@ -200,6 +225,223 @@ public class M38BiteSelfTest : MonoBehaviour
             while (settle < 0.4f) { settle += Time.deltaTime; yield return null; }
         }
 
+        // ---- does the creature move when the cookie jumps? Photograph it, don't argue about it ---------
+        // Todd: "as I said earlier, husk jumps when I jump." His shot is truth.
+        //
+        // M41 TUNE: last night this section ate the bite budget. Four screenshots, each waited out on a
+        // fixed 6 s window, plus the 0.4 s settle — during which the rain clock kept spending (5 dough
+        // per minute) and those drips were later counted as "bites", so the loop quit at 14 phantom
+        // bites with the pool stuck at 9.9. The proof did not need four frames — grounded vs apex is
+        // the whole argument — so this version takes TWO, waits on each only until the file is FRESH
+        // (never a fixed window), and the whole section is bounded. Same measurements: husk ROOT and
+        // MODEL displacement frame by frame, the cookie's rise, worst frame time, and the camera parked
+        // at a FIXED world position for the whole jump so "the camera does not ride the jump" is a
+        // number, not an assertion.
+        if (husk != null)
+        {
+            var lane = player.transform.forward;
+            lane.y = 0f;
+            lane = lane.sqrMagnitude > 0.0001f ? lane.normalized : Vector3.forward;
+            husk.transform.position = player.transform.position + lane * 3f;
+            husk.enabled = false;                  // hold it still: the jump must be the only variable
+            husk.SwipesEnabled = false;            // and it cannot swipe a parked cookie either
+            yield return null;
+            yield return null;
+
+            var huskModel = husk.transform.Find("ScarecrowMesh");
+            Emit("jump frame test: creature parked 3 m down the lane (its model child " +
+                 (huskModel != null ? "FOUND" : "not found — falling back to the root") + ")");
+
+            var jumpCam = player.Camera;
+            float rootY0 = husk.transform.position.y;
+            float modelY0 = huskModel != null ? huskModel.position.y : 0f;
+            float playerY0 = player.transform.position.y;
+            float rootMax = 0f, modelMax = 0f, modelMin = 0f, playerMax = 0f, worstFrame = 0f;
+
+            var shotNames = new[] { "m40-jump-0-grounded.png", "m40-jump-2-apex.png" };
+            var shotPaths = new string[shotNames.Length];
+            for (int i = 0; i < shotPaths.Length; i++)
+                shotPaths[i] = Path.Combine(Application.persistentDataPath, shotNames[i]);
+            int shotsFired = 0;
+            float camY0 = jumpCam != null ? jumpCam.transform.position.y : 0f;
+
+            if (jumpCam != null)
+            {
+                jumpCam.transform.position = player.transform.position - lane * 3.2f + Vector3.up * 1.9f;
+                var aim = husk.transform.position + Vector3.up * 1.15f - jumpCam.transform.position;
+                jumpCam.transform.rotation = Quaternion.LookRotation(aim.normalized, Vector3.up);
+            }
+            yield return null;
+            yield return null;
+            ScreenCapture.CaptureScreenshot(shotPaths[shotsFired++]);
+            // Bounded, not fixed: stop the moment the file is FRESH, give up at 3 s. The old fixed 6 s
+            // wait is where the bite budget went.
+            yield return WaitForFreshShot(shotPaths[shotsFired - 1], 3f);
+
+            player.InjectJumpNow = true;
+            yield return null;
+            player.InjectJumpNow = false;
+
+            float jt = 0f;
+            bool airborneSeen = false;
+            while (jt < 2.5f)
+            {
+                float dt = Time.deltaTime;
+                if (dt > worstFrame) worstFrame = dt;
+                jt += dt;
+
+                float dRoot = husk.transform.position.y - rootY0;
+                float dModel = huskModel != null ? huskModel.position.y - modelY0 : 0f;
+                float dPlayer = player.transform.position.y - playerY0;
+                if (dRoot > rootMax) rootMax = dRoot;
+                if (dModel > modelMax) modelMax = dModel;
+                if (dModel < modelMin) modelMin = dModel;
+                if (dPlayer > playerMax) playerMax = dPlayer;
+
+                if (!airborneSeen && dPlayer > 0.05f) airborneSeen = true;
+                if (airborneSeen && dPlayer > 0.4f && dPlayer < playerMax - 0.03f && shotsFired == 1)
+                {
+                    ScreenCapture.CaptureScreenshot(shotPaths[shotsFired++]);   // the apex, on the way down
+                    yield return WaitForFreshShot(shotPaths[shotsFired - 1], 3f);
+                }
+                if (airborneSeen && dPlayer <= 0.02f)
+                    break;
+                yield return null;
+            }
+
+            for (int i = 0; i < shotsFired; i++)
+                Emit("frame " + shotNames[i] + " -> " +
+                     (File.Exists(shotPaths[i]) && File.GetLastWriteTimeUtc(shotPaths[i]) >= _runStart
+                        ? "written (captured mid-jump, straight from the screen)"
+                        : "MISSING/STALE"));
+            Emit("through that jump the cookie rose " + playerMax.ToString("0.00") + " m; the CREATURE's root " +
+                 "y moved " + rootMax.ToString("0.000") + " m and its model " + modelMax.ToString("0.000") +
+                 " m up / " + modelMin.ToString("0.000") + " m down; worst frame time " +
+                 worstFrame.ToString("0.000") + " s; the camera was FIXED and its y moved " +
+                 (jumpCam != null ? (jumpCam.transform.position.y - camY0).ToString("0.000") : "n/a") +
+                 " m — it does not ride the jump");
+            husk.enabled = true;
+        }
+
+        // ---- M41: the arm swipe, measured BEFORE the bite loop --------------------------------------
+        // Swipes come first because the bite numbers are only comparable with the previous runs when
+        // the pool still starts where it started — and the swipe spends 1-3 dough off that same pool.
+        // The swipe is watched with the game's OWN path firing (the harness never calls the attack),
+        // in THIRD person where the telegraph is visible, then once in FIRST person to prove the hit
+        // lands in both views. The dodge is proven by backing the cookie out of the windup.
+        {
+            const float SwipeWatchSeconds = 75f;
+            const int WantSwipeEvents = 4;   // 1 dodged + 2 landed (third person) + 1 landed (first person)
+            int land0 = husk.SwipesLanded, dodge0 = husk.SwipesDodged;
+
+            // THE FIX from the first M41 run: the jump-frame section leaves swiping off, and this
+            // section forgot to turn it back on — so the husk stood at 1.0 m and BIT ten times, the
+            // pool hit 0 before a single swipe fired, and the report said "no swipe within 75 s".
+            husk.SwipesEnabled = true;
+
+            player.SetFirstPerson(false);
+            yield return null;
+            yield return null;
+
+            var lane = player.transform.forward;
+            lane.y = 0f;
+            lane = lane.sqrMagnitude > 0.0001f ? lane.normalized : Vector3.forward;
+            // The Husk is parked BEHIND the cookie: the start cell's only exit is forward, so the dodge
+            // must walk FORWARD down the open lane — backing up walks him into the corridor's dead end,
+            // which is exactly what the first run did (he could not clear the windup and ate the swing).
+            Vector3 BehindSpot() => player.transform.position - lane * 1.00f;   // inside SwipeRange 1.15, past CatchDistance 0.62
+
+            Emit("M41 the arm swipe: starts when the cookie hovers within " + Husk.SwipeRange.ToString("0.00") +
+                 " m, telegraphs " + Husk.SwipeWindupSeconds.ToString("0.00") + " s, lands inside " +
+                 Husk.SwipeStrikeRange.ToString("0.00") + " m for a random integer " +
+                 Husk.SwipeDamageMin + "-" + Husk.SwipeDamageMax + " off the same dough pool (no wound — " +
+                 "the cap of 6 counts bite marks); it cannot stack with the bite (a swipe in flight blocks TryCatch)");
+
+            husk.transform.position = BehindSpot();
+            bool dodging = false;
+            int events = 0;
+            int seen = land0 + dodge0;
+            float watch = 0f;
+            float swipeDough = player.DoughIntegrity;
+            while (events < WantSwipeEvents && watch < SwipeWatchSeconds && !player.IsCaught)
+            {
+                if (husk.PhaseNow == Husk.SwipePhase.Windup && !dodging && events == 0)
+                {
+                    // The dodge proof: WALK the cookie forward down the open lane using the game's own
+                    // injected movement. Aim forward first (AimAtForTest sets the yaw the stick is read
+                    // against), then push the stick straight ahead — no yaw arithmetic to get wrong, and
+                    // the direction he walks is the one open corridor direction, away from the Husk.
+                    player.AimAtForTest(player.transform.position + lane * 5f);
+                    dodging = true;
+                    Emit("dodge: windup seen — the cookie now walks FORWARD down the open lane at the " +
+                         "injected stick for the " + Husk.SwipeWindupSeconds.ToString("0.00") +
+                         " s the arm is winding");
+                }
+                if (dodging && events == 0 && husk.PhaseNow == Husk.SwipePhase.Windup)
+                    player.InjectedMove = new Vector2(0f, 1f);   // stick straight ahead = away from the Husk
+
+                yield return null;
+                watch += Time.deltaTime;
+
+                // Interstitial bites ARE part of this melee: at 1.0 m the husk is in the cookie's cell
+                // (cells are 4 m), so between swings the game's own TryCatch may fire — that is the
+                // game's rule, not the harness's. Log them so the pool arithmetic stays honest.
+                float doughNow = player.DoughIntegrity;
+                if (swipeDough - doughNow >= 5f)
+                {
+                    Emit("bite during the swipe test: dough " + swipeDough.ToString("0.0") + " -> " +
+                         doughNow.ToString("0.0") + "  (delta 10.0, the game's own catch at mid-range — " +
+                         "NOT a swipe, NOT counted in the bite loop below)");
+                    swipeDough = doughNow;
+                }
+
+                int now = husk.SwipesLanded + husk.SwipesDodged;
+                if (now > seen)
+                {
+                    seen = now;
+                    events++;
+                    player.InjectedMove = Vector2.zero;   // the dodge walk is over, whatever the outcome
+                    swipeDough = player.DoughIntegrity;   // swipe damage counts in this tracker too
+                    if (husk.LastSwipeDodged)
+                    {
+                        Emit("swipe: windup seen, the cookie was OUT of reach when the arm came down -> " +
+                             "DODGED, damage 0 (the windup is a real dodge window, not decoration)");
+                    }
+                    else
+                    {
+                        Emit("swipe: damage " + husk.LastSwipeDamage + "  (expected an integer in [" +
+                             Husk.SwipeDamageMin + "," + Husk.SwipeDamageMax + "])" +
+                             "  dough -> " + player.DoughIntegrity.ToString("0.0") +
+                             "  state " + player.DoughState +
+                             (player.FirstPerson ? "  [FIRST person]" : "  [third person]"));
+                    }
+                    if (events == 1) husk.transform.position = BehindSpot();          // step back in: next one lands
+                    if (events == 3)
+                    {
+                        player.SetFirstPerson(true);                                  // same hit, first person
+                        yield return null;
+                        yield return null;
+                        husk.transform.position = BehindSpot();
+                        Emit("the same swipe test in FIRST person — his model is ShadowsOnly there, but the damage must still land");
+                    }
+                }
+
+                // The Husk still walks; hold it at swat range whenever it is free to move. The phase
+                // must NOT have to be Idle: after the dodge (run 4) it closed to contact DURING its
+                // cooldown, reached the bite's 0.62 m, and chewed ten times before a single swipe
+                // could arm. Only a windup in flight is left alone.
+                if (husk.PhaseNow != Husk.SwipePhase.Windup &&
+                    Vector3.Distance(husk.transform.position, player.transform.position) > 1.3f)
+                    husk.transform.position = BehindSpot();
+            }
+
+            Emit("--- M41 swipe measured: " + (husk.SwipesLanded - land0) + " landed, " +
+                 (husk.SwipesDodged - dodge0) + " dodged; pool now " + player.DoughIntegrity.ToString("0.0") +
+                 " (the bites below start HERE, not at 100 — the swipe spends the same pool)");
+            if (events == 0)
+                Emit("FAIL: no swipe fired within " + SwipeWatchSeconds.ToString("0") + " s");
+        }
+
         // ---- bite, bite, bite ----------------------------------------------------------------------
         const int BitesPerSwallow = 4;   // shoot the wounds once they are on him, before the pool empties
         int bites = 0;
@@ -210,6 +452,26 @@ public class M38BiteSelfTest : MonoBehaviour
         float lastDough = player.DoughIntegrity;
         Vector3 prevPos = player.transform.position;
         float watching = 0f;
+        float dripTotal = 0f;
+        int bitesToEmpty = (int)(FarmWalkerController.MaxDough / FarmWalkerController.DoughBiteCost);
+        float poolAtBiteStart = player.DoughIntegrity;
+        // The swipe test has already spent a few dough off the same pool, so the bites below are expected
+        // to end the run at floor(pool/10) bites, not at the full-pool figure — the DIFF line states both.
+        int expectedBites = Mathf.Max(1, Mathf.FloorToInt(poolAtBiteStart / FarmWalkerController.DoughBiteCost));
+        bool biteRunHadDough = !player.IsCaught;   // the swipe melee may have emptied the pool already
+        Emit("the bite run starts with the pool at " + poolAtBiteStart.ToString("0.0") +
+             " (full pool is " + FarmWalkerController.MaxDough.ToString("0") + "; the swipe test spent the " +
+             "difference) -> " + expectedBites + " bites should empty it, and " + bitesToEmpty +
+             " bites empty a FULL pool (last night's format, for the diff)");
+
+        // M41 TUNE: the swipe is held OFF through the bite loop (Husk.SwipesEnabled) so every drop of
+        // 1/10 stays a BITE and the numbers diff against the previous runs.
+        //
+        // And the counter now separates the two clocks that were conflated last night: the rain spends
+        // ~0.08 dough per second (5/min) whether or not anything is chewing, and those drips were
+        // counted as "bites" with delta 0.0 — 14 phantom bites, pool stuck at 9.9, run never ended. A
+        // bite is a drop of at least half DoughBiteCost; anything smaller is drip, totalled separately.
+        husk.SwipesEnabled = false;
 
         // The creature is held ON the player's own cell — TryCatch's sameCell rule — and the harness
         // watches the POOL, counting each drop of 1/10 as one bite. It deliberately does NOT run a
@@ -218,14 +480,15 @@ public class M38BiteSelfTest : MonoBehaviour
         // bite landed inside every wait and was never counted: the pool emptied in half the bites it
         // should have and the report claimed five. Watching the pool counts the game's own bites, at
         // whatever rate the game actually lands them, and cannot double-count or miss one.
-        while (bites < 14 && !player.IsCaught)
+        while (bites < bitesToEmpty && !player.IsCaught)
         {
             husk.transform.position = player.transform.position + Vector3.up * 0.05f;
 
             float now = player.DoughIntegrity;
-            if (lastDough - now >= 0.01f)
+            float drop = lastDough - now;
+            if (drop >= FarmWalkerController.DoughBiteCost * 0.5f)
             {
-                float delta = lastDough - now;
+                float delta = drop;
                 float knock = Vector3.Distance(prevPos, player.transform.position);
                 knockTotal += knock;
                 bites++;
@@ -275,8 +538,7 @@ public class M38BiteSelfTest : MonoBehaviour
 
                     // Third person is the only view where he is drawn at all, so say what the material is
                     // doing HERE as well as there — the fade Todd rejected shows up in both numbers.
-                    ReportCookie(player, "at " + now.ToString("0.0") +
-                                 " dough, third person (the only view he is drawn in)");
+                    ReportCookie(player, "at " + now.ToString("0.0") + " dough, third person (the only view he is drawn in)");
 
                     yield return AimAndShoot(cam, p - fwd * 2.6f + Vector3.up * 1.05f, chest, "m38-bite-front.png");
                     yield return AimAndShoot(cam, p + flank * 2.4f + Vector3.up * 1.05f, chest, "m38-bite-side.png");
@@ -285,6 +547,12 @@ public class M38BiteSelfTest : MonoBehaviour
                     husk.enabled = huskWasEnabled;   // put it back to work for the rest of the bites
                     yield return null;
                 }
+            }
+            else if (drop >= 0.01f)
+            {
+                // The rain clock (and nothing else) — tracked so it is visible, never counted as a bite.
+                dripTotal += drop;
+                lastDough = now;
             }
 
             prevPos = player.transform.position;
@@ -298,6 +566,7 @@ public class M38BiteSelfTest : MonoBehaviour
                 break;
             }
         }
+        husk.SwipesEnabled = true;
 
         // ---- the totals ----------------------------------------------------------------------------
         // Read the END off the live player, not off the in-loop flag. TakeBite reports "the pool is
@@ -306,10 +575,10 @@ public class M38BiteSelfTest : MonoBehaviour
         // exactly how an earlier version of this report managed to say the run never ended with the pool
         // sitting at 0. The player's own state is the truth; the flag is only a hint.
         bool ended = runEnded || player.IsCaught;
-        int bitesToEmpty = (int)(FarmWalkerController.MaxDough / FarmWalkerController.DoughBiteCost);
 
         Emit("--- measured: " + bites + " bites landed; total shove " + knockTotal.ToString("0.0") +
-             " m (" + (bites > 0 ? (knockTotal / bites).ToString("0.00") : "0") + " m each); pool now " +
+             " m (" + (bites > 0 ? (knockTotal / bites).ToString("0.00") : "0") + " m each); rain/swipe drips " +
+             dripTotal.ToString("0.0") + " dough (NOT counted as bites); pool now " +
              player.DoughIntegrity.ToString("0.0") + "; run ended=" + ended);
 
         if (recoils.Count > 0)
@@ -325,17 +594,34 @@ public class M38BiteSelfTest : MonoBehaviour
         }
 
         Emit(ended
-            ? (bites >= bitesToEmpty
+            ? (!biteRunHadDough
+                ? "NOTE: the swipe melee spent the whole pool (bites at mid-range between swings are the " +
+                  "game's own rule) — the bite loop had nothing left to measure, and the run ended in the melee"
+                : bites >= expectedBites
                 ? "the run ended ONLY when the pool emptied: " + bites + " bites of " +
-                  FarmWalkerController.DoughBiteCost.ToString("0") + " off " +
-                  FarmWalkerController.MaxDough.ToString("0") + " is " + bitesToEmpty +
-                  " bites to die, and nothing ended the run before that"
+                  FarmWalkerController.DoughBiteCost.ToString("0") + " emptied the " +
+                  poolAtBiteStart.ToString("0.0") + "-dough pool this run, and " + bitesToEmpty +
+                  " bites empty a FULL " + FarmWalkerController.MaxDough.ToString("0") +
+                  "-dough pool (last night's figure, for the diff) — nothing ended the run before that"
                 : "WRONG: the run ended after " + bites + " bites, before the bites alone could empty the " +
-                  "pool (" + bitesToEmpty + " expected)")
+                  "pool (" + expectedBites + " expected from " + poolAtBiteStart.ToString("0.0") + " dough)")
             : "NOTE: the pool did not empty, so the bites never ended the run — " + bites +
               " bites landed and he is still walking");
 
         Finish(0);
+    }
+
+    /// <summary>Wait only until a screenshot file is FRESH — written this run. Never a fixed window:
+    /// last night's fixed 6 s waits are where the bite budget went. Gives up after maxWait seconds.</summary>
+    IEnumerator WaitForFreshShot(string path, float maxWait)
+    {
+        float waited = 0f;
+        while (waited < maxWait)
+        {
+            waited += Time.unscaledDeltaTime;
+            yield return null;
+            if (File.Exists(path) && File.GetLastWriteTimeUtc(path) >= _runStart) yield break;
+        }
     }
 
     /// <summary>

@@ -63,6 +63,32 @@ public sealed class Husk : MonoBehaviour
     /// </summary>
     public const float BiteRecoilSeconds = 2.0f;
 
+    // ---- M41 (Todd): the arm swipe --------------------------------------------------------------
+    // "arm swipe causes 1-3 damage". A SECOND close-range attack, not a bite variant: the bite is the
+    // catch (costs 10 of the 100-dough pool, leaves a wound, shoves him clear, Recoil 2.0 s), while the
+    // swipe is the lighter swat the Husk does with a sleeve when the cookie hovers just outside its
+    // mouth. It goes through the same dough clock TakeBite uses (§5: ONE health stat), but it adds no
+    // wound — the wound cap of 6 counts BITE marks, and a swat is not a bite.
+    //
+    // Fairness (§8): the swipe is DODGEABLE. It telegraphs for SwipeWindupSeconds, and only lands if
+    // the cookie is still inside SwipeStrikeRange when the arm comes down — backing out of the windup
+    // takes no damage. While a swipe is in flight the Husk cannot bite (TryCatch returns early), and
+    // while it chews it cannot start a swipe (the stagger guard returns first), so the two never stack.
+    /// <summary>Swipe damage per hit, integer, uniform in [1,3]. Todd's spec verbatim.</summary>
+    public const int SwipeDamageMin = 1;
+    public const int SwipeDamageMax = 3;
+    /// <summary>How close the cookie must hover for the Husk to start the windup. Deliberately beyond
+    /// CatchDistance (0.62) — a swipe the bite never reaches has no reason to exist.</summary>
+    public const float SwipeRange = 1.15f;
+    /// <summary>How far the strike reaches when the arm comes down. Dodge window = the difference.</summary>
+    public const float SwipeStrikeRange = 1.45f;
+    /// <summary>The telegraph. Long enough to back out of at WalkSpeed 4.4 (needs 0.3 s to clear 1.45 m
+    /// from 1.0 m), short enough that standing still is a mistake.</summary>
+    public const float SwipeWindupSeconds = 0.55f;
+    /// <summary>The arm coming down and settling. The Husk does not walk during it.</summary>
+    public const float SwipeRecoverSeconds = 0.40f;
+    public const float SwipeCooldownSeconds = 2.2f;
+
     /// <summary>§25.3: a thrown cob takes one third of this — 6 dough of 18.</summary>
     public const float MaxHealth = 18f;
     /// <summary>
@@ -94,6 +120,22 @@ public sealed class Husk : MonoBehaviour
     public float LastStaggerSeconds { get; private set; }
     public int HitsTaken { get; private set; }
     public bool Scattered { get; private set; }
+
+    // ---- M41: the arm swipe state ----------------------------------------------------------------
+    public enum SwipePhase { Idle, Windup, Recover, Cooldown }
+    /// <summary>Harness/verification view of the swipe: the phase, the count, and the last hit.</summary>
+    public SwipePhase PhaseNow => _swipePhase;
+    public int SwipesLanded { get; private set; }
+    public int SwipesDodged { get; private set; }
+    public int LastSwipeDamage { get; private set; }
+    public bool LastSwipeDodged { get; private set; }
+    /// <summary>The self-test harness holds this FALSE across the bite loop so the bite numbers stay
+    /// comparable with the previous runs (a swipe inside the mouth would spend 1-3 dough mid-bite and
+    /// shift every bite's arithmetic). In play it is always true.</summary>
+    public bool SwipesEnabled = true;
+    SwipePhase _swipePhase = SwipePhase.Idle;
+    float _swipeT;
+    bool _swipeLeftArm;   // alternate sleeves, so it is not one arm winding up forever
 
     MazeData _maze;
     FarmWalkerController _player;
@@ -442,6 +484,12 @@ public sealed class Husk : MonoBehaviour
         if (_player == null || _player.IsWon || _player.IsCaught)
             return;
 
+        // ---- M41: the arm swipe. It owns the frame entirely while it is in flight ----------------
+        // Returning here during Windup/Recover skips repath, movement AND TryCatch, so the Husk
+        // plants its feet to swing and cannot bite in the same window. During Cooldown it yields
+        // (movement resumes, and the bite is the close-range answer inside CatchDistance again).
+        if (UpdateSwipe()) return;
+
         _repathTimer -= Time.deltaTime;
         if (_repathTimer <= 0f)
         {
@@ -479,16 +527,18 @@ public sealed class Husk : MonoBehaviour
         }
 
         // The pose: a hop that lands as the surge dies, a roll, and a head that swings a beat behind.
-        if (_model != null && _flinch <= 0f && !_eating)
+        // A swipe in flight owns the pose (PoseSwipe writes the telegraph), so the lurch stands down.
+        bool swiping = _swipePhase == SwipePhase.Windup || _swipePhase == SwipePhase.Recover;
+        if (_model != null && _flinch <= 0f && !_eating && !swiping)
         {
             _model.localPosition = new Vector3(0f, Mathf.Max(0f, Mathf.Sin(_lurchPhase)) * LurchHop, 0f);
             _model.localRotation = Quaternion.Euler(Mathf.Cos(_lurchPhase) * 7f, 0f, Mathf.Sin(_lurchPhase) * LurchRoll);
         }
         if (_head != null && !_eating)
             _head.localRotation = _headRest * Quaternion.Euler(0f, 0f, Mathf.Sin(_lurchPhase - 0.9f) * 11f);
-        if (_sleeveL != null && !_eating)
+        if (_sleeveL != null && !_eating && !swiping)
             _sleeveL.localRotation = _sleeveRestL * Quaternion.Euler(0f, 0f, Mathf.Sin(_lurchPhase + 1.6f) * 13f);
-        if (_sleeveR != null && !_eating)
+        if (_sleeveR != null && !_eating && !swiping)
             _sleeveR.localRotation = _sleeveRestR * Quaternion.Euler(0f, 0f, Mathf.Sin(_lurchPhase - 1.6f) * 13f);
 
         // The stitched seam barely moves until it feeds.
@@ -535,6 +585,7 @@ public sealed class Husk : MonoBehaviour
         Scattered = true;
         StaggerLeft = 0f;
         _chewLeft = 0f;
+        _swipePhase = SwipePhase.Idle;   // M41: a scattered Husk is mid nothing
         _reformAt = Time.timeSinceLevelLoad + ReformSeconds;
         if (_model != null) _model.gameObject.SetActive(false);
     }
@@ -546,6 +597,7 @@ public sealed class Husk : MonoBehaviour
         HitsTaken = 0;
         _flinch = 0f;
         _chewLeft = 0f;
+        _swipePhase = SwipePhase.Idle;
         if (_model != null)
         {
             _model.gameObject.SetActive(true);
@@ -567,9 +619,143 @@ public sealed class Husk : MonoBehaviour
         }
     }
 
+    // --------------------------------------------------------------------------------------------
+    // M41 (Todd): the arm swipe — "arm swipe causes 1-3 damage"
+    //
+    // A second close-range attack beside the bite. The cookie hovers just outside the mouth
+    // (SwipeRange, past CatchDistance) and the Husk swats with a sleeve: a telegraphed windup the
+    // player can back out of, then a strike that only lands inside SwipeStrikeRange. Damage is a
+    // random integer 1-3, spent off the SAME dough clock the bite and the rain use — §5 says there
+    // is one health stat — through FarmWalkerController.TakeSwipeDamage. It adds no wound: the six
+    // wound slots are BITE marks, and a swat is not a bite.
+    //
+    // It cannot stack with the bite: while a swipe is in flight Update returns above and TryCatch is
+    // never reached, and TryCatch refuses to fire while the phase is not Idle — so there is no frame
+    // on which both can land, and the bite's recoil (2.0 s) blocks any swipe starting mid-chew.
+    // --------------------------------------------------------------------------------------------
+
+    /// <summary>Drives the swipe. TRUE while the swipe owns this frame (the walk and TryCatch stand
+    /// down); FALSE when the Husk is free to walk and bite.</summary>
+    bool UpdateSwipe()
+    {
+        if (_swipePhase == SwipePhase.Idle)
+        {
+            if (!SwipesEnabled) return false;
+            Vector3 flat = _player.transform.position - transform.position;
+            flat.y = 0f;
+            float d = flat.magnitude;
+            // The swipe is the JUST-OUTSIDE-THE-MOUTH attack. At contact (CatchDistance) the bite owns
+            // the range, so a swipe never pre-empts the catch that walks into it.
+            if (d > SwipeRange || d <= CatchDistance) return false;
+            _swipePhase = SwipePhase.Windup;
+            _swipeT = SwipeWindupSeconds;
+            _swipeLeftArm = !_swipeLeftArm;
+            return true;
+        }
+
+        if (_swipePhase == SwipePhase.Windup)
+        {
+            _swipeT -= Time.deltaTime;
+            PoseSwipe(1f - Mathf.Clamp01(_swipeT / SwipeWindupSeconds));
+            if (_swipeT <= 0f) StrikeSwipe();
+            return true;
+        }
+
+        if (_swipePhase == SwipePhase.Cooldown)
+        {
+            // Re-arming. The TIMER ALWAYS RUNS — the first cut froze it while the cookie hovered in the
+            // band, and a Husk frozen mid-cooldown is a statue: no swipe, no bite, nothing (measured:
+            // 17 s parked at d=1.00 in the diag run). While the cookie stays in the swipe band the
+            // timer runs but the Husk PLANTS — it does not walk into the bite's contact range, because
+            // the swipe band is the swipe's to own. Far away, cooldown is just walking time.
+            _swipeT -= Time.deltaTime;
+            Vector3 flat = _player.transform.position - transform.position;
+            flat.y = 0f;
+            float d = flat.magnitude;
+            bool inBand = d <= SwipeRange && d > CatchDistance;
+            if (_swipeT <= 0f)
+            {
+                _swipePhase = SwipePhase.Idle;
+                // Hand the pose back exactly as the lurch left it, so nothing snaps on the frame after.
+                if (_model != null) _model.localRotation = Quaternion.identity;
+                if (_sleeveL != null) _sleeveL.localRotation = _sleeveRestL;
+                if (_sleeveR != null) _sleeveR.localRotation = _sleeveRestR;
+                return inBand;   // still in band: one planted frame, then Idle arms the next windup
+            }
+            return inBand;
+        }
+
+        // Recover: the arm swings through and settles. The strike already happened.
+        _swipeT -= Time.deltaTime;
+        PoseSwipe(Mathf.Max(0f, 1f - _swipeT / SwipeRecoverSeconds) * 0.5f);
+        if (_swipeT <= 0f)
+        {
+            _swipePhase = SwipePhase.Cooldown;
+            _swipeT = SwipeCooldownSeconds;
+            return true;
+        }
+        return true;
+    }
+
+    /// <summary>The arm comes down. Landed or dodged is decided HERE, on the strike frame, by where
+    /// the cookie actually is — the windup is only the promise, distance is the truth.</summary>
+    void StrikeSwipe()
+    {
+        _swipePhase = SwipePhase.Recover;
+        _swipeT = SwipeRecoverSeconds;
+
+        Vector3 flat = _player.transform.position - transform.position;
+        flat.y = 0f;
+        if (flat.magnitude <= SwipeStrikeRange && !_player.IsCaught)
+        {
+            int damage = Random.Range(SwipeDamageMin, SwipeDamageMax + 1);
+            LastSwipeDamage = damage;
+            LastSwipeDodged = false;
+            SwipesLanded++;
+            // The same dough clock TakeBite advances; no wound, no shove — a swat is the lighter hit.
+            bool poolGone = _player.TakeSwipeDamage(damage);
+            if (poolGone)
+            {
+                // The pool emptied under the swipe. The bite path owns the end of the run (BeginEaten
+                // is reached only through TryCatch), so step straight into the feed.
+                StaggerLeft = 0f;
+                TryCatch();
+            }
+        }
+        else
+        {
+            LastSwipeDodged = true;
+            SwipesDodged++;
+        }
+    }
+
+    /// <summary>The telegraph: the sleeve rears up (primitives path) or the whole body leans back and
+    /// winds (supplied-model path, which has no sleeve transforms to name). At u=0 this is the rest
+    /// pose, at u=1 the arm is fully back, and Recover eases it down through the same curve.</summary>
+    void PoseSwipe(float u)
+    {
+        float back = Mathf.Sin(u * Mathf.PI * 0.5f);
+        if (_model != null)
+            _model.localRotation = Quaternion.Euler(-16f * back, 0f, (_swipeLeftArm ? 1f : -1f) * 10f * back);
+        var wind = _swipeLeftArm ? _sleeveL : _sleeveR;
+        var rest = _swipeLeftArm ? _sleeveRestL : _sleeveRestR;
+        if (wind != null)
+            wind.localRotation = rest * Quaternion.Euler(0f, 0f, (_swipeLeftArm ? 1f : -1f) * 62f * back);
+    }
+
     void TryCatch()
     {
         if (_caughtPlayer || _eating || _player == null) return;
+        // M41: the swipe owns its band. While a swipe is in flight (Windup/Recover) or the Husk is
+        // planted re-arming (Cooldown) with the cookie still in the band (CatchDistance, SwipeRange],
+        // the bite cannot fire — no frame on which both land, and no chewing over a swing. CONTACT is
+        // always the bite's: inside CatchDistance the catch goes through whatever the arm is doing.
+        if (_swipePhase != SwipePhase.Idle)
+        {
+            Vector3 band = _player.transform.position - transform.position;
+            band.y = 0f;
+            if (band.magnitude > CatchDistance) return;
+        }
         var myCell = _maze.NearestPathCell(transform.position);
         var theirCell = _maze.NearestPathCell(_player.transform.position);
         Vector3 flat = _player.transform.position - transform.position;

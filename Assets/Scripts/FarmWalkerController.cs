@@ -234,6 +234,13 @@ public sealed class FarmWalkerController : MonoBehaviour
     float _yaw;
     float _pitch = 22f;
     float _vertical;
+    /// <summary>M40 (Todd: "husk jumps when I jump"): the height of the LANE under the walker, not of the
+    /// walker himself. Both camera modes used to take their height straight from <c>transform.position</c>,
+    /// so the instant he jumped the camera rode up with him and every OTHER thing in the world — the Husk
+    /// included — appeared to drop 0.85 m and spring back. That IS the "Husk jumps when I jump": the field
+    /// moved, not the creature. The boom now rides the ground and only the COOKIE rises in the frame.</summary>
+    float _groundY;
+    bool _groundYSet;
     float _walkPhase;
     float _walkBlend;
     Vector3 _travel;
@@ -592,6 +599,14 @@ public sealed class FarmWalkerController : MonoBehaviour
         if (_body.isGrounded) _vertical = -1f;
         else _vertical -= Gravity * Time.deltaTime;
 
+        // M40: remember the LANE's height while he is standing on it. Airborne frames keep the last
+        // grounded value, so the camera cannot climb with the jump — see the fields above.
+        if (_body.isGrounded)
+        {
+            _groundY = transform.position.y;
+            _groundYSet = true;
+        }
+
         // M39 (Todd, 2026-09-26): SPACE jumps. Read HERE — below the frozen/won/caught returns above —
         // so a jump cannot fire in the front end or on a dead run; those paths call ApplyGravityOnly and
         // never reach this line. GetKeyDown (not GetKey) is what makes it a single launch: holding Space
@@ -736,6 +751,30 @@ public sealed class FarmWalkerController : MonoBehaviour
         Knockback(awayFromHusk);
         return false;
     }
+
+    /// <summary>
+    /// M41 (Todd): "arm swipe causes 1-3 damage". The Husk's second close-range attack spends the SAME
+    /// dough clock the bite and the rain do (§5 — one health stat), advancing _rainExposure by exactly
+    /// the damage's fraction of the pool so UpdateDissolveFromRain cannot drag it back out. It adds NO
+    /// bite wound (the cap of 6 counts bite marks; a swat is not a bite) and NO knockback — the bite
+    /// keeps its role as the heavy hit that clears the corner. Returns TRUE only when the pool is
+    /// empty, the single fail state, exactly as TakeBite does.
+    /// </summary>
+    public bool TakeSwipeDamage(int damage)
+    {
+        if (_caught || _won || _eating) return false;
+
+        float fraction = Mathf.Clamp01(damage / MaxDough);
+        _rainExposure += fraction * DissolveRainSeconds;
+        _dissolve = Mathf.Clamp01(_dissolve + fraction);
+        SwipesTaken++;
+        ApplyDissolve(_dissolve);
+
+        return _dissolve >= 1f;
+    }
+
+    /// <summary>M41: swipes the Husk has landed on this cookie, for the report and the HUD if it wants them.</summary>
+    public int SwipesTaken { get; private set; }
 
     void Knockback(Vector3 awayFromHusk)
     {
@@ -910,7 +949,12 @@ public sealed class FarmWalkerController : MonoBehaviour
 
         float lookUp = Mathf.Clamp01((-_pitch) / 87f);
         float pivotY = 1.15f + lookUp * 0.95f;
-        _camRig.position = transform.position + Vector3.up * pivotY;
+        // M40 (Todd: "husk jumps when I jump"): the rig's HEIGHT comes from the LANE, not from the walker.
+        // Third person is the mode he plays in — the cookie is only drawn there — and with the rig riding
+        // his own y a jump lifted the camera 0.85 m, which dropped the whole field (the Husk included) by
+        // the same amount and then sprang it back. Riding the lane makes the jump read as the COOKIE rising.
+        float rigBaseY = _groundYSet ? _groundY : transform.position.y;
+        _camRig.position = new Vector3(transform.position.x, rigBaseY + pivotY, transform.position.z);
 
         float lean = StormWeather.GustPush * 1.6f;
         float roll = Mathf.Sin(Time.time * 1.35f) * lean;
@@ -954,7 +998,7 @@ public sealed class FarmWalkerController : MonoBehaviour
             && Physics.SphereCast(_camRig.position, 0.18f, desired - _camRig.position, out var hit, castDist, ~0, QueryTriggerInteraction.Ignore))
         {
             desired = hit.point + hit.normal * 0.22f;
-            float floorY = transform.position.y + 0.55f + lookUp * 0.85f;
+            float floorY = rigBaseY + 0.55f + lookUp * 0.85f;
             if (desired.y < floorY)
                 desired.y = floorY;
         }
