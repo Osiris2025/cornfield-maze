@@ -949,9 +949,11 @@ public sealed class Husk : MonoBehaviour
         animator.applyRootMotion = false;
 
         var clips = Resources.LoadAll<AnimationClip>(ModelClipFolder);
+        Debug.Log("Husk: animation clips found under Resources/" + ModelClipFolder + ": " + (clips != null ? clips.Length : 0));
         if (clips != null && clips.Length > 0)
         {
             var clip = clips[0];
+            Debug.Log("Husk: playing clip '" + clip.name + "', length=" + clip.length.ToString("0.00") + "s, framerate=" + clip.frameRate);
             _walkGraph = PlayableGraph.Create("HuskWalk");
             var play = AnimationClipPlayable.Create(_walkGraph, clip);
             AnimationPlayableOutput.Create(_walkGraph, "walk", animator).SetSourcePlayable(play);
