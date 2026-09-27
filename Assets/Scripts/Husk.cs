@@ -959,7 +959,11 @@ public sealed class Husk : MonoBehaviour
         Debug.Log("Husk: animation clips found under Resources/" + ModelClipFolder + ": " + (clips != null ? clips.Length : 0));
         if (clips != null && clips.Length > 0)
         {
+            // M42: prefer the OrcWalk clip if it was dropped in
             var clip = clips[0];
+            for (int i = 0; i < clips.Length; i++)
+                if (clips[i].name.IndexOf("OrcWalk", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    { clip = clips[i]; break; }
             Debug.Log("Husk: playing clip '" + clip.name + "', length=" + clip.length.ToString("0.00") + "s, framerate=" + clip.frameRate + ", legacy=" + clip.legacy);
             anim.AddClip(clip, clip.name);
             var state = anim[clip.name];
