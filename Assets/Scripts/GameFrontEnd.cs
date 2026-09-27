@@ -252,10 +252,9 @@ public sealed class GameFrontEnd : MonoBehaviour
 
         bool playing = stage == Stage.Playing;
         IsPlaying = playing;
-        // M42: the intro flyby has its own camera — don't freeze the player during it.
-        // The player can't see where they're going (flyby cam replaces theirs), but Frozen
-        // blocks ALL input including the skip key, which is the lockout the user reports.
-        if (_player != null) _player.Frozen = !playing && stage != Stage.Intro;
+        // M42: freeze the player during intro flyby (WASD blocked, Space skip still works
+        // because GameFrontEnd.Update handles Space independently of Frozen).
+        if (_player != null) _player.Frozen = !playing;
         MobileControls.Suppressed = !playing;
 
         // Only the pause screen stops the world. The title, help and introduction must stay alive.
