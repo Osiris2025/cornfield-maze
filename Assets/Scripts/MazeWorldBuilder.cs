@@ -327,6 +327,10 @@ public static class MazeWorldBuilder
             light = go.AddComponent<Light>();
             light.type = LightType.Directional;
         }
+        else
+        {
+            light.name = "Sun";   // DuskSky.FindSunLight() matches by name; rename the default
+        }
 
         light.color = new Color(1f, 0.86f, 0.55f);
         light.intensity = 1.35f;

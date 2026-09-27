@@ -8,7 +8,7 @@ A third-person Unity 6 game: you play as a gingerbread cookie running through a 
 2. In Unity Hub, choose **Add** → **Add project from disk**.
 3. Select this folder:
 
-   `/Users/arl480/Unity_Projects/CornFieldMaze`
+   `/Volumes/files1/projects/cornmaze/CornFieldMaze`
 
 4. Open **Assets/Scenes/CornMaze** (created on first editor setup) and press **Play**.
 
@@ -93,7 +93,7 @@ A Unity iOS build produces an **Xcode project**, not an `.ipa` by itself. That i
 
 The generated project is:
 
-`/Users/arl480/Unity_Projects/CornFieldMaze/Builds/iOS/Unity-iPhone.xcodeproj`
+`/Volumes/files1/projects/cornmaze/CornFieldMaze/Builds/iOS/Unity-iPhone.xcodeproj`
 
 **Xcode is required** to install the game on a phone. This Mac currently has only Command Line Tools (`xcode-select` points at `/Library/Developer/CommandLineTools`). There is no `/Applications/Xcode.app`, so `xcodebuild` cannot sign or install a device app from the command line. Install Xcode from the Mac App Store, then open that `.xcodeproj`.
 
@@ -134,9 +134,9 @@ In the Unity editor: **Corn Maze → Build iOS Xcode Project** (writes `Builds/i
 ```bash
 "/Applications/Unity/Hub/Editor/6000.3.23f1/Unity.app/Contents/MacOS/Unity" \
   -batchmode -nographics -quit \
-  -projectPath "/Users/arl480/Unity_Projects/CornFieldMaze" \
+  -projectPath "/Volumes/files1/projects/cornmaze/CornFieldMaze" \
   -executeMethod CornMaze.EditorTools.CornMazeSetup.BuildIosPlayer \
-  -logFile "/Users/arl480/Unity_Projects/CornFieldMaze/Builds/ios-build.log"
+  -logFile "/Volumes/files1/projects/cornmaze/CornFieldMaze/Builds/ios-build.log"
 ```
 
 You also need **iOS Build Support** installed for Unity 6000.3.23f1 (Unity Hub → Installs → Add modules). The standalone macOS app (`Corn Maze → Build Standalone macOS App`) is unchanged.
