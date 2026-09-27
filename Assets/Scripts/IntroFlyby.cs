@@ -235,15 +235,6 @@ public sealed class IntroFlyby : MonoBehaviour
         outline.effectDistance = new Vector2(2f, -2f);
     }
 
-    void Update()
-    {
-        if (!_skipped && (Input.GetKeyDown(KeyCode.Space) || Input.GetMouseButtonDown(0)))
-        {
-            _skipped = true;
-            if (_mouth != null) _mouth.Visible = false;
-        }
-    }
-
     static float EaseInOutCubic(float t) =>
         t < 0.5f ? 4f * t * t * t : 1f - Mathf.Pow(-2f * t + 2f, 3f) / 2f;
 
