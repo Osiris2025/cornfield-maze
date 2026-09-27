@@ -30,14 +30,14 @@ public static class IntroVoice
         {
             float t = i / (float)SampleRate;
             float freq = BasePitch + Mathf.Sin(2f * Mathf.PI * VibratoRate * t) * VibratoDepth;
-            float phase = (i * freq / SampleRate) % 1f;
-            float sample = phase < 0.5f ? 0.8f : -0.8f;
-            float syllableT = (t % 0.16f) / 0.16f;
-            float envelope = syllableT < 0.1f ? syllableT / 0.1f :
-                             syllableT > 0.85f ? (1f - syllableT) / 0.15f : 1f;
-            float fadeIn = Mathf.Clamp01(t / 0.04f);
-            float fadeOut = Mathf.Clamp01((totalDuration - t) / 0.06f);
-            data[i] = sample * envelope * fadeIn * fadeOut * 0.32f;
+            float phase = (i * freq / SampleRate);
+            float sample = Mathf.Sin(2f * Mathf.PI * phase);   // sine wave — softer, squeaky
+            float syllableT = (t % 0.12f) / 0.12f;              // faster syllables
+            float envelope = syllableT < 0.08f ? syllableT / 0.08f :
+                             syllableT > 0.82f ? (1f - syllableT) / 0.18f : 1f;
+            float fadeIn = Mathf.Clamp01(t / 0.03f);
+            float fadeOut = Mathf.Clamp01((totalDuration - t) / 0.04f);
+            data[i] = sample * envelope * fadeIn * fadeOut * 0.28f;
         }
 
         clip.SetData(data, 0);
