@@ -15,9 +15,8 @@ public sealed class IntroFlyby : MonoBehaviour
     public System.Action OnComplete;
 
     const string Dialogue =
-        "I'm lost! Can you help me find my way out of this maze? I'm scared — " +
-        "there is something called The Husk that is chasing me! " +
-        "I don't know what he will do if he catches me!";
+        "I'm lost! Can you help me find my way out of this maze? " +
+        "There's something called The Husk chasing me — I'm scared!";
 
     Camera _flycam;
     Canvas _subCanvas;
