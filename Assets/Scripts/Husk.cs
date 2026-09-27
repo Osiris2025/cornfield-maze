@@ -769,11 +769,14 @@ public sealed class Husk : MonoBehaviour
         float back = Mathf.Sin(u * Mathf.PI * 0.5f);
         if (UsingModel && _lArm != null && _rArm != null)
         {
-            // M42: the FBX model has real arm bones — wind the swiping arm back
+            // M42: the FBX model has real arm bones — wind the swiping arm back and up
             var arm = _swipeLeftArm ? _lArm : _rArm;
             float sideSign = _swipeLeftArm ? 1f : -1f;
-            // Rotate the swiping arm back and up (windup), the other arm stays at rest
-            arm.localRotation = Quaternion.Euler(-30f * back, 0f, sideSign * 50f * back);
+            // Windup: arm goes back and up, ready to strike down
+            arm.localRotation = Quaternion.Euler(-50f * back, 0f, sideSign * 75f * back);
+            // The other arm also rises slightly — threatening posture
+            var other = _swipeLeftArm ? _rArm : _lArm;
+            other.localRotation = Quaternion.Euler(-15f * back, 0f, -sideSign * 20f * back);
         }
         else if (_model != null)
         {
@@ -1146,12 +1149,12 @@ public sealed class Husk : MonoBehaviour
     {
         if (_player == null) return;
         float dist = Vector3.Distance(transform.position, _player.transform.position);
-        float graspRange = CatchDistance * 1.4f;  // arms start reaching just outside bite range
+        float graspRange = CatchDistance * 2.0f;  // arms start reaching well outside bite range
         float t = dist < CatchDistance ? 1f : Mathf.Clamp01(1f - (dist - CatchDistance) / (graspRange - CatchDistance));
 
         if (_lArm != null)
-            _lArm.localRotation = Quaternion.Slerp(_lArm.localRotation, Quaternion.Euler(50f * t, 0f, -15f * t), 8f * Time.deltaTime);
+            _lArm.localRotation = Quaternion.Slerp(_lArm.localRotation, Quaternion.Euler(t > 0.9f ? 80f : 65f * t, 0f, -18f * t), 12f * Time.deltaTime);
         if (_rArm != null)
-            _rArm.localRotation = Quaternion.Slerp(_rArm.localRotation, Quaternion.Euler(50f * t, 0f, 15f * t), 8f * Time.deltaTime);
+            _rArm.localRotation = Quaternion.Slerp(_rArm.localRotation, Quaternion.Euler(t > 0.9f ? 80f : 65f * t, 0f, 18f * t), 12f * Time.deltaTime);
     }
 }
