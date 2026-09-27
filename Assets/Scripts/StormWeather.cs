@@ -23,6 +23,8 @@ public sealed class StormWeather : MonoBehaviour
     AudioSource _thunder;
     AudioSource _rumble;
     AudioSource _stormWind;
+    AudioSource _rainNormal;     // M42: real rain & thunder ogg
+    AudioSource _rainHard;       // M42: real hard rain wav
     AudioClip[] _thunders;
 
     Color _fogCalm;
@@ -83,6 +85,12 @@ public sealed class StormWeather : MonoBehaviour
             if (!_stormWind.isPlaying)
                 _stormWind.Play();
         }
+        if (_rainNormal != null && _rainNormal.clip != null)
+        {
+            _rainNormal.mute = false;
+            if (!_rainNormal.isPlaying)
+                _rainNormal.Play();
+        }
     }
 
     void Start()
@@ -131,6 +139,11 @@ public sealed class StormWeather : MonoBehaviour
         _stormWind = MakeSource("StormWind", 0f, 0f, true, 56);
         _rumble.clip = StormSynth.RumbleLoop(10f);
         _stormWind.clip = StormSynth.HardWind(9f);
+        _rainNormal = MakeSource("RainNormal", 0f, 0f, true, 50);
+        _rainHard   = MakeSource("RainHard",   0f, 0f, true, 48);
+        _rainNormal.clip = Resources.Load<AudioClip>("Audio/rain_and_thunder");
+        _rainHard.clip   = Resources.Load<AudioClip>("Audio/hard_rain");
+        _rainNormal.Play();
         _rumble.Play();
         _stormWind.Play();
 
@@ -286,6 +299,18 @@ public sealed class StormWeather : MonoBehaviour
             _stormWind.volume = Mathf.Min(0.38f, storm * (0.14f + 0.24f * gust)) * winDuck;
             _stormWind.panStereo = Mathf.Sin(Time.time * 0.11f) * 0.34f;
             _stormWind.pitch = 0.94f + 0.10f * gust;
+        }
+        if (_rainNormal != null)
+        {
+            _rainNormal.volume = Mathf.Min(0.40f, storm * 0.45f) * winDuck;
+            _rainNormal.pitch = 1f;
+        }
+        if (_rainHard != null)
+        {
+            // Hard rain kicks in above 0.7 storm intensity
+            float hardFeather = Mathf.Clamp01((storm - 0.7f) / 0.3f);
+            _rainHard.volume = Mathf.Min(0.32f, hardFeather * 0.38f) * winDuck;
+            _rainHard.pitch = 1f;
         }
     }
 

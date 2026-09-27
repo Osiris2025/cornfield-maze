@@ -57,6 +57,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
     AudioSource _wind;
     AudioSource _howl;
     AudioSource _rustle;
+    AudioSource _environmental;   // M42: background environmental bed from ogg
     AudioSource _brush;
     AudioSource _stalkLow;
     AudioSource _win;
@@ -108,6 +109,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
         RestartIfNeeded(_wind);
         RestartIfNeeded(_howl);
         RestartIfNeeded(_rustle);
+        RestartIfNeeded(_environmental);
         RestartIfNeeded(_brush);
         if (WinThemePlaying)
             RestartIfNeeded(_win);
@@ -129,6 +131,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
         _wind = MakeSource("Wind", WindVol, 0f, true, 110);
         _howl = MakeSource("Howl", HowlVol, 0f, true, 118);
         _rustle = MakeSource("Rustle", RustleVol, 0.30f, true, 128);
+        _environmental = MakeSource("Environmental", 0.18f, 0f, true, 110);
         _brush = MakeSource("Brush", 0f, 0.42f, true, 132);
         // M26: the low partial that only exists when the thing is in the stalks beside you.
         _stalkLow = MakeSource("StalkLow", 0f, 0.34f, true, 130);
@@ -144,6 +147,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
         _wind.clip = MazeMoodSynth.Wind(10f);
         _howl.clip = MazeMoodSynth.HollowHowl(12f);
         _rustle.clip = MazeMoodSynth.CornRustle(8f);
+        _environmental.clip = Resources.Load<AudioClip>("Audio/background_environmental");
         _brush.clip = MazeMoodSynth.CornBrush(5f);
         _stalkLow.clip = MazeMoodSynth.StalkLow(4f);
         _win.clip = MazeMoodSynth.GoldStrike(6.4f);
@@ -153,6 +157,7 @@ public sealed class MazeMoodAudio : MonoBehaviour
         _wind.Play();
         _howl.Play();
         _rustle.Play();
+        _environmental.Play();
         _brush.Play();
         _stalkLow.Play();
         Gust01 = 0.22f;
@@ -224,6 +229,11 @@ public sealed class MazeMoodAudio : MonoBehaviour
                            (0.36f + 0.42f * Gust01) * (1f + 0.40f * _move) * (1f + 1.55f * storm);
             _rustle.volume = Mathf.Min(0.40f, rustle) * (1f - 0.40f * _winMix);
             _rustle.pitch = 1f + 0.04f * Threat01 + 0.028f * _move + 0.06f * storm;
+        }
+        if (_environmental != null)
+        {
+            _environmental.volume = 0.18f * (1f - 0.30f * _winMix);
+            _environmental.pitch = 1f;
         }
         if (_stalkLow != null)
         {

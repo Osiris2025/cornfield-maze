@@ -142,7 +142,23 @@ public sealed class IntroFlyby : MonoBehaviour
 
     IEnumerator SpeakDialogue()
     {
-        var (clip, wordTimings) = IntroVoice.BuildLine(Dialogue, 0.82f);
+        // M42: use the real voice recording instead of procedural synth
+        var clip = Resources.Load<AudioClip>("Audio/gingy_vioce_over");
+        var wordTimings = new (float start, float end)[0];
+        if (clip == null)
+        {
+            Debug.LogWarning("IntroFlyby: gingy_vioce_over.mp3 not found in Resources/Audio — falling back to procedural voice");
+            (clip, wordTimings) = IntroVoice.BuildLine(Dialogue, 0.82f);
+        }
+        else
+        {
+            // Generate synthetic word timings evenly distributed over the real clip length
+            var spokenWords = Dialogue.Split(' ');
+            float wordDur = clip.length / Mathf.Max(1, spokenWords.Length);
+            wordTimings = new (float start, float end)[spokenWords.Length];
+            for (int w = 0; w < spokenWords.Length; w++)
+                wordTimings[w] = (w * wordDur, (w + 1) * wordDur);
+        }
 
         var voiceSource = _flycam.gameObject.AddComponent<AudioSource>();
         voiceSource.spatialBlend = 0f;
