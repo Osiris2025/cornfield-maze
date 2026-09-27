@@ -959,6 +959,15 @@ public sealed class Husk : MonoBehaviour
         if (animator == null) animator = inst.AddComponent<Animator>();
         animator.applyRootMotion = false;
 
+        // M42: build a Generic Avatar so the Animator can map the clip's bone data onto the
+        // SkinnedMeshRenderer. Without this, the PlayableGraph plays the clip but the Animator
+        // has no bone map — the creature just floats.
+        if (animator.avatar == null || !animator.avatar.isValid)
+        {
+            var avatar = AvatarBuilder.BuildGenericAvatar(inst, "");
+            if (avatar != null) animator.avatar = avatar;
+        }
+
         var clips = Resources.LoadAll<AnimationClip>(ModelClipFolder);
         Debug.Log("Husk: animation clips found under Resources/" + ModelClipFolder + ": " + (clips != null ? clips.Length : 0));
         if (clips != null && clips.Length > 0)
