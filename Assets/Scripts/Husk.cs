@@ -1,7 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 
 /// <summary>
 /// THE HUSK — the thing that chases Gingy. What is left of a corn plant once it is stripped.
@@ -141,6 +139,7 @@ public sealed class Husk : MonoBehaviour
     FarmWalkerController _player;
     Transform _model;
     Transform _jaw;
+    Transform _lArm, _rArm;              // M42: arm bones for proximity grasp
     Transform _mouthAnchor;
     Vector2Int _goalCell;
     Vector3 _travel = Vector3.forward;
@@ -166,7 +165,7 @@ public sealed class Husk : MonoBehaviour
     Quaternion _sleeveRestL;
     Quaternion _sleeveRestR;
     float _lurchPhase;
-    PlayableGraph _walkGraph;         // M35: the supplied walk clip, played straight off the model
+    
 
     /// <summary>M28: the measured height of the built creature, from its own renderer bounds.</summary>
     public float HeightMeters { get; private set; }
@@ -544,6 +543,9 @@ public sealed class Husk : MonoBehaviour
         // The stitched seam barely moves until it feeds.
         if (_jaw != null && !_eating)
             _jaw.localRotation = Quaternion.Euler(2f + Mathf.Sin(Time.time * 1.7f) * 2f, 0f, 0f);
+
+        // M42: arms reach forward when close to the cookie
+        if (UsingModel) ApplyGrasp();
 
         TryCatch();
     }
@@ -944,9 +946,8 @@ public sealed class Husk : MonoBehaviour
         foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
             r.sharedMaterial = mat;
 
-        var animator = inst.GetComponentInChildren<Animator>();
-        if (animator == null) animator = inst.AddComponent<Animator>();
-        animator.applyRootMotion = false;
+        var anim = inst.GetComponent<Animation>();
+        if (anim == null) anim = inst.AddComponent<Animation>();
 
         var clips = Resources.LoadAll<AnimationClip>(ModelClipFolder);
         Debug.Log("Husk: animation clips found under Resources/" + ModelClipFolder + ": " + (clips != null ? clips.Length : 0));
@@ -954,19 +955,23 @@ public sealed class Husk : MonoBehaviour
         {
             var clip = clips[0];
             Debug.Log("Husk: playing clip '" + clip.name + "', length=" + clip.length.ToString("0.00") + "s, framerate=" + clip.frameRate);
-            _walkGraph = PlayableGraph.Create("HuskWalk");
-            var play = AnimationClipPlayable.Create(_walkGraph, clip);
-            AnimationPlayableOutput.Create(_walkGraph, "walk", animator).SetSourcePlayable(play);
-            _walkGraph.Play();
+            clip.wrapMode = WrapMode.Loop;
+            anim.AddClip(clip, clip.name);
+            anim.Play(clip.name);
             ModelClipName = clip.name;
-            // Desync the phase: a chaser that steps in lock with the world's clock reads as clockwork.
-            play.SetTime(Time.timeSinceLevelLoad % Mathf.Max(0.01f, clip.length));
+            // Desync the phase
+            float rand = Random.Range(0f, clip.length);
+            foreach (AnimationState s in anim)
+                s.time = rand;
         }
         else
         {
             Debug.LogWarning("Husk: model loaded but no AnimationClip under Resources/" + ModelClipFolder +
                              " — it will stand in its bind pose");
         }
+
+        // M42: find arm bones for proximity grasp
+        FindArmBones(inst.transform);
 
         // M36: what the model actually builds. The M28 fields were left at zero by the model path, which is
         // why the built app reported this creature as "0.00 m tall, widest 0.00 m across" while its own
@@ -1017,7 +1022,7 @@ public sealed class Husk : MonoBehaviour
 
     void OnDestroy()
     {
-        if (_walkGraph.IsValid()) _walkGraph.Destroy();
+        
     }
 
     static Transform Joint(Transform parent, string name, Vector3 localPos)
@@ -1039,5 +1044,35 @@ public sealed class Husk : MonoBehaviour
         go.GetComponent<Renderer>().sharedMaterial = mat;
         Object.Destroy(go.GetComponent<Collider>());
         return go.transform;
+    }
+
+    // ---- M42: arm grasp when close -------------------------------------------------
+    void FindArmBones(Transform root)
+    {
+        FindArmBone(root, ref _lArm, "left");
+        FindArmBone(root, ref _rArm, "right");
+    }
+
+    void FindArmBone(Transform node, ref Transform found, string side)
+    {
+        string lower = node.name.ToLowerInvariant();
+        if (lower.Contains("arm") && lower.Contains(side) && !lower.Contains("fore"))
+            found = node;
+        foreach (Transform child in node)
+            FindArmBone(child, ref found, side);
+    }
+
+    /// <summary>Rotate arms forward when the Husk is within reach, grasping for the cookie.</summary>
+    void ApplyGrasp()
+    {
+        if (_player == null) return;
+        float dist = Vector3.Distance(transform.position, _player.transform.position);
+        float graspRange = CatchDistance * 1.4f;  // arms start reaching just outside bite range
+        float t = dist < CatchDistance ? 1f : Mathf.Clamp01(1f - (dist - CatchDistance) / (graspRange - CatchDistance));
+
+        if (_lArm != null)
+            _lArm.localRotation = Quaternion.Slerp(_lArm.localRotation, Quaternion.Euler(50f * t, 0f, -15f * t), 8f * Time.deltaTime);
+        if (_rArm != null)
+            _rArm.localRotation = Quaternion.Slerp(_rArm.localRotation, Quaternion.Euler(50f * t, 0f, 15f * t), 8f * Time.deltaTime);
     }
 }
