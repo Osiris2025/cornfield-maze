@@ -165,6 +165,7 @@ public sealed class Husk : MonoBehaviour
     Quaternion _sleeveRestL;
     Quaternion _sleeveRestR;
     float _lurchPhase;
+    float _lastSwipePose;    // M42: stored from Update, re-applied in LateUpdate to beat Animation
     
 
     /// <summary>M28: the measured height of the built creature, from its own renderer bounds.</summary>
@@ -546,11 +547,31 @@ public sealed class Husk : MonoBehaviour
         if (_jaw != null && !_eating)
             _jaw.localRotation = Quaternion.Euler(2f + Mathf.Sin(Time.time * 1.7f) * 2f, 0f, 0f);
 
-        // M42: arms reach forward when close to the cookie (not during a swipe — swipe owns the arms)
-        bool swipingOrEating = _swipePhase == SwipePhase.Windup || _swipePhase == SwipePhase.Recover || _eating;
-        if (UsingModel && !swipingOrEating) ApplyGrasp();
-
         TryCatch();
+    }
+
+    /// <summary>M42: runs AFTER the Animation component to override bone poses for grasp/swipe.
+    /// The Animation component drives bone transforms from the walk clip. Any rotation we set
+    /// in Update gets overwritten. LateUpdate runs after Animation, so our poses stick.</summary>
+    void LateUpdate()
+    {
+        if (!UsingModel || _player == null) return;
+
+        bool swipingOrEating = _swipePhase == SwipePhase.Windup ||
+                               _swipePhase == SwipePhase.Recover || _eating;
+
+        if (swipingOrEating)
+        {
+            // Re-apply the swipe pose in LateUpdate so the Animation component doesn't overwrite it
+            if (_swipePhase == SwipePhase.Windup)
+                PoseSwipe(1f - Mathf.Clamp01(_swipeT / SwipeWindupSeconds));
+            else if (_swipePhase == SwipePhase.Recover)
+                PoseSwipe(Mathf.Max(0f, 1f - _swipeT / SwipeRecoverSeconds) * 0.5f);
+        }
+        else
+        {
+            ApplyGrasp();
+        }
     }
 
     /// <summary>A thrown cob lands: one third of the health, and the stagger that is the real prize.</summary>
@@ -744,6 +765,7 @@ public sealed class Husk : MonoBehaviour
     /// pose, at u=1 the arm is fully back, and Recover eases it down through the same curve.</summary>
     void PoseSwipe(float u)
     {
+        _lastSwipePose = u;
         float back = Mathf.Sin(u * Mathf.PI * 0.5f);
         if (UsingModel && _lArm != null && _rArm != null)
         {
