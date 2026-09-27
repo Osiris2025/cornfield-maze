@@ -1,7 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 
 /// <summary>
 /// THE HUSK — the thing that chases Gingy. What is left of a corn plant once it is stripped.
@@ -167,8 +165,6 @@ public sealed class Husk : MonoBehaviour
     Quaternion _sleeveRestL;
     Quaternion _sleeveRestR;
     float _lurchPhase;
-    PlayableGraph _walkGraph;
-    AnimationClipPlayable _walkPlayable;
     
 
     /// <summary>M28: the measured height of the built creature, from its own renderer bounds.</summary>
@@ -552,9 +548,6 @@ public sealed class Husk : MonoBehaviour
 
         // M42: arms reach forward when close to the cookie
         if (UsingModel) ApplyGrasp();
-
-        // M42: force the walk graph to evaluate — ensures animation plays every frame
-        if (_walkGraph.IsValid()) _walkGraph.Evaluate();
 
         TryCatch();
     }
@@ -955,35 +948,30 @@ public sealed class Husk : MonoBehaviour
         foreach (var r in inst.GetComponentsInChildren<Renderer>(true))
             r.sharedMaterial = mat;
 
-        var animator = inst.GetComponentInChildren<Animator>();
-        if (animator == null) animator = inst.AddComponent<Animator>();
-        animator.applyRootMotion = false;
+        var anim = inst.GetComponent<Animation>();
+        if (anim == null) anim = inst.AddComponent<Animation>();
+        anim.playAutomatically = true;
 
-        // M42: build a Generic Avatar so the Animator can map the clip's bone data onto the
-        // SkinnedMeshRenderer. Without this, the PlayableGraph plays the clip but the Animator
-        // has no bone map — the creature just floats.
-        if (animator.avatar == null || !animator.avatar.isValid)
-        {
-            var avatar = AvatarBuilder.BuildGenericAvatar(inst, "");
-            if (avatar != null) animator.avatar = avatar;
-        }
+        // M42: the FBX is imported with legacyGenerateAnimations, so clips come in as Legacy.
+        // Legacy clips MUST use the Animation component — PlayableGraph/Animator can't play them.
 
         var clips = Resources.LoadAll<AnimationClip>(ModelClipFolder);
         Debug.Log("Husk: animation clips found under Resources/" + ModelClipFolder + ": " + (clips != null ? clips.Length : 0));
         if (clips != null && clips.Length > 0)
         {
             var clip = clips[0];
-            Debug.Log("Husk: playing clip '" + clip.name + "', length=" + clip.length.ToString("0.00") + "s, framerate=" + clip.frameRate);
-            // Wrap mode is set on the playable, not the clip
-            _walkGraph = PlayableGraph.Create("HuskWalk");
-            _walkPlayable = AnimationClipPlayable.Create(_walkGraph, clip);
-            _walkPlayable.SetDuration(clip.length);
-            AnimationPlayableOutput.Create(_walkGraph, "walk", animator).SetSourcePlayable(_walkPlayable);
-            _walkGraph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
-            _walkGraph.Play();
+            Debug.Log("Husk: playing clip '" + clip.name + "', length=" + clip.length.ToString("0.00") + "s, framerate=" + clip.frameRate + ", legacy=" + clip.legacy);
+            anim.AddClip(clip, clip.name);
+            var state = anim[clip.name];
+            if (state != null)
+            {
+                state.wrapMode = WrapMode.Loop;
+                state.speed = 1f;
+                state.time = Random.Range(0f, clip.length);
+                state.enabled = true;
+            }
+            anim.Play(clip.name);
             ModelClipName = clip.name;
-            // Desync the phase
-            _walkPlayable.SetTime(Random.Range(0f, clip.length));
         }
         else
         {
@@ -1043,7 +1031,6 @@ public sealed class Husk : MonoBehaviour
 
     void OnDestroy()
     {
-        if (_walkGraph.IsValid()) _walkGraph.Destroy();
     }
 
     static Transform Joint(Transform parent, string name, Vector3 localPos)
