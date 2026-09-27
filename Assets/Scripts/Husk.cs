@@ -959,17 +959,20 @@ public sealed class Husk : MonoBehaviour
         Debug.Log("Husk: animation clips found under Resources/" + ModelClipFolder + ": " + (clips != null ? clips.Length : 0));
         if (clips != null && clips.Length > 0)
         {
-            // M42: skip the OrcWalk clip (wrong skeleton), find the original scarecrow walk
+            // M42: pick a Legacy clip (the original scarecrow walk). Skip non-Legacy clips
+            // like the OrcWalk which has a different skeleton and can't play on this model.
             AnimationClip clip = null;
             for (int i = 0; i < clips.Length; i++)
             {
-                if (clips[i].name.IndexOf("OrcWalk", System.StringComparison.OrdinalIgnoreCase) >= 0) continue;
-                clip = clips[i];
-                break;
+                if (clips[i].legacy) { clip = clips[i]; break; }
             }
-            if (clip == null) clip = clips[0]; // fallback
+            if (clip == null) clip = clips[0]; // fallback — will warn below
 
-            Debug.Log("Husk: playing clip '" + clip.name + "', length=" + clip.length.ToString("0.00") + "s, framerate=" + clip.frameRate + ", legacy=" + clip.legacy);
+            if (!clip.legacy)
+                Debug.LogWarning("Husk: clip '" + clip.name + "' is not Legacy — Animation component can't play it. " +
+                                 "The walk will be a bind-pose float. Set the FBX import to Legacy in the Editor.");
+            else
+                Debug.Log("Husk: playing clip '" + clip.name + "', length=" + clip.length.ToString("0.00") + "s, framerate=" + clip.frameRate + ", legacy=" + clip.legacy);
             anim.AddClip(clip, clip.name);
             var state = anim[clip.name];
             if (state != null)
