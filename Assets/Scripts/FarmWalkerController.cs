@@ -1362,6 +1362,62 @@ public static class GingerbreadMesh
     }
 
     static string Name(Transform t) => t == null ? "<missing>" : t.name;
+
+    /// <summary>
+    /// Build a simple mouth mesh parented to the cookie's head bone for the intro flyby dialogue.
+    /// The mouth is an 8-vert ellipse, dark brown, that opens/closes via MouthAnimator.OpenAmount.
+    /// Returns null if the head bone is not found.
+    /// </summary>
+    public static MouthAnimator BuildMouth(Transform cookieInstance)
+    {
+        var head = Bone(cookieInstance, "spine02");
+        if (head == null) return null;
+
+        var go = new GameObject("CookieMouth");
+        go.transform.SetParent(head, false);
+        go.transform.localPosition = new Vector3(0f, -0.045f, 0.028f);
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localScale = new Vector3(0.032f, 0.008f, 0.002f);
+
+        var mf = go.AddComponent<MeshFilter>();
+        mf.sharedMesh = MouthMesh();
+
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = MouthMaterial();
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+
+        return go.AddComponent<MouthAnimator>();
+    }
+
+    static Mesh MouthMesh()
+    {
+        var mesh = new Mesh { name = "Mouth" };
+        int segs = 8;
+        var verts = new Vector3[segs + 1];
+        var tris = new int[segs * 3];
+        verts[0] = Vector3.zero;
+        for (int i = 0; i < segs; i++)
+        {
+            float a = i / (float)segs * Mathf.PI * 2f;
+            verts[i + 1] = new Vector3(Mathf.Cos(a) * 0.5f, Mathf.Sin(a) * 0.5f, 0f);
+            int j = i * 3;
+            tris[j] = 0;
+            tris[j + 1] = i + 1;
+            tris[j + 2] = (i + 1) % segs + 1;
+        }
+        mesh.vertices = verts;
+        mesh.triangles = tris;
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    static Material MouthMaterial()
+    {
+        var mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        mat.color = new Color(0.08f, 0.04f, 0.02f);
+        return mat;
+    }
 }
 
 

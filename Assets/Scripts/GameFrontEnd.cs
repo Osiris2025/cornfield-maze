@@ -44,17 +44,10 @@ public sealed class GameFrontEnd : MonoBehaviour
 
     enum Stage { Title, Help, Intro, Playing, Paused }
 
-    static readonly string[] IntroPages =
-    {
-        "You are a gingerbread cookie, and you are late.",
-        "Somewhere in this field there is a pot of gold.\nSomething in the corn already knows your name.",
-        "The Husk does not run in straight lines.\nIt cannot turn a corner at speed — and neither can you, if you stand still.",
-        "Walk the lanes. Take what you can carry.\nDo not stop moving."
-    };
+    IntroFlyby _flyby;
 
     Font _font;
     Stage _stage = Stage.Title;
-    int _introPage;
 
     GameObject _titlePanel;
     GameObject _helpPanel;
@@ -198,19 +191,15 @@ public sealed class GameFrontEnd : MonoBehaviour
 
     void BuildIntro()
     {
+        // The intro is now a cinematic flyby (M42), not text pages. This panel stays as a dim
+        // backdrop while the flyby camera runs, dismissed when the flyby completes or is skipped.
         _introPanel = Panel("IntroScreen", 0.94f);
         var safe = Safe(_introPanel.transform);
-        _introText = Label(safe, "IntroPage", IntroPages[0], 52, TextAnchor.MiddleCenter,
-            new Color(0.97f, 0.94f, 0.88f), new Vector2(0f, 60f), new Vector2(1500f, 500f));
-        _introButton = Action(safe, "IntroNext", "NEXT", new Vector2(0f, -320f), AdvanceIntro);
-        Label(safe, "IntroHint", MobileControls.ShouldShow ? "tap anywhere to go on" : "click, or press Space", 24,
-            TextAnchor.MiddleCenter, new Color(0.70f, 0.66f, 0.58f), new Vector2(0f, -430f), new Vector2(1200f, 50f));
+        Label(safe, "IntroHint", MobileControls.ShouldShow ? "tap to skip" : "press Space or click to skip", 24,
+            TextAnchor.MiddleCenter, new Color(0.70f, 0.66f, 0.58f), new Vector2(0f, -420f), new Vector2(1200f, 50f));
     }
 
     Text _titleText;
-    Text _introText;
-    Button _introButton;
-    Text _introButtonLabel;
 
     void BuildPause()
     {
@@ -271,22 +260,29 @@ public sealed class GameFrontEnd : MonoBehaviour
 
     void AdvanceFromTitle()
     {
-        if (!_introSeen) { _introPage = 0; ShowIntroPage(); Show(Stage.Intro); }
+        if (!_introSeen)
+        {
+            _introSeen = true;
+            Show(Stage.Intro);
+            _flyby = IntroFlyby.Play(_player, () =>
+            {
+                _flyby = null;
+                BeginRun();
+            });
+        }
         else BeginRun();
-    }
-
-    void ShowIntroPage()
-    {
-        if (_introText != null) _introText.text = IntroPages[Mathf.Clamp(_introPage, 0, IntroPages.Length - 1)];
-        if (_introButtonLabel != null)
-            _introButtonLabel.text = _introPage >= IntroPages.Length - 1 ? "BEGIN" : "NEXT";
     }
 
     void AdvanceIntro()
     {
-        _introPage++;
-        if (_introPage >= IntroPages.Length) { _introSeen = true; BeginRun(); return; }
-        ShowIntroPage();
+        // Skip the flyby
+        if (_flyby != null)
+        {
+            Destroy(_flyby.gameObject);
+            _flyby = null;
+        }
+        _introSeen = true;
+        BeginRun();
     }
 
     void BeginRun()
@@ -444,7 +440,6 @@ public sealed class GameFrontEnd : MonoBehaviour
         button.onClick.AddListener(onClick);
         var label = Label(go.transform, "Label", caption, 34, TextAnchor.MiddleCenter,
             new Color(1f, 0.88f, 0.48f), Vector2.zero, new Vector2(460f, 92f), true);
-        if (name == "IntroNext") { _introButton = button; _introButtonLabel = label; }
         return button;
     }
 
