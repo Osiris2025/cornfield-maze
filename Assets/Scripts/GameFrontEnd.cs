@@ -294,6 +294,7 @@ public sealed class GameFrontEnd : MonoBehaviour
 
     void BeginRun()
     {
+        if (_player != null) _player.Frozen = false;
         Show(Stage.Playing);
         if (_onPlay != null) _onPlay();
     }
