@@ -546,8 +546,9 @@ public sealed class Husk : MonoBehaviour
         if (_jaw != null && !_eating)
             _jaw.localRotation = Quaternion.Euler(2f + Mathf.Sin(Time.time * 1.7f) * 2f, 0f, 0f);
 
-        // M42: arms reach forward when close to the cookie
-        if (UsingModel) ApplyGrasp();
+        // M42: arms reach forward when close to the cookie (not during a swipe — swipe owns the arms)
+        bool swipingOrEating = _swipePhase == SwipePhase.Windup || _swipePhase == SwipePhase.Recover || _eating;
+        if (UsingModel && !swipingOrEating) ApplyGrasp();
 
         TryCatch();
     }
@@ -681,7 +682,12 @@ public sealed class Husk : MonoBehaviour
             {
                 _swipePhase = SwipePhase.Idle;
                 // Hand the pose back exactly as the lurch left it, so nothing snaps on the frame after.
-                if (_model != null) _model.localRotation = Quaternion.identity;
+                if (UsingModel)
+                {
+                    if (_lArm != null) _lArm.localRotation = Quaternion.identity;
+                    if (_rArm != null) _rArm.localRotation = Quaternion.identity;
+                }
+                else if (_model != null) _model.localRotation = Quaternion.identity;
                 if (_sleeveL != null) _sleeveL.localRotation = _sleeveRestL;
                 if (_sleeveR != null) _sleeveR.localRotation = _sleeveRestR;
                 return inBand;   // still in band: one planted frame, then Idle arms the next windup
@@ -739,8 +745,18 @@ public sealed class Husk : MonoBehaviour
     void PoseSwipe(float u)
     {
         float back = Mathf.Sin(u * Mathf.PI * 0.5f);
-        if (_model != null)
+        if (UsingModel && _lArm != null && _rArm != null)
+        {
+            // M42: the FBX model has real arm bones — wind the swiping arm back
+            var arm = _swipeLeftArm ? _lArm : _rArm;
+            float sideSign = _swipeLeftArm ? 1f : -1f;
+            // Rotate the swiping arm back and up (windup), the other arm stays at rest
+            arm.localRotation = Quaternion.Euler(-30f * back, 0f, sideSign * 50f * back);
+        }
+        else if (_model != null)
+        {
             _model.localRotation = Quaternion.Euler(-16f * back, 0f, (_swipeLeftArm ? 1f : -1f) * 10f * back);
+        }
         var wind = _swipeLeftArm ? _sleeveL : _sleeveR;
         var rest = _swipeLeftArm ? _sleeveRestL : _sleeveRestR;
         if (wind != null)
