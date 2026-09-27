@@ -270,19 +270,33 @@ public sealed class GameHud : MonoBehaviour
     }
 
     public void ShowWin()
-    {
-        if (_ended) return;
-        _ended = true;
-        if (_hint != null) _hint.gameObject.SetActive(false);
-        if (_prompt != null) _prompt.gameObject.SetActive(false);   // the run is over; drop the prompt
-        _win.gameObject.SetActive(true);
-        _win.color = new Color(1f, 0.86f, 0.25f);
-        _win.text = MobileControls.ShouldShow
-            ? "You found the pot of gold!\nTap Restart to wander the maze again"
-            : "You found the pot of gold!\nPress R to wander the maze again";
-        if (MobileControls.Instance != null)
-            MobileControls.Instance.ShowRestart(true);
-    }
+        {
+            if (_ended) return;
+            _ended = true;
+            if (_hint != null) _hint.gameObject.SetActive(false);
+            if (_prompt != null) _prompt.gameObject.SetActive(false);
+            _win.gameObject.SetActive(true);
+            _win.color = new Color(1f, 0.86f, 0.25f);
+
+            var lm = LevelManager.Instance;
+            if (lm != null && !lm.IsLastLevel)
+            {
+                _win.text = $"Level {lm.CurrentLevel} Complete!\n" +
+                    (MobileControls.ShouldShow
+                        ? $"Tap to continue to Level {lm.CurrentLevel + 1}"
+                        : $"Press Space to continue to Level {lm.CurrentLevel + 1}");
+            }
+            else
+            {
+                _win.text = "You escaped the corn field!\n" +
+                    (MobileControls.ShouldShow
+                        ? "Tap to play again"
+                        : "Press Space to play again");
+            }
+
+            if (MobileControls.Instance != null)
+                MobileControls.Instance.ShowRestart(true);
+        }
 
     public void ShowCaught()
     {

@@ -6,6 +6,7 @@ public sealed class GameBootstrap : MonoBehaviour
     FarmWalkerController _player;
     GameHud _hud;
     MazeData _maze;
+    LevelDef _levelDef;
     bool _won;
     bool _beastSpawned;
 
@@ -51,7 +52,17 @@ public sealed class GameBootstrap : MonoBehaviour
             Screen.orientation = ScreenOrientation.AutoRotation;
         }
 
-        var maze = MazeGenerator.Build();
+        // M43: ensure LevelManager exists before anything reads it
+        if (LevelManager.Instance == null)
+        {
+            var lmGo = new GameObject("LevelManager");
+            lmGo.AddComponent<LevelManager>();
+        }
+        _levelDef = LevelManager.Instance.CurrentDef;
+        Debug.Log($"[GameBootstrap] Level {_levelDef.levelNumber}: {_levelDef.levelName} " +
+            $"({_levelDef.mazeWidth}x{_levelDef.mazeHeight}, {_levelDef.huskCount} husk(s))");
+
+        var maze = MazeGenerator.Build(_levelDef);
         MazeWorldBuilder.Build(maze);
 
         var facing = FacingIntoMaze(maze);
@@ -62,7 +73,7 @@ public sealed class GameBootstrap : MonoBehaviour
 
         _hud = GameHud.Create();
         MazeMoodAudio.Install(_player.transform, maze);
-        StormWeather.Install(_player.transform);
+        StormWeather.Install(_player.transform, _levelDef.stormStartIntensity);
         PathMudWetness.Install();
         NightSky.Install(_player.transform, gold.transform, maze);
         // M25 (§25.5): the dusk -> night ramp. Installed AFTER StormWeather so the storm grabs the Sun
@@ -92,18 +103,28 @@ public sealed class GameBootstrap : MonoBehaviour
         if (_hud != null) _hud.Begin();
         if (_beastSpawned || _maze == null || _player == null) return;
         _beastSpawned = true;
-        Husk.Spawn(_maze, _player);
+        for (int i = 0; i < _levelDef.huskCount; i++)
+            Husk.Spawn(_maze, _player);
         PlayTone(220f, 0.15f);
     }
 
     void Update()
     {
-        if (GameFrontEnd.IsPlaying
-            && (Input.GetKeyDown(KeyCode.R)
-                || (MobileControls.Instance != null && MobileControls.Instance.RestartPressed)))
+        // M43: Space after win → advance level; R → restart via LevelManager
+        if (GameFrontEnd.IsPlaying)
         {
-            GameFrontEnd.RequestAutoPlay();   // a restart lands in the maze, not on the title (§25.1)
-            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+            bool rKey = Input.GetKeyDown(KeyCode.R) ||
+                (MobileControls.Instance != null && MobileControls.Instance.RestartPressed);
+            bool spaceKey = Input.GetKeyDown(KeyCode.Space);
+
+            if (rKey || (spaceKey && _won))
+            {
+                GameFrontEnd.RequestAutoPlay();
+                if (_won)
+                    LevelManager.Instance.Advance();
+                else
+                    LevelManager.Instance.RestartLevel();
+            }
         }
 
         if (MobileControls.ShouldShow) return;

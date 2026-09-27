@@ -16,6 +16,7 @@ public sealed class StormWeather : MonoBehaviour
 
     Transform _follow;
     Light _sun;
+    float _startIntensity = 0.25f;  // M43: set by Install() from LevelDef
     Light _lightning;
     float _storm;
     Material _skyInstance;
@@ -51,7 +52,7 @@ public sealed class StormWeather : MonoBehaviour
     bool _striking;
     System.Random _rng = new System.Random(4409);
 
-    public static StormWeather Install(Transform player)
+    public static StormWeather Install(Transform player, float startIntensity = 0.25f)
     {
         var existing = Object.FindFirstObjectByType<StormWeather>();
         if (existing != null)
@@ -59,6 +60,7 @@ public sealed class StormWeather : MonoBehaviour
 
         var go = new GameObject("StormWeather");
         var storm = go.AddComponent<StormWeather>();
+        storm._startIntensity = startIntensity;
         storm._follow = player;
         return storm;
     }
@@ -96,7 +98,7 @@ public sealed class StormWeather : MonoBehaviour
     void Start()
     {
         MobileAudioSession.Apply();
-        Intensity = 0f;
+        Intensity = _startIntensity;
         WindDir = new Vector3(0.82f, 0f, 0.57f).normalized;
 
         _fogCalm = RenderSettings.fogColor;

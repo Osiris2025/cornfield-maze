@@ -147,20 +147,27 @@ public static class MazeGenerator
 {
     // Seed 1661: long solution path plus several deep dead ends (one ~25 cells).
     public const int Seed = 1661;
-    public const int Width = 25;
-    public const int Height = 21;
-    public const float CellSize = 4f;
+    const int DefaultWidth = 25;
+    const int DefaultHeight = 21;
+    const float DefaultCellSize = 4f;
     const float StraightBias = 0.58f;
 
-    public static MazeData Build()
+    public static MazeData Build() => Build(null);
+
+    public static MazeData Build(LevelDef def)
     {
-        var rng = new System.Random(Seed);
-        var wall = new bool[Width, Height];
-        for (int x = 0; x < Width; x++)
-            for (int y = 0; y < Height; y++)
+        int w = def != null ? def.mazeWidth  : DefaultWidth;
+        int h = def != null ? def.mazeHeight : DefaultHeight;
+        float cs = def != null ? def.cellSize : DefaultCellSize;
+        int seed = def != null ? def.seedBase + def.levelNumber : Seed;
+
+        var rng = new System.Random(seed);
+        var wall = new bool[w, h];
+        for (int x = 0; x < w; x++)
+            for (int y = 0; y < h; y++)
                 wall[x, y] = true;
 
-        var start = new Vector2Int(1, Height - 2);
+        var start = new Vector2Int(1, h - 2);
         wall[start.x, start.y] = false;
 
         var stack = new Stack<Vector2Int>();
@@ -181,7 +188,7 @@ public static class MazeGenerator
             foreach (var dir in dirs)
             {
                 var next = cell + dir;
-                if (next.x > 0 && next.x < Width - 1 && next.y > 0 && next.y < Height - 1 && wall[next.x, next.y])
+                if (next.x > 0 && next.x < w - 1 && next.y > 0 && next.y < h - 1 && wall[next.x, next.y])
                     neighbors.Add((next, dir));
             }
 
@@ -216,9 +223,9 @@ public static class MazeGenerator
         var maze = new MazeData
         {
             IsWall = wall,
-            Width = Width,
-            Height = Height,
-            CellSize = CellSize,
+            Width = w,
+            Height = h,
+            CellSize = cs,
             StartCell = start,
             GoldCell = gold
         };
@@ -248,7 +255,7 @@ public static class MazeGenerator
             foreach (var step in steps)
             {
                 var next = cell + step;
-                if (next.x < 0 || next.y < 0 || next.x >= Width || next.y >= Height)
+                if (next.x < 0 || next.y < 0 || next.x >= wall.GetLength(0) || next.y >= wall.GetLength(1))
                     continue;
                 if (wall[next.x, next.y] || dist.ContainsKey(next))
                     continue;
