@@ -69,17 +69,7 @@ public sealed class GameHud : MonoBehaviour
         }
         else
         {
-            _hint.text =
-                "You are a gingerbread cookie. Find the pot of gold in the corn maze.\n" +
-                "Stay on the gravel paths. WASD / arrows follow the lanes.  Mouse  look    V  view    Shift  run    Esc  cursor\n" +
-                "Left-click or F  take or throw a cob    Space  jump    R  restart\n" +
-#if UNITY_EDITOR
-                "Editor: Game tab → Maximize On Play, then Play.  Built Mac app: F11 / Cmd+F (or the green button) for fullscreen.\n" +
-#else
-                "Fullscreen: F11 or Cmd+F, or the green traffic-light button. Esc only frees the mouse — it does not leave fullscreen.\n" +
-#endif
-                "When the sky darkens, look straight up — a faint star arrow overhead points along the next correct turn.\n" +
-                "Watch out for the Husk — it hunts the lanes and cannot corner at speed. R restarts.";
+            _hint.text = "";
         }
 
         // M38: the persistent control prompt. Bottom edge, centred (§ see MakeText for why the anchor

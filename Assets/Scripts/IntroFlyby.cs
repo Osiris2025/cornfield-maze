@@ -20,6 +20,8 @@ public sealed class IntroFlyby : MonoBehaviour
 
     Camera _flycam;
     FarmWalkerController _player;
+    Canvas _subCanvas;
+    Text _subtitleText;
     MouthAnimator _mouth;
     bool _skipped;
     bool _capture;
@@ -78,6 +80,8 @@ public sealed class IntroFlyby : MonoBehaviour
         fill.transform.SetParent(_flycam.transform, false);
         fill.transform.localPosition = Vector3.zero;
         fill.shadows = LightShadows.None;
+
+        BuildSubtitles();
 
         var cookieModel = _player != null
             ? _player.transform.Find("GingerbreadMesh/Cookie")
@@ -144,27 +148,43 @@ public sealed class IntroFlyby : MonoBehaviour
         voiceSource.spatialBlend = 0f;
         voiceSource.PlayOneShot(clip);
 
+        _subtitleText.text = "";
         float lineLength = clip.length;
         float elapsed = 0f;
+        var words = Dialogue.Split(' ');
 
         while (elapsed < lineLength)
         {
             if (_skipped) yield break;
             elapsed += Time.deltaTime;
 
-            bool speaking = false;
+            int currentWord = -1;
             for (int i = 0; i < wordTimings.Length; i++)
                 if (elapsed >= wordTimings[i].start && elapsed <= wordTimings[i].end)
-                    { speaking = true; break; }
+                    { currentWord = i; break; }
 
-            if (speaking && _mouth != null)
+            if (currentWord >= 0 && _mouth != null)
+            {
                 _mouth.OpenAmount = Mathf.Lerp(_mouth.OpenAmount, 0.75f, 14f * Time.deltaTime);
-            else if (_mouth != null)
-                _mouth.OpenAmount = Mathf.Lerp(_mouth.OpenAmount, 0f, 10f * Time.deltaTime);
+                int charCount = 0;
+                for (int w = 0; w <= currentWord && w < words.Length; w++)
+                {
+                    if (w > 0) charCount++;
+                    charCount += words[w].Length;
+                }
+                if (charCount > Dialogue.Length) charCount = Dialogue.Length;
+                _subtitleText.text = Dialogue.Substring(0, charCount);
+            }
+            else
+            {
+                if (_mouth != null)
+                    _mouth.OpenAmount = Mathf.Lerp(_mouth.OpenAmount, 0f, 10f * Time.deltaTime);
+            }
 
             yield return null;
         }
 
+        _subtitleText.text = Dialogue;
         if (_mouth != null) _mouth.OpenAmount = 0f;
     }
 
@@ -181,6 +201,37 @@ public sealed class IntroFlyby : MonoBehaviour
             yield return null;
         }
         _flycam.transform.position = to;
+    }
+
+    void BuildSubtitles()
+    {
+        _subCanvas = new GameObject("SubtitleCanvas").AddComponent<Canvas>();
+        _subCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _subCanvas.sortingOrder = 101;
+        _subCanvas.transform.SetParent(transform, false);
+        var scaler = _subCanvas.gameObject.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        var textGo = new GameObject("SubtitleText", typeof(RectTransform));
+        textGo.transform.SetParent(_subCanvas.transform, false);
+        var rect = textGo.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.08f, 0.04f);
+        rect.anchorMax = new Vector2(0.92f, 0.17f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+
+        _subtitleText = textGo.AddComponent<Text>();
+        _subtitleText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        _subtitleText.fontSize = 40;
+        _subtitleText.alignment = TextAnchor.LowerCenter;
+        _subtitleText.color = new Color(1f, 0.95f, 0.78f);
+        _subtitleText.text = "";
+
+        var outline = textGo.AddComponent<Outline>();
+        outline.effectColor = new Color(0f, 0f, 0f, 0.82f);
+        outline.effectDistance = new Vector2(2f, -2f);
     }
 
     static float EaseInOutCubic(float t) =>
