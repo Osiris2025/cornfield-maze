@@ -130,10 +130,12 @@ public static class PuddleDecals
             placed++;
         }
 
+        #if UNITY_EDITOR
         Debug.Log("M32b puddles: " + placed + " placed under one parent (\"Puddles\"), out of " +
                   candidates.Count + " straight-run candidates, stride " + stride +
                   " — " + PuddleLong + " x " + PuddleWide + " m, elongated along the lane and inside the " +
                   "2.08 m lane width, never tiled, never on the field");
+#endif
         return parent;
     }
 }

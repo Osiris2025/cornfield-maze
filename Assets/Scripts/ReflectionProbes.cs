@@ -55,9 +55,11 @@ public static class ReflectionProbes
 
         Refresh(p);
 
+#if UNITY_EDITOR
         Debug.Log("M32c environment map: built in code, 64 px cube, moon at " + DuskSky.MoonDirection +
                   " — the probe is BAKED against it (a realtime capture measured empty in pass 5), box " +
                   p.size.x.ToString("0") + " x " + p.size.z.ToString("0") + " m at " + go.transform.position);
+#endif
         return p;
     }
 
