@@ -87,6 +87,9 @@ public sealed class GameBootstrap : MonoBehaviour
         CornCob.PlantLanes(maze, cobRoot.transform, maze.Width * 31 + maze.Height * 7 + maze.StartCell.x);
         CobHands.Install(_player, MobileControls.Instance, cobRoot.transform);
 
+        // M44: coins off the solution route — reward exploring dead ends (FSD §10).
+        CoinPickup.PlantCoins(maze, new GameObject("Coins").transform, _levelDef.levelNumber);
+
         // M21 (§25.1): the front end owns the first moments, and everything above is already running —
         // the sky, the storm and the field's rustle — so the title screen is neither silent nor static.
         // Only the body is held, the HUD is held, and the Husk waits for the player to start.

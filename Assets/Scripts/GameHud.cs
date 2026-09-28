@@ -5,6 +5,7 @@ public sealed class GameHud : MonoBehaviour
 {
     Text _hint;
     Text _win;
+    Text _coinText;
 
     /// <summary>
     /// M38 (Todd, 2026-09-26): "i have no idea how to attack.   I think jumping should be a thing too".
@@ -88,6 +89,12 @@ public sealed class GameHud : MonoBehaviour
 
         BuildDoughMeter(font);
 
+        // M44: coin counter — top-right corner (FSD §10).
+        _coinText = MakeText("CoinCounter", new Vector2(-20f, -26f), new Vector2(200f, 34f), 24, TextAnchor.UpperRight, font);
+        _coinText.rectTransform.anchorMin = _coinText.rectTransform.anchorMax = _coinText.rectTransform.pivot = new Vector2(1f, 1f);
+        _coinText.color = new Color(1f, 0.86f, 0.25f);
+        _coinText.raycastTarget = false;
+
         _win = MakeText("Win", Vector2.zero, new Vector2(1400, 280), 56, TextAnchor.MiddleCenter, font);
         _win.color = new Color(1f, 0.86f, 0.25f);
         _win.text = "";
@@ -100,6 +107,7 @@ public sealed class GameHud : MonoBehaviour
         if (_held && _doughRoot != null) _doughRoot.SetActive(false);
         // M38: the prompt is a run control line, so it waits behind the title with the rest of the run.
         if (_held && _prompt != null) _prompt.gameObject.SetActive(false);
+        if (_held && _coinText != null) _coinText.gameObject.SetActive(false);
     }
 
     /// <summary>
@@ -215,6 +223,7 @@ public sealed class GameHud : MonoBehaviour
         if (_hint != null) _hint.gameObject.SetActive(false);
         if (_doughRoot != null) _doughRoot.SetActive(false);
         if (_prompt != null) _prompt.gameObject.SetActive(false);
+        if (_coinText != null) _coinText.gameObject.SetActive(false);
     }
 
     /// <summary>The run has started — show the hint and the dough meter, and start the hint's clock.</summary>
@@ -230,11 +239,17 @@ public sealed class GameHud : MonoBehaviour
         c.a = 1f;
         _hint.color = c;
         _hint.gameObject.SetActive(true);
+        if (_coinText != null) _coinText.gameObject.SetActive(true);
     }
 
     void Update()
     {
         UpdateDoughMeter();
+
+        // M44: coin counter — reads the wallet every frame (FSD §10).
+        if (_coinText != null && _coinText.gameObject.activeSelf)
+            _coinText.text = "Coins: " + CoinWallet.Instance.Balance;
+
         if (_held || _ended || _hint == null || !_hint.gameObject.activeSelf) return;
         _hintTimer -= Time.deltaTime;
         if (_hintTimer < 3f)
