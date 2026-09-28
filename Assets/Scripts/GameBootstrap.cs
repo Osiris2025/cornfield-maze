@@ -127,6 +127,11 @@ public sealed class GameBootstrap : MonoBehaviour
     {
         if (_player != null) _player.Frozen = false;
         if (_hud != null) _hud.Begin();
+
+        // FSD §15: authenticate Game Center once after the first level starts,
+        // never on the title screen, never blocking play.
+        CornGameCenter.AuthenticateIfNeeded();
+
         if (_beastSpawned || _maze == null || _player == null) return;
         _beastSpawned = true;
         for (int i = 0; i < _levelDef.huskCount; i++)
@@ -190,6 +195,10 @@ public sealed class GameBootstrap : MonoBehaviour
         if (_player != null) _player.SetWon(true);
         if (_hud != null) _hud.ShowWin();
         MazeMoodAudio.PlayWin();
+
+        // FSD §15: submit best score on every win — Game Center keeps the best.
+        CornGameCenter.SubmitScore(LevelManager.Instance.CurrentLevel);
+
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }

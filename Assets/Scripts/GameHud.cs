@@ -285,33 +285,73 @@ public sealed class GameHud : MonoBehaviour
     }
 
     public void ShowWin()
+    {
+        if (_ended) return;
+        _ended = true;
+        if (_hint != null) _hint.gameObject.SetActive(false);
+        if (_prompt != null) _prompt.gameObject.SetActive(false);
+        _win.gameObject.SetActive(true);
+        _win.color = new Color(1f, 0.86f, 0.25f);
+
+        var lm = LevelManager.Instance;
+        if (lm != null && !lm.IsLastLevel)
         {
-            if (_ended) return;
-            _ended = true;
-            if (_hint != null) _hint.gameObject.SetActive(false);
-            if (_prompt != null) _prompt.gameObject.SetActive(false);
-            _win.gameObject.SetActive(true);
-            _win.color = new Color(1f, 0.86f, 0.25f);
+            _win.text = $"Level {lm.CurrentLevel} Complete!";
+            // M12: show the upgrade shop; its CONTINUE button calls Advance().
+            // The shop overlay renders on top of the win text.
+            ShopFlow.Show(() => LevelManager.Instance.Advance());
 
-            var lm = LevelManager.Instance;
-            if (lm != null && !lm.IsLastLevel)
-            {
-                _win.text = $"Level {lm.CurrentLevel} Complete!";
-                // M12: show the upgrade shop; its CONTINUE button calls Advance().
-                // The shop overlay renders on top of the win text.
-                ShopFlow.Show(() => LevelManager.Instance.Advance());
-            }
-            else
-            {
-                _win.text = "You escaped the corn field!\n" +
-                    (MobileControls.ShouldShow
-                        ? "Tap to play again"
-                        : "Press Space to play again");
-            }
-
-            if (MobileControls.Instance != null)
-                MobileControls.Instance.ShowRestart(true);
+            // FSD §15: LEADERBOARD button below the win text.
+            BuildLeaderboardButton(new Vector2(0f, -140f));
         }
+        else
+        {
+            _win.text = "You escaped the corn field!\n" +
+                (MobileControls.ShouldShow
+                    ? "Tap to play again"
+                    : "Press Space to play again");
+
+            // FSD §15: LEADERBOARD button on the final win screen.
+            BuildLeaderboardButton(new Vector2(0f, -180f));
+        }
+
+        if (MobileControls.Instance != null)
+            MobileControls.Instance.ShowRestart(true);
+    }
+
+    /// <summary>FSD §15: standard iOS "Show Leaderboard" button below the win text.</summary>
+    void BuildLeaderboardButton(Vector2 offset)
+    {
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font == null) font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+        var go = new GameObject("LeaderboardButton");
+        go.transform.SetParent(transform, false);
+        var rect = go.AddComponent<RectTransform>();
+        rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = offset;
+        rect.sizeDelta = new Vector2(280f, 50f);
+        var image = go.AddComponent<Image>();
+        image.color = new Color(0f, 0f, 0f, 0.55f);
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = image;
+
+        var labelGo = new GameObject("Label");
+        labelGo.transform.SetParent(go.transform, false);
+        var labelRect = labelGo.AddComponent<RectTransform>();
+        labelRect.anchorMin = new Vector2(0f, 0f);
+        labelRect.anchorMax = new Vector2(1f, 1f);
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+        var label = labelGo.AddComponent<Text>();
+        label.font = font;
+        label.fontSize = 24;
+        label.alignment = TextAnchor.MiddleCenter;
+        label.color = new Color(1f, 0.86f, 0.25f);
+        label.text = "Show Leaderboard";
+
+        btn.onClick.AddListener(() => CornGameCenter.ShowLeaderboardUI());
+    }
 
     public void ShowCaught()
     {
