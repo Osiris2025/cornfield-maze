@@ -10,6 +10,9 @@ public sealed class GameBootstrap : MonoBehaviour
     bool _won;
     bool _beastSpawned;
 
+    // M47: boss fight
+    BossBase _boss;
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoStart()
     {
@@ -63,19 +66,39 @@ public sealed class GameBootstrap : MonoBehaviour
             $"({_levelDef.mazeWidth}x{_levelDef.mazeHeight}, {_levelDef.huskCount} husk(s))");
 
         var maze = MazeGenerator.Build(_levelDef);
+
+        // M47: if boss level, clear the arena BEFORE world builder so geometry matches
+        if (_levelDef.isBossLevel)
+            BossArena.BuildArena(maze);
+
         MazeWorldBuilder.Build(maze);
 
         var facing = FacingIntoMaze(maze);
         _player = FarmWalkerController.Spawn(maze.StartWorld, facing, maze);
 
-        var gold = PotOfGold.Spawn(maze.GoldWorld);
-        gold.OnCollected = HandleWin;
+        // M47: boss levels get their PotOfGold from the boss on death, not here.
+        // Non-boss levels: spawn PotOfGold at the gold cell as before.
+        Transform goldTransform;
+        if (!_levelDef.isBossLevel)
+        {
+            var gold = PotOfGold.Spawn(maze.GoldWorld);
+            gold.OnCollected = HandleWin;
+            goldTransform = gold.transform;
+        }
+        else
+        {
+            // Placeholder for NightSky — points to the arena center where gold will appear
+            var goldPlaceholder = new GameObject("BossGoldPlaceholder");
+            goldPlaceholder.transform.position = maze.GoldWorld;
+            goldTransform = goldPlaceholder.transform;
+            Debug.Log($"[GameBootstrap] Boss level — arena built (walls cleared before world builder), PotOfGold deferred until boss death.");
+        }
 
         _hud = GameHud.Create();
         MazeMoodAudio.Install(_player.transform, maze);
         StormWeather.Install(_player.transform, _levelDef.stormStartIntensity);
         PathMudWetness.Install();
-        NightSky.Install(_player.transform, gold.transform, maze);
+        NightSky.Install(_player.transform, goldTransform, maze);
         // M25 (§25.5): the dusk -> night ramp. Installed AFTER StormWeather so the storm grabs the Sun
         // light first (DuskSky adds its own moon light and would otherwise be found as "the" light).
         DuskSky.Install(_player.transform, maze);
@@ -109,6 +132,19 @@ public sealed class GameBootstrap : MonoBehaviour
         for (int i = 0; i < _levelDef.huskCount; i++)
             Husk.Spawn(_maze, _player);
         EnemySpawner.SpawnEnemies(_maze, _player, _levelDef, new GameObject("Enemies").transform);
+
+        // M47: spawn the boss if this is a boss level
+        if (_levelDef.isBossLevel && _levelDef.bossType == 1)
+        {
+            var arenaCenter = BossArena.ArenaCenter(_maze);
+            var bossGo = new GameObject("KneadingHands");
+            bossGo.transform.position = arenaCenter;
+            _boss = bossGo.AddComponent<KneadingHands>();
+            _boss.onDeathWin = HandleWin;
+
+            Debug.Log($"[GameBootstrap] Boss spawned: KneadingHands at {arenaCenter}");
+        }
+
         PlayTone(220f, 0.15f);
     }
 

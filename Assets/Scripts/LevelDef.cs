@@ -16,6 +16,10 @@ public class LevelDef
     public float stormStartIntensity;
     public int seedBase;
 
+    // M47: boss level fields
+    public bool isBossLevel = false;       // true for boss encounter levels
+    public int bossType = 0;                // 0=none, 1=KneadingHands
+
     static LevelDef[] _all;
 
     public static LevelDef[] All
@@ -35,7 +39,7 @@ public class LevelDef
             new LevelDef { levelNumber = 2, levelName = "Darkening Sky",    mazeWidth = 39, mazeHeight = 39, cellSize = 4.0f, huskCount = 1, stormStartIntensity = 0.35f, seedBase = 200 },
             new LevelDef { levelNumber = 3, levelName = "The Corn Thickens", mazeWidth = 47, mazeHeight = 47, cellSize = 3.5f, huskCount = 2, stormStartIntensity = 0.50f, seedBase = 300 },
             new LevelDef { levelNumber = 4, levelName = "Howling Wind",     mazeWidth = 55, mazeHeight = 55, cellSize = 3.5f, huskCount = 2, stormStartIntensity = 0.65f, seedBase = 400 },
-            new LevelDef { levelNumber = 5, levelName = "The Last Row",     mazeWidth = 63, mazeHeight = 63, cellSize = 3.0f, huskCount = 3, stormStartIntensity = 0.80f, seedBase = 500 },
+            new LevelDef { levelNumber = 5, levelName = "The Last Row",     mazeWidth = 63, mazeHeight = 63, cellSize = 3.0f, huskCount = 3, stormStartIntensity = 0.80f, seedBase = 500, isBossLevel = true, bossType = 1 },
         };
     }
 }
