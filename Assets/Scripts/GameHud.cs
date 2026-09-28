@@ -296,10 +296,10 @@ public sealed class GameHud : MonoBehaviour
             var lm = LevelManager.Instance;
             if (lm != null && !lm.IsLastLevel)
             {
-                _win.text = $"Level {lm.CurrentLevel} Complete!\n" +
-                    (MobileControls.ShouldShow
-                        ? $"Tap to continue to Level {lm.CurrentLevel + 1}"
-                        : $"Press Space to continue to Level {lm.CurrentLevel + 1}");
+                _win.text = $"Level {lm.CurrentLevel} Complete!";
+                // M12: show the upgrade shop; its CONTINUE button calls Advance().
+                // The shop overlay renders on top of the win text.
+                ShopFlow.Show(() => LevelManager.Instance.Advance());
             }
             else
             {

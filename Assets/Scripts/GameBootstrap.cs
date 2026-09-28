@@ -120,6 +120,10 @@ public sealed class GameBootstrap : MonoBehaviour
                 (MobileControls.Instance != null && MobileControls.Instance.RestartPressed);
             bool spaceKey = Input.GetKeyDown(KeyCode.Space);
 
+            // M12: if the upgrade shop is open, don't process Space/R — the shop
+            // owns the continue flow via its CONTINUE button.
+            if (ShopFlow.IsOpen) return;
+
             if (rKey || (spaceKey && _won))
             {
                 GameFrontEnd.RequestAutoPlay();
