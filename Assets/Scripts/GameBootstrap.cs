@@ -108,6 +108,7 @@ public sealed class GameBootstrap : MonoBehaviour
         _beastSpawned = true;
         for (int i = 0; i < _levelDef.huskCount; i++)
             Husk.Spawn(_maze, _player);
+        EnemySpawner.SpawnEnemies(_maze, _player, _levelDef, new GameObject("Enemies").transform);
         PlayTone(220f, 0.15f);
     }
 
