@@ -16,3 +16,6 @@
 - 2026-09-28 10:55 — M47 boss fight landed. BossBase.cs (300 HP, 66%/33% phase breaks, contact=25/heavy=40, screen-space health bar, phase stings), BossArena.cs (circular clearing with 24 pillar walls), KneadingHands.cs (B1: slap + pincer, 3-phase attacks). Level 5 is the boss level. PotOfGold defers to boss death. Build verified green (4a1a562).
 - 2026-09-28 11:05 — Orphaned .meta files (BossArena, BossBase, KneadingHands) + URP settings committed (5d4b259). Tree clean. Dispatching (f) Game Center leaderboard.
 - 2026-09-28 11:19 — M48 Game Center leaderboard landed. CornGameCenter.cs (static wrapper, DllImport on iOS, no-op elsewhere, auth-once non-blocking, SubmitScore with local-best guard), CornGameCenter.mm (ObjC plugin: GKLocalPlayer auth deferring VC, GKLeaderboard.submitScore, GKGameCenterViewController), leaderboard button on win screen. Build verified green (3137c91). Queue complete.
+- 2026-09-28 15:37 — Monitor detected 7c7d6e2 (war room close-out). Tree clean, queue exhausted, all quiet.
+- 2026-09-28 11:53 — Monitor: WAR_ROOM.md trailing diff only, no game-code changes. Queue exhausted, all quiet.
+- 2026-10-03 14:02 — Crew chief watch. HEAD 7c7d6e2. Queue exhausted (a)-(f) all shipped. No game-code changes. Tree quiet.
