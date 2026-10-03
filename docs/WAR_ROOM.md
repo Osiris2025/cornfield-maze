@@ -18,4 +18,5 @@
 - 2026-09-28 11:19 — M48 Game Center leaderboard landed. CornGameCenter.cs (static wrapper, DllImport on iOS, no-op elsewhere, auth-once non-blocking, SubmitScore with local-best guard), CornGameCenter.mm (ObjC plugin: GKLocalPlayer auth deferring VC, GKLeaderboard.submitScore, GKGameCenterViewController), leaderboard button on win screen. Build verified green (3137c91). Queue complete.
 - 2026-09-28 15:37 — Monitor detected 7c7d6e2 (war room close-out). Tree clean, queue exhausted, all quiet.
 - 2026-09-28 11:53 — Monitor: WAR_ROOM.md trailing diff only, no game-code changes. Queue exhausted, all quiet.
+- 2026-10-03 18:18 UTC — Monitor: HEAD 08890e9 (docs: war room). Tree clean, queue exhausted, all quiet.
 - 2026-10-03 14:02 — Crew chief watch. HEAD 7c7d6e2. Queue exhausted (a)-(f) all shipped. No game-code changes. Tree quiet.
