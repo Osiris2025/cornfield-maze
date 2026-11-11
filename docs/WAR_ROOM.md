@@ -21,3 +21,4 @@
 - 2026-10-03 18:18 UTC — Monitor: HEAD 08890e9 (docs: war room). Tree clean, queue exhausted, all quiet.
 - 2026-10-03 14:02 — Crew chief watch. HEAD 7c7d6e2. Queue exhausted (a)-(f) all shipped. No game-code changes. Tree quiet.
 - 2026-10-03 18:34 UTC — Chief watch. HEAD adb41d0 (committed trailing WAR_ROOM.md diff). Queue exhausted, tree clean, all quiet.
+- 2026-11-11 18:38 EST — Chief watch. HEAD c1833fa (docs: TESTING.md guide, docs-only). Tree clean, queue (a)-(f) exhausted, nothing parked.
